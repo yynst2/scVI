@@ -11,6 +11,7 @@ from .annotation import (
     ClassifierTrainer
 )
 from .fish import TrainerFish
+from .gaussian_inference import GaussianTrainer
 
 __all__ = ['Trainer',
            'Posterior',
@@ -20,5 +21,6 @@ __all__ = ['Trainer',
            'JointSemiSupervisedTrainer',
            'SemiSupervisedTrainer',
            'AlternateSemiSupervisedTrainer',
-           'ClassifierTrainer'
+           'ClassifierTrainer',
+           'GaussianTrainer'
            ]

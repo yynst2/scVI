@@ -102,23 +102,7 @@ class GeneExpressionDataset(Dataset):
         #     v['j'] = np.array(v['j'])
         #     v['corrupted'] = np.array(v['corrupted'])
 
-    def collate_fn_end(self, X, indexes):
-        if self.dense:
-            X = torch.from_numpy(X)
-        else:
-            X = torch.FloatTensor(X.toarray())
-        if self.x_coord is None or self.y_coord is None:
-            return X, torch.FloatTensor(self.local_means[indexes]), \
-                   torch.FloatTensor(self.local_vars[indexes]), \
-                   torch.LongTensor(self.batch_indices[indexes]), \
-                   torch.LongTensor(self.labels[indexes])
-        else:
-            return X, torch.FloatTensor(self.local_means[indexes]), \
-                   torch.FloatTensor(self.local_vars[indexes]), \
-                   torch.LongTensor(self.batch_indices[indexes]), \
-                   torch.LongTensor(self.labels[indexes]), \
-                   torch.FloatTensor(self.x_coord[indexes]), \
-                   torch.FloatTensor(self.y_coord[indexes])
+
 
     def update_genes(self, subset_genes):
         new_n_genes = len(subset_genes) if subset_genes.dtype is not np.dtype('bool') else subset_genes.sum()
