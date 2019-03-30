@@ -75,15 +75,70 @@ class LinearGaussian(nn.Module):
 
         return px_mean, qz_m, qz_v, z
 
-    def forward(self, x):
-        r""" Returns the reconstruction loss and the Kullback divergences
+    def neg_iwelbo(self, x, n_samples_mc):
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
 
-        :param x: tensor of values with shape (batch_size, n_input)
-        :return: the reconstruction loss and the Kullback divergences
-        :rtype: 2-tuple of :py:class:`torch.FloatTensor`
-        """
-        # Parameters for z latent distribution
+        log_px_given_z = self.log_normal_full(
+            x.repeat(n_samples_mc, 1), px_mean.view((-1, x.shape[-1])),
+            self.log_det_px_z, self.inv_sqrt_px_z).view((n_samples_mc, -1))
 
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        iwelbo = torch.logsumexp(log_pz + log_px_given_z - log_qz_given_x, dim=0) - np.log(n_samples_mc)
+        return -iwelbo
+
+    def cubo(self, x, n_samples_mc):
+        # computes the naive cubo from chi2 upper bound
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+
+        log_px_given_z = self.log_normal_full(
+            x.repeat(n_samples_mc, 1), px_mean.view((-1, x.shape[-1])),
+            self.log_det_px_z, self.inv_sqrt_px_z).view((n_samples_mc, -1))
+
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        to_sum = log_pz + log_px_given_z - log_qz_given_x
+        cubo = torch.logsumexp(2 * to_sum, dim=0) - np.log(n_samples_mc)
+        return 0.5 * cubo
+
+    def iwrevkl_obj(self, x, n_samples_mc):
+        # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+
+        log_px_given_z = self.log_normal_full(
+            x.repeat(n_samples_mc, 1), px_mean.view((-1, x.shape[-1])),
+            self.log_det_px_z, self.inv_sqrt_px_z).view((n_samples_mc, -1))
+
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        to_softmax = log_pz + log_px_given_z - log_qz_given_x
+
+        rev_kl = torch.nn.softmax(to_softmax, dim=0) * (-1) * log_qz_given_x
+        return rev_kl.sum(dim=0)
+
+    def VR_max(self, x, n_samples_mc):
+        # computes the naive MC from VR-max bound
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+
+        log_px_given_z = self.log_normal_full(
+            x.repeat(n_samples_mc, 1), px_mean.view((-1, x.shape[-1])),
+            self.log_det_px_z, self.inv_sqrt_px_z).view((n_samples_mc, -1))
+
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        total_ratio = log_pz + log_px_given_z - log_qz_given_x
+        to_keep, _ = total_ratio.max(dim=0)
+        return to_keep
+
+    def neg_elbo(self, x):
         px_mean, qz_m, qz_v, z = self.inference(x)
 
         # KL Divergence
@@ -91,19 +146,22 @@ class LinearGaussian(nn.Module):
         scale = torch.ones_like(qz_v)
 
         kl_divergence = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
+        log_px_given_z = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
+        # minimize the neg_elbo
+        return - log_px_given_z + kl_divergence
 
-        reconst_loss = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
-
-        return reconst_loss + kl_divergence
+    def forward(self, x, param):
+        if param == "ELBO":
+            return self.neg_elbo(x)
 
     @staticmethod
     def log_normal_full(x, mean, log_det, inv_sqrt):
         # copying code from NUMPY
         d = x.shape[1]
 
-        log_lik = torch.zeros((1,), dtype=torch.float).cuda()
+        log_lik = torch.zeros((x.shape[0],), dtype=torch.float).cuda()
         log_lik += d * np.log(2 * np.array(np.pi, dtype=np.float32))
         log_lik += log_det
         vec_ = torch.matmul(x - mean, inv_sqrt)
-        log_lik += 0.5 * torch.mul(vec_, vec_).sum(dim=-1).mean(dim=-1)
+        log_lik += torch.mul(vec_, vec_).sum(dim=-1)
         return -0.5 * log_lik

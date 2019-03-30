@@ -56,15 +56,15 @@ class SyntheticGaussianDataset(GaussianDataset):
         np.random.seed(seed)
         # Generating samples according to a Linear Gaussian system
         # mean of x
-        px_mean = np.zeros((dim_x,))
+        self.px_mean = np.zeros((dim_x,))
         # conditional link
         A = 1 / np.sqrt(dim_z) * np.random.normal(size=(dim_x, dim_z))
         # conditional covar
         sqrt = 1 / np.sqrt(rank_c) * np.random.normal(size=(dim_x, rank_c))
-        px_condvz_var = nu * np.eye(dim_x) + np.dot(sqrt.T, sqrt)
+        self.px_condvz_var = nu * np.eye(dim_x) + np.dot(sqrt.T, sqrt)
 
-        px_var = px_condvz_var + np.dot(A, A.T)
+        self.px_var = self.px_condvz_var + np.dot(A, A.T)
 
-        data = np.random.multivariate_normal(px_mean, px_var, size=(n_samples,))
+        data = np.random.multivariate_normal(self.px_mean, self.px_var, size=(n_samples,))
 
-        super().__init__(data, px_mean, A, px_condvz_var)
+        super().__init__(data, self.px_mean, A, self.px_condvz_var)
