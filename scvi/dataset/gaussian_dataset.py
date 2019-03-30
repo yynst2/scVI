@@ -61,7 +61,7 @@ class SyntheticGaussianDataset(GaussianDataset):
         A = 1 / np.sqrt(dim_z) * np.random.normal(size=(dim_x, dim_z))
         # conditional covar
         sqrt = 1 / np.sqrt(rank_c) * np.random.normal(size=(dim_x, rank_c))
-        self.px_condvz_var = nu * np.eye(dim_x) + np.dot(sqrt.T, sqrt)
+        self.px_condvz_var = np.eye(dim_x) + nu * np.dot(sqrt.T, sqrt)
 
         self.px_var = self.px_condvz_var + np.dot(A, A.T)
 
