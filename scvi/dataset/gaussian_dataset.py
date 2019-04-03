@@ -60,10 +60,18 @@ class SyntheticGaussianDataset(GaussianDataset):
         # conditional link
         A = 1 / np.sqrt(dim_z) * np.random.normal(size=(dim_x, dim_z))
         # conditional covar
-        sqrt = 1 / np.sqrt(rank_c) * np.random.normal(size=(dim_x, rank_c))
-        self.px_condvz_var = np.eye(dim_x) + nu * np.dot(sqrt.T, sqrt)
+        # sqrt = 1 / np.sqrt(rank_c) * np.random.normal(size=(dim_x, rank_c))
+        # self.px_condvz_var = nu * np.eye(dim_x) + np.dot(sqrt.T, sqrt)
+        self.px_condvz_var = nu * np.diag(np.random.normal(loc=1, scale=0.5, size=dim_x)**2)
 
+
+        # marginal
         self.px_var = self.px_condvz_var + np.dot(A, A.T)
+
+        # posterior
+        inv_pz_condx_var = np.eye(dim_z) + np.dot(np.dot(A.T, np.linalg.inv(self.px_condvz_var)), A)
+        self.pz_condx_var = np.linalg.inv(inv_pz_condx_var)
+        self.mz_cond_x_mean = np.dot(self.pz_condx_var, np.dot(A.T, np.linalg.inv(self.px_condvz_var)))
 
         data = np.random.multivariate_normal(self.px_mean, self.px_var, size=(n_samples,))
 

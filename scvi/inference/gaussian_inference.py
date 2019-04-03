@@ -8,6 +8,7 @@ from . import Trainer
 from scipy.stats import multivariate_normal
 from tqdm import trange
 import sys
+import numpy as np
 
 plt.switch_backend('agg')
 
@@ -30,6 +31,8 @@ class GaussianTrainer(Trainer):
             self.train_set, self.test_set = self.train_test(model, dataset, train_size,
                                                             test_size, type_class=GaussianPosterior)
             self.wake_loss = wake_loss
+            self.train_set.to_monitor = ['elbo']
+            self.test_set.to_monitor = ['elbo']
 
     def train(self, n_epochs=20, lr=1e-3, eps=0.01, params_gen=None, params_var=None):
         begin = time.time()
@@ -159,3 +162,28 @@ class GaussianPosterior(Posterior):
         if verbose:
             print("VR_max", n_samples_mc, " : %.4f" % ll)
         return ll
+
+    @torch.no_grad()
+    def posterior_var(self):
+        # Iterate once over the posterior and get the marginal variance
+        ave_var = np.zeros(self.model.n_latent)
+        for i_batch, tensors in enumerate(self):
+            data_tensor = torch.stack(tensors, 0)
+            _, _, _, qz_v, _ = self.model.inference(data_tensor)
+            ave_var += torch.sum(qz_v, dim=0).cpu().detach().numpy()
+        n_samples = len(self.indices)
+        return ave_var / n_samples
+
+    @torch.no_grad()
+    def prob_eval(self, n_samples_mc):
+        # Iterate once over the posterior and get the marginal variance
+        prob = []
+        qz_m = []
+        qz_v = []
+        for i_batch, tensors in enumerate(self):
+            data_tensor = torch.stack(tensors, 0)
+            x, y, z = self.model.prob_event(data_tensor, n_samples_mc)
+            qz_m += [x]
+            qz_v += [y]
+            prob += [z]
+        return np.array(torch.cat(qz_m)), np.array(torch.cat(qz_v)), np.array(torch.cat(prob))

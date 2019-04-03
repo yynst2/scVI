@@ -118,7 +118,7 @@ class LinearGaussian(nn.Module):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
         log_ratio, _, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
 
-        rev_kl = torch.nn.softmax(log_ratio, dim=0) * (-1) * log_qz_given_x
+        rev_kl = torch.softmax(log_ratio, dim=0) * (-1) * log_qz_given_x
         return rev_kl.sum(dim=0)
 
     def vr_max(self, x, n_samples_mc):
@@ -145,7 +145,9 @@ class LinearGaussian(nn.Module):
         if param == "ELBO":
             return self.neg_elbo(x)
         if param == "CUBO":
-            return self.cubo(x, n_samples_mc=30)
+            return self.cubo(x, n_samples_mc=50)
+        if param == "REVKL":
+            return self.iwrevkl_obj(x, n_samples_mc=50)
 
     def reconstruction(self, x, px_mean, px_var):
         if self.learn_var:
@@ -164,3 +166,16 @@ class LinearGaussian(nn.Module):
         vec_ = torch.matmul(x - mean, inv_sqrt)
         log_lik += torch.mul(vec_, vec_).sum(dim=-1)
         return -0.5 * log_lik
+
+    @torch.no_grad()
+    def prob_event(self, x, n_samples_mc):
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+
+        # compute for importance sampling
+        log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
+        ratio = torch.exp(log_ratio - torch.max(log_ratio, dim=0)[0])
+        return qz_m.mean(dim=0), qz_v.mean(dim=0), \
+               torch.sum(ratio * (z[:, :, 0] <= 0).float(), dim=0) / torch.sum(ratio, dim=0)
+
+
+
