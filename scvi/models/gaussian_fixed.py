@@ -174,8 +174,14 @@ class LinearGaussian(nn.Module):
         # compute for importance sampling
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         ratio = torch.exp(log_ratio - torch.max(log_ratio, dim=0)[0])
-        return qz_m.mean(dim=0), qz_v.mean(dim=0), \
-               torch.sum(ratio * (z[:, :, 0] <= 0).float(), dim=0) / torch.sum(ratio, dim=0)
+
+        # get SNIPS estimator
+        res = torch.sum(ratio * (z[:, :, 0] <= 0).float(), dim=0) / torch.sum(ratio, dim=0)
+
+        # get ESS
+        ess = torch.sum(ratio, dim=0)**2 / torch.sum(ratio**2, dim=0)
+        return qz_m.mean(dim=0), qz_v.mean(dim=0), res, ess
+
 
 
 

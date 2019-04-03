@@ -180,10 +180,13 @@ class GaussianPosterior(Posterior):
         prob = []
         qz_m = []
         qz_v = []
+        ess = []
         for i_batch, tensors in enumerate(self):
             data_tensor = torch.stack(tensors, 0)
-            x, y, z = self.model.prob_event(data_tensor, n_samples_mc)
+            x, y, z, t = self.model.prob_event(data_tensor, n_samples_mc)
             qz_m += [x]
             qz_v += [y]
             prob += [z]
-        return np.array(torch.cat(qz_m)), np.array(torch.cat(qz_v)), np.array(torch.cat(prob))
+            ess += [t]
+        return np.array(torch.cat(qz_m)), np.array(torch.cat(qz_v)), \
+               np.array(torch.cat(prob)), np.array(torch.cat(ess))
