@@ -118,7 +118,7 @@ class LinearGaussian(nn.Module):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
         log_ratio, _, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
 
-        rev_kl = torch.softmax(log_ratio, dim=0) * (-1) * log_qz_given_x
+        rev_kl = torch.softmax(log_ratio, dim=0).detach() * (-1) * log_qz_given_x
         return rev_kl.sum(dim=0)
 
     def vr_max(self, x, n_samples_mc):
@@ -147,7 +147,7 @@ class LinearGaussian(nn.Module):
         if param == "CUBO":
             return self.cubo(x, n_samples_mc=50)
         if param == "REVKL":
-            return self.iwrevkl_obj(x, n_samples_mc=50)
+            return self.iwrevkl_obj(x, n_samples_mc=20)
 
     def reconstruction(self, x, px_mean, px_var):
         if self.learn_var:

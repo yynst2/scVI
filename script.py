@@ -17,7 +17,7 @@ plt.savefig("figures/post_covariance.png")
 plt.clf()
 
 
-# wake_loss = "CUBO"  # (ELBO, CUBO, REVKL)
+# wake_loss = "CUBO"  # ("ELBO", "CUBO", "REVKL")
 for wake_loss in ("ELBO", "CUBO", "REVKL"):
     iwelbo = []
     cubo = []
