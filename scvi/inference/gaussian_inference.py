@@ -103,7 +103,7 @@ class GaussianPosterior(Posterior):
         log_lkl = 0
         for i_batch, tensors in enumerate(self):
             data_tensor = torch.stack(tensors, 0)
-            loss = self.model.neg_elbo(data_tensor)
+            loss = self.model.neg_iwelbo(data_tensor, 2)
             log_lkl += torch.sum(loss).item()
         n_samples = len(self.indices)
         ll = - log_lkl / n_samples

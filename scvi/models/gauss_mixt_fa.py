@@ -13,8 +13,8 @@ from scvi.models.utils import one_hot
 torch.backends.cudnn.benchmark = True
 
 
-# Linear Gaussian with fixed variance model
-class LinearGaussian(nn.Module):
+# Linear Gaussian with mixture prior
+class MixtureLinearGaussian(nn.Module):
     r"""Variational encoder model. Support full covariances as long as it is not learned.
 
     :param n_input: Number of input genes
@@ -25,8 +25,7 @@ class LinearGaussian(nn.Module):
 
     """
 
-    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, n_input: int, learn_var: bool = False, n_hidden: int = 128,
-                 n_latent: int = 10,
+    def __init__(self, A_param, pxz_var, pi, n_input: int, learn_var: bool = False, n_hidden: int = 128, n_latent: int = 10,
                  n_layers: int = 1, dropout_rate: float = 0.1):
         super().__init__()
 
@@ -35,8 +34,11 @@ class LinearGaussian(nn.Module):
                                dropout_rate=dropout_rate)
         self.A = torch.from_numpy(np.array(A_param, dtype=np.float32)).cuda()
 
-        self.log_det_pxz = torch.tensor(pxz_log_det, requires_grad=False, dtype=torch.float).cuda()
-        self.inv_sqrt_pxz = torch.from_numpy(np.array(pxz_inv_sqrt, dtype=np.float32)).cuda()
+        log_det = np.log(np.linalg.det(px_condz_var))
+        self.log_det_px_z = torch.tensor(log_det, requires_grad=False, dtype=torch.float).cuda()
+
+        inv_sqrt = sqrtm(np.linalg.inv(px_condz_var))
+        self.inv_sqrt_px_z = torch.from_numpy(np.array(inv_sqrt, dtype=np.float32)).cuda()
 
         self.learn_var = learn_var
         self.px_log_diag_var = torch.nn.Parameter(torch.randn(1, n_input))
@@ -80,20 +82,16 @@ class LinearGaussian(nn.Module):
         return px_mean, torch.exp(self.px_log_diag_var), qz_m, qz_v, z
 
     def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
-        zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
-        mean_zx = torch.cat([torch.zeros_like(z), px_mean], dim=-1)
-        var_zx = torch.cat([torch.ones_like(z)[0, [0]], px_var], dim=-1)
+        log_px_given_z = self.reconstruction(x.repeat(px_mean.shape[0], 1),
+                                             px_mean.view((-1, x.shape[-1])),
+                                             px_var
+                                             ).view((px_mean.shape[0], -1))
 
-        reshape_dim = x.shape[-1] + z.shape[-1]
-
-        log_pxz = self.joint_log_likelihood(zx.view((-1, reshape_dim)),
-                                            mean_zx.view((-1, reshape_dim)),
-                                            var_zx
-                                            ).view((px_mean.shape[0], -1))
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
         log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-        log_ratio = log_pxz - log_qz_given_x
+        log_ratio = log_px_given_z + log_pz - log_qz_given_x
         if return_full:
-            return log_ratio, log_pxz, log_qz_given_x
+            return log_ratio, log_px_given_z, log_pz, log_qz_given_x
         else:
             return log_ratio
 
@@ -101,8 +99,9 @@ class LinearGaussian(nn.Module):
         # tile vectors from (B, d) to (n_samples_mc, B, d)
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
+
         iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples_mc)
-        return iwelbo
+        return -iwelbo
 
     def cubo(self, x, n_samples_mc):
         # computes the naive cubo from chi2 upper bound
@@ -117,7 +116,7 @@ class LinearGaussian(nn.Module):
         # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
         # tile vectors from (B, d) to (n_samples_mc, B, d)
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
-        log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
+        log_ratio, _, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
 
         rev_kl = torch.softmax(log_ratio, dim=0).detach() * (-1) * log_qz_given_x
         return rev_kl.sum(dim=0)
@@ -130,19 +129,31 @@ class LinearGaussian(nn.Module):
 
         return log_ratio.max(dim=0)[0]
 
+    def neg_elbo(self, x):
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x)
+
+        # KL Divergence
+        mean = torch.zeros_like(qz_m)
+        scale = torch.ones_like(qz_v)
+
+        kl_divergence = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
+        log_px_given_z = self.reconstruction(x, px_mean, px_var)
+        # minimize the neg_elbo
+        return - log_px_given_z + kl_divergence
+
     def forward(self, x, param):
         if param == "ELBO":
-            return self.neg_iwelbo(x, n_samples_mc=2)
+            return self.neg_elbo(x)
         if param == "CUBO":
             return self.cubo(x, n_samples_mc=50)
         if param == "REVKL":
             return self.iwrevkl_obj(x, n_samples_mc=20)
 
-    def joint_log_likelihood(self, xz, pxz_mean, pxz_var):
+    def reconstruction(self, x, px_mean, px_var):
         if self.learn_var:
-            return Normal(pxz_mean, torch.sqrt(pxz_var)).log_prob(xz).sum(dim=1)
+            return Normal(px_mean, torch.sqrt(px_var)).log_prob(x).sum(dim=1)
         else:
-            return self.log_normal_full(xz, pxz_mean, self.log_det_pxz, self.inv_sqrt_pxz)
+            return self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
 
     @staticmethod
     def log_normal_full(x, mean, log_det, inv_sqrt):
@@ -168,5 +179,9 @@ class LinearGaussian(nn.Module):
         res = torch.sum(ratio * (z[:, :, 0] <= 0).float(), dim=0) / torch.sum(ratio, dim=0)
 
         # get ESS
-        ess = torch.sum(ratio, dim=0) ** 2 / torch.sum(ratio ** 2, dim=0)
+        ess = torch.sum(ratio, dim=0)**2 / torch.sum(ratio**2, dim=0)
         return qz_m.mean(dim=0), qz_v.mean(dim=0), res, ess
+
+
+
+

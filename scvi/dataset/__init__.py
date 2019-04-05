@@ -11,11 +11,12 @@ from .anndata import AnnDataset
 from .csv import CsvDataset, BreastCancerDataset, MouseOBDataset
 from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
-from .gaussian_dataset import GaussianDataset, SyntheticGaussianDataset
+from .gaussian_dataset import GaussianDataset, SyntheticGaussianDataset, SyntheticMixtureGaussianDataset
 
 __all__ = ['SyntheticDataset',
            'SyntheticRandomDataset',
            'SyntheticGaussianDataset',
+           'SyntheticMixtureGaussianDataset',
            'GaussianDataset',
            'CortexDataset',
            'BrainLargeDataset',
