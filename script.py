@@ -44,8 +44,8 @@ for wake_loss in ("ELBO", "REVKL", "CUBO"):
     l2_ess = []
     for t in range(1):
 
-        model = LinearGaussian(dataset.A, dataset.pxz_log_det, dataset.pxz_inv_sqrt, n_latent=dim_z,
-                               n_input=dim_x, learn_var=learn_var)
+        model = LinearGaussian(dataset.A, dataset.pxz_log_det, dataset.pxz_inv_sqrt, gamma=dataset.gamma,
+                               n_latent=dim_z, n_input=dim_x, learn_var=learn_var)
 
         if learn_var:
             params_gen = [model.px_log_diag_var]
@@ -67,10 +67,10 @@ for wake_loss in ("ELBO", "REVKL", "CUBO"):
         plt.savefig("figures/training_stats.png")
         plt.clf()
 
-        # trainer.test_set.elbo(verbose=True)
-        iwelbo += [trainer.test_set.iwelbo(100)]
-        # trainer.test_set.exact_log_likelihood(verbose=True)
-        cubo += [trainer.test_set.cubo(100)]
+        trainer.test_set.elbo(verbose=True)
+        iwelbo += [trainer.test_set.iwelbo(100, verbose=True)]
+        trainer.test_set.exact_log_likelihood(verbose=True)
+        cubo += [trainer.test_set.cubo(100, verbose=True)]
 
         gen_loss_var = np.diag(dataset.gamma) - model.get_std().cpu().detach().numpy() ** 2
         post_loss_var = np.diag(dataset.pz_condx_var) - trainer.test_set.posterior_var()

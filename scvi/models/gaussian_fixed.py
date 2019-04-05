@@ -25,7 +25,7 @@ class LinearGaussian(nn.Module):
 
     """
 
-    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, n_input: int, learn_var: bool = False, n_hidden: int = 128,
+    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, gamma, n_input: int, learn_var: bool = False, n_hidden: int = 128,
                  n_latent: int = 10,
                  n_layers: int = 1, dropout_rate: float = 0.1):
         super().__init__()
@@ -40,6 +40,11 @@ class LinearGaussian(nn.Module):
 
         self.learn_var = learn_var
         self.px_log_diag_var = torch.nn.Parameter(torch.randn(1, n_input))
+
+        log_det = np.log(np.linalg.det(gamma))
+        self.log_det_px_z = torch.tensor(log_det, requires_grad=False, dtype=torch.float).cuda()
+        inv_sqrt = sqrtm(np.linalg.inv(gamma))
+        self.inv_sqrt_px_z = torch.from_numpy(np.array(inv_sqrt, dtype=np.float32)).cuda()
 
     def get_std(self):
         return torch.sqrt(torch.exp(self.px_log_diag_var))
@@ -102,7 +107,19 @@ class LinearGaussian(nn.Module):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples_mc)
-        return iwelbo
+        return - iwelbo
+
+    def neg_elbo(self, x):
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x)
+
+        # KL Divergence
+        mean = torch.zeros_like(qz_m)
+        scale = torch.ones_like(qz_v)
+
+        kl_divergence = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
+        log_px_given_z = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
+        # minimize the neg_elbo
+        return - log_px_given_z + kl_divergence
 
     def cubo(self, x, n_samples_mc):
         # computes the naive cubo from chi2 upper bound
@@ -132,7 +149,7 @@ class LinearGaussian(nn.Module):
 
     def forward(self, x, param):
         if param == "ELBO":
-            return self.neg_iwelbo(x, n_samples_mc=2)
+            return self.neg_elbo(x)
         if param == "CUBO":
             return self.cubo(x, n_samples_mc=50)
         if param == "REVKL":
