@@ -73,11 +73,10 @@ class SyntheticGaussianDataset(GaussianDataset):
         self.mz_cond_x_mean = np.dot(self.pz_condx_var, np.dot(self.A.T, inv_gamma))
 
         # joint distribution
-        # store complete covariance matrix of x, z conditioned on w
-        off_diag_block = - np.dot(self.A.T, inv_gamma)
-        precision_joint = np.block([[inv_pz_condx_var, off_diag_block], [off_diag_block.T, inv_gamma]])
-        self.pxz_log_det = -np.log(np.linalg.det(precision_joint))
-        self.pxz_inv_sqrt = sqrtm(precision_joint)
+        # store complete covariance matrix of z, x
+        covar_joint = np.block([[np.eye(dim_z), self.A.T], [self.A, self.px_var]])
+        self.pxz_log_det = np.log(np.linalg.det(covar_joint))
+        self.pxz_inv_sqrt = sqrtm(np.linalg.inv(covar_joint))
 
         data = np.random.multivariate_normal(self.px_mean, self.px_var, size=(n_samples,))
 

@@ -30,7 +30,6 @@ plt.colorbar()
 plt.savefig("figures/post_covariance.png")
 plt.clf()
 
-
 # wake_loss = "CUBO"  # ("ELBO", "CUBO", "REVKL")
 for wake_loss in ("ELBO", "REVKL", "CUBO"):
     iwelbo = []

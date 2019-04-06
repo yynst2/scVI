@@ -25,7 +25,8 @@ class LinearGaussian(nn.Module):
 
     """
 
-    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, gamma, n_input: int, learn_var: bool = False, n_hidden: int = 128,
+    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, gamma, n_input: int, learn_var: bool = False,
+                 n_hidden: int = 128,
                  n_latent: int = 10,
                  n_layers: int = 1, dropout_rate: float = 0.1):
         super().__init__()
@@ -84,18 +85,42 @@ class LinearGaussian(nn.Module):
 
         return px_mean, torch.exp(self.px_log_diag_var), qz_m, qz_v, z
 
+    # def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
+    #     zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
+    #     mean_zx = torch.cat([torch.zeros_like(z), px_mean], dim=-1)
+    #     var_zx = torch.cat([torch.ones_like(z)[0, [0]], px_var], dim=-1)
+    #
+    #     reshape_dim = x.shape[-1] + z.shape[-1]
+    #
+    #     log_pxz = self.joint_log_likelihood(zx.view((-1, reshape_dim)),
+    #                                         mean_zx.view((-1, reshape_dim)),
+    #                                         var_zx
+    #                                         ).view((px_mean.shape[0], -1))
+    #     log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+    #     log_ratio = log_pxz - log_qz_given_x
+    #     if return_full:
+    #         return log_ratio, log_pxz, log_qz_given_x
+    #     else:
+    #         return log_ratio
+
     def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
+        # log_px_given_z = self.log_normal_full(x.repeat(px_mean.shape[0], 1),
+        #                                       px_mean.view((-1, x.shape[-1])),
+        #                                       self.log_det_px_z, self.inv_sqrt_px_z).view((px_mean.shape[0], -1))
+
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
         zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
         mean_zx = torch.cat([torch.zeros_like(z), px_mean], dim=-1)
-        var_zx = torch.cat([torch.ones_like(z)[0, [0]], px_var], dim=-1)
 
         reshape_dim = x.shape[-1] + z.shape[-1]
 
-        log_pxz = self.joint_log_likelihood(zx.view((-1, reshape_dim)),
-                                            mean_zx.view((-1, reshape_dim)),
-                                            var_zx
-                                            ).view((px_mean.shape[0], -1))
-        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+        # BEWARE, THE MEAN OF THE MARGINAL in x IS ZERO
+        log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
+                                       self.log_det_pxz, self.inv_sqrt_pxz
+                                       ).view((px_mean.shape[0], -1))
+
         log_ratio = log_pxz - log_qz_given_x
         if return_full:
             return log_ratio, log_pxz, log_qz_given_x
@@ -118,8 +143,20 @@ class LinearGaussian(nn.Module):
 
         kl_divergence = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
         log_px_given_z = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
+
         # minimize the neg_elbo
-        return - log_px_given_z + kl_divergence
+        neg_elbo = - log_px_given_z + kl_divergence
+
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x)
+        log_px_given_z_2 = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
+
+        print("log_px_z \n")
+        print(log_px_given_z, log_px_given_z_2)
+        log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
+        neg_elbo_2 = - log_ratio.mean(dim=0)
+        print("\n")
+        print(neg_elbo, neg_elbo_2)
+        return neg_elbo
 
     def cubo(self, x, n_samples_mc):
         # computes the naive cubo from chi2 upper bound
