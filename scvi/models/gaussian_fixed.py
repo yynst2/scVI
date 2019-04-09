@@ -73,55 +73,32 @@ class LinearGaussian(nn.Module):
             z = qz_m
         return z
 
-    def inference(self, x, n_samples=1):
+    def inference(self, x, n_samples=1, reparam: bool = True):
         # Sampling
         qz_m, qz_v, z = self.encoder(x, None)
+
         if n_samples > 1:
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            z = Normal(qz_m, qz_v.sqrt()).sample()
+
+            if reparam:
+                z = Normal(qz_m, qz_v.sqrt()).rsample()
+            else:
+                z = Normal(qz_m, qz_v.sqrt()).sample()
 
         px_mean = torch.matmul(z, torch.transpose(self.A, 0, 1))
-
         return px_mean, torch.exp(self.px_log_diag_var), qz_m, qz_v, z
 
-    # def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
-    #     zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
-    #     mean_zx = torch.cat([torch.zeros_like(z), px_mean], dim=-1)
-    #     var_zx = torch.cat([torch.ones_like(z)[0, [0]], px_var], dim=-1)
-    #
-    #     reshape_dim = x.shape[-1] + z.shape[-1]
-    #
-    #     log_pxz = self.joint_log_likelihood(zx.view((-1, reshape_dim)),
-    #                                         mean_zx.view((-1, reshape_dim)),
-    #                                         var_zx
-    #                                         ).view((px_mean.shape[0], -1))
-    #     log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-    #     log_ratio = log_pxz - log_qz_given_x
-    #     if return_full:
-    #         return log_ratio, log_pxz, log_qz_given_x
-    #     else:
-    #         return log_ratio
-
     def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
-        # log_px_given_z = self.log_normal_full(x.repeat(px_mean.shape[0], 1),
-        #                                       px_mean.view((-1, x.shape[-1])),
-        #                                       self.log_det_px_z, self.inv_sqrt_px_z).view((px_mean.shape[0], -1))
-
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-
         zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
-        mean_zx = torch.cat([torch.zeros_like(z), px_mean], dim=-1)
-
         reshape_dim = x.shape[-1] + z.shape[-1]
 
-        # BEWARE, THE MEAN OF THE MARGINAL in x IS ZERO
+        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
         log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
                                        self.log_det_pxz, self.inv_sqrt_pxz
                                        ).view((px_mean.shape[0], -1))
-
         log_ratio = log_pxz - log_qz_given_x
+
         if return_full:
             return log_ratio, log_pxz, log_qz_given_x
         else:
@@ -129,39 +106,28 @@ class LinearGaussian(nn.Module):
 
     def neg_iwelbo(self, x, n_samples_mc):
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples_mc)
         return - iwelbo
 
-    def neg_elbo(self, x):
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x)
-
-        # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
-
-        kl_divergence = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
-        log_px_given_z = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
-
-        # minimize the neg_elbo
-        neg_elbo = - log_px_given_z + kl_divergence
-
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x)
-        log_px_given_z_2 = self.log_normal_full(x, px_mean, self.log_det_px_z, self.inv_sqrt_px_z)
-
-        print("log_px_z \n")
-        print(log_px_given_z, log_px_given_z_2)
+    def neg_iwelbo_grad(self, x, n_samples_mc):
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
-        neg_elbo_2 = - log_ratio.mean(dim=0)
-        print("\n")
-        print(neg_elbo, neg_elbo_2)
+        iwelbo = torch.softmax(log_ratio, dim=0).detach() * log_ratio
+        return - iwelbo.sum(dim=0)
+
+    def neg_elbo(self, x):
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=2, reparam=True)
+        log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
+        neg_elbo = - log_ratio.mean(dim=0)
         return neg_elbo
 
     def cubo(self, x, n_samples_mc):
         # computes the naive cubo from chi2 upper bound
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
 
         cubo = torch.logsumexp(2 * log_ratio, dim=0) - np.log(n_samples_mc)
@@ -170,7 +136,7 @@ class LinearGaussian(nn.Module):
     def iwrevkl_obj(self, x, n_samples_mc):
         # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
         log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
 
         rev_kl = torch.softmax(log_ratio, dim=0).detach() * (-1) * log_qz_given_x
@@ -191,6 +157,8 @@ class LinearGaussian(nn.Module):
             return self.cubo(x, n_samples_mc=50)
         if param == "REVKL":
             return self.iwrevkl_obj(x, n_samples_mc=20)
+        if param == "IWELBO":
+            return self.neg_iwelbo(x, n_samples_mc=20)
 
     def joint_log_likelihood(self, xz, pxz_mean, pxz_var):
         if self.learn_var:

@@ -31,7 +31,9 @@ plt.savefig("figures/post_covariance.png")
 plt.clf()
 
 # wake_loss = "CUBO"  # ("ELBO", "CUBO", "REVKL")
-for wake_loss in ("ELBO", "REVKL", "CUBO"):
+for wake_loss in ("ELBO", "IWELBO", "REVKL", "CUBO"):
+    if wake_loss != "REVKL":
+        continue
     iwelbo = []
     cubo = []
     l1_gen_dis = []
@@ -105,3 +107,4 @@ for wake_loss in ("ELBO", "REVKL", "CUBO"):
     print("AVE L1 ERROR EXACT <-> PLUGIN", np.mean(l1_err_ex_plugin), np.std(l1_err_ex_plugin))
     print("AVE L1 ERROR EXACT <-> IS", np.mean(l1_err_ex_is), np.std(l1_err_ex_is))
     print("ESS", np.mean(l2_ess), np.std(l2_ess))
+    print("\n")
