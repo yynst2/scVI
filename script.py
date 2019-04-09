@@ -32,7 +32,7 @@ plt.clf()
 
 # wake_loss = "CUBO"  # ("ELBO", "CUBO", "REVKL")
 for wake_loss in ("ELBO", "IWELBO", "REVKL", "CUBO"):
-    if wake_loss != "REVKL":
+    if wake_loss != "IWELBO":
         continue
     iwelbo = []
     cubo = []

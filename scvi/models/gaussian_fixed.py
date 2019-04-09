@@ -129,17 +129,26 @@ class LinearGaussian(nn.Module):
         # tile vectors from (B, d) to (n_samples_mc, B, d)
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
-
         cubo = torch.logsumexp(2 * log_ratio, dim=0) - np.log(n_samples_mc)
         return 0.5 * cubo
+
+    def cubo_grad(self, x, n_samples_mc):
+        # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
+        # tile vectors from (B, d) to (n_samples_mc, B, d)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
+        log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
+        ws = torch.softmax(2 * log_ratio, dim=0)
+        cubo = ws.detach() * (- 1) * log_ratio
+        # print(ws[:, 0])
+        return cubo.sum(dim=0)
 
     def iwrevkl_obj(self, x, n_samples_mc):
         # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
         # tile vectors from (B, d) to (n_samples_mc, B, d)
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
         log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
-
-        rev_kl = torch.softmax(log_ratio, dim=0).detach() * (-1) * log_qz_given_x
+        ws = torch.softmax(log_ratio, dim=0)
+        rev_kl = ws.detach() * (-1) * log_qz_given_x
         return rev_kl.sum(dim=0)
 
     def vr_max(self, x, n_samples_mc):
@@ -154,7 +163,7 @@ class LinearGaussian(nn.Module):
         if param == "ELBO":
             return self.neg_elbo(x)
         if param == "CUBO":
-            return self.cubo(x, n_samples_mc=50)
+            return self.cubo_grad(x, n_samples_mc=10)
         if param == "REVKL":
             return self.iwrevkl_obj(x, n_samples_mc=20)
         if param == "IWELBO":
