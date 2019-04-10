@@ -21,7 +21,7 @@ dataset = SyntheticMixtureGaussianDataset(n_centers=n_centers, dim_z=dim_z, dim_
 # OLD Code
 ########
 learn_var = False
-dim_z = 10
+dim_z = 12
 dim_x = 100
 n_epochs = 50
 dataset = SyntheticGaussianDataset(dim_z=dim_z, dim_x=dim_x, n_samples=10000, nu=1)
@@ -31,7 +31,7 @@ plt.savefig("figures/post_covariance.png")
 plt.clf()
 
 # wake_loss = "CUBO"  # ("ELBO", "CUBO", "REVKL")
-for wake_loss in ("ELBO", "IWELBO", "REVKL", "CUBO"):
+for wake_loss in ("ELBO", "IWELBO", "REVKL", "CUBO", "VRMAX"):
     if wake_loss != "IWELBO":
         continue
     iwelbo = []
@@ -43,7 +43,7 @@ for wake_loss in ("ELBO", "IWELBO", "REVKL", "CUBO"):
     l1_err_ex_plugin = []
     l1_err_ex_is = []
     l2_ess = []
-    for t in range(1):
+    for t in range(10):
 
         model = LinearGaussian(dataset.A, dataset.pxz_log_det, dataset.pxz_inv_sqrt, gamma=dataset.gamma,
                                n_latent=dim_z, n_input=dim_x, learn_var=learn_var)

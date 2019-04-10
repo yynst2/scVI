@@ -69,7 +69,7 @@ class CsvDataset(GeneExpressionDataset):
         labels, cell_types, batch_ids = None, None, None
         if self.labels_file is not None:
             labels = pd.read_csv(os.path.join(self.save_path, self.labels_file), header=0, index_col=0)
-            labels = labels.values
+            labels = labels["pop"].values
             cell_types = np.unique(labels)
 
         if self.batch_ids_file is not None:

@@ -66,6 +66,24 @@ class GeneExpressionDataset(Dataset):
         X = self.X[indexes]
         return self.collate_fn_end(X, indexes)
 
+    def collate_fn_end(self, X, indexes):
+        if self.dense:
+            X = torch.from_numpy(X)
+        else:
+            X = torch.FloatTensor(X.toarray())
+        if self.x_coord is None or self.y_coord is None:
+            return X, torch.FloatTensor(self.local_means[indexes]), \
+                   torch.FloatTensor(self.local_vars[indexes]), \
+                   torch.LongTensor(self.batch_indices[indexes]), \
+                   torch.LongTensor(self.labels[indexes])
+        else:
+            return X, torch.FloatTensor(self.local_means[indexes]), \
+                   torch.FloatTensor(self.local_vars[indexes]), \
+                   torch.LongTensor(self.batch_indices[indexes]), \
+                   torch.LongTensor(self.labels[indexes]), \
+                   torch.FloatTensor(self.x_coord[indexes]), \
+                   torch.FloatTensor(self.y_coord[indexes])
+
     def collate_fn_corrupted(self, batch):
         '''On the fly corruption is slow, but might be optimized in pytorch. Numpy code left here.'''
         indexes = np.array(batch)

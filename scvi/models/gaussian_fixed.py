@@ -154,10 +154,9 @@ class LinearGaussian(nn.Module):
     def vr_max(self, x, n_samples_mc):
         # computes the naive MC from VR-max bound
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
-
-        return log_ratio.max(dim=0)[0]
+        return -log_ratio.max(dim=0)[0]
 
     def forward(self, x, param):
         if param == "ELBO":
@@ -167,7 +166,9 @@ class LinearGaussian(nn.Module):
         if param == "REVKL":
             return self.iwrevkl_obj(x, n_samples_mc=20)
         if param == "IWELBO":
-            return self.neg_iwelbo(x, n_samples_mc=20)
+            return self.neg_iwelbo(x, n_samples_mc=80)
+        if param == "VRMAX":
+            return self.vr_max(x, n_samples_mc=20)
 
     def joint_log_likelihood(self, xz, pxz_mean, pxz_var):
         if self.learn_var:
