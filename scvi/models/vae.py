@@ -44,12 +44,13 @@ class VAE(nn.Module):
 
     """
 
-    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
+    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0, iwelbo: bool = False,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
                  log_variational: bool = True, reconstruction_loss: str = "zinb"):
         super().__init__()
         self.dispersion = dispersion
+        self.iwelbo = iwelbo
         self.n_latent = n_latent
         self.log_variational = log_variational
         self.reconstruction_loss = reconstruction_loss
@@ -129,6 +130,25 @@ class VAE(nn.Module):
         """
         return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[0]
 
+    def get_log_ratio(self, x, batch_index=None, y=None, n_samples=1):
+        r"""Returns the tensor of log_pz + log_px_z - log_qz_x
+
+        :param x: tensor of values with shape ``(batch_size, n_input)``
+        :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
+        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
+        :param n_samples: number of samples
+        :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
+        :rtype: :py:class:`torch.Tensor`
+        """
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+
+        log_px_z = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        return log_pz + log_px_z - log_qz_x
+
     def get_sample_rate(self, x, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of means of the negative binomial distribution
 
@@ -170,10 +190,10 @@ class VAE(nn.Module):
         if n_samples > 1:
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            z = Normal(qz_m, qz_v.sqrt()).sample()
+            z = Normal(qz_m, qz_v.sqrt()).rsample()
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
-            library = Normal(ql_m, ql_v.sqrt()).sample()
+            library = Normal(ql_m, ql_v.sqrt()).rsample()
 
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
@@ -192,7 +212,7 @@ class VAE(nn.Module):
         :param x: tensor of values with shape (batch_size, n_input)
         :param local_l_mean: tensor of means of the prior distribution of latent variable l
          with shape (batch_size, 1)
-        :param local_l_var: tensor of variancess of the prior distribution of latent variable l
+        :param local_l_var: tensor of variances of the prior distribution of latent variable l
          with shape (batch_size, 1)
         :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
         :param y: tensor of cell-types labels with shape (batch_size, n_labels)
@@ -201,16 +221,20 @@ class VAE(nn.Module):
         """
         # Parameters for z latent distribution
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=5)
 
-        # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
+        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
 
-        kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
-        kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
-        kl_divergence = kl_divergence_z
+        if self.iwelbo:
+            neg_elbo = - (torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
+        else:
+            neg_elbo = -log_ratio.mean(dim=0)
+        return neg_elbo, torch.zeros_like(neg_elbo)
 
-        reconst_loss = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
 
-        return reconst_loss + kl_divergence_l, kl_divergence

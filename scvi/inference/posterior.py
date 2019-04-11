@@ -172,8 +172,9 @@ class Posterior:
         :return: A 1-d vector of statistics of size n_genes
         """
         px_scales = []
-        all_labels = []
-        batch_size = max(self.data_loader_kwargs['batch_size'] // M_sampling, 2)  # Reduce batch_size on GPU
+        log_ratios = []
+        labels_full = []
+        batch_size = max(self.data_loader_kwargs['batch_size'] // M_sampling, 10)  # Reduce batch_size on GPU
         if len(self.gene_dataset) % batch_size == 1:
             batch_size += 1
         for tensors in self.update({"batch_size": batch_size}):
@@ -182,26 +183,33 @@ class Posterior:
                 np.array((self.model.get_sample_scale(
                     sample_batch, batch_index=batch_index, y=labels, n_samples=M_sampling)
                          ).cpu())]
+            log_ratios += [
+                np.array((self.model.get_log_ratio(
+                    sample_batch, batch_index=batch_index, y=labels, n_samples=M_sampling)
+                         ).cpu())]
+            labels_full += [labels]
 
             # Align the sampling
-            if M_sampling > 1:
-                px_scales[-1] = (px_scales[-1].transpose((1, 0, 2))).reshape(-1, px_scales[-1].shape[-1])
-            all_labels += [np.array((labels.repeat(1, M_sampling).view(-1, 1)).cpu())]
+            # if M_sampling > 1:
+            #     px_scales[-1] = (px_scales[-1].transpose((1, 0, 2))).reshape(-1, px_scales[-1].shape[-1])
+            #     log_ratios[-1] = (log_ratios[-1].transpose((1, 0))).reshape(-1)
 
-        px_scales = np.concatenate(px_scales)
-        all_labels = np.concatenate(all_labels).ravel()  # this will be used as boolean
+        px_scales = np.concatenate(px_scales, axis=1)
+        log_ratios = np.concatenate(log_ratios, axis=1)
+        labels_full = np.concatenate(labels_full).ravel()
 
-        return px_scales, all_labels
+        return px_scales, log_ratios, labels_full
 
     @torch.no_grad()
     def differential_expression_score(self, cell_type, other_cell_type=None, genes=None, M_sampling=100,
                                       M_permutation=10000, permutation=False):
-        px_scale, all_labels = self.differential_expression_stats(M_sampling=M_sampling)
+        px_scale, log_ratios = self.differential_expression_stats(M_sampling=M_sampling)
         cell_idx, other_cell_idx = self.gene_dataset._cell_type_idx([cell_type, other_cell_type])
         if genes is not None:
             px_scale = px_scale[:, self.gene_dataset._gene_idx(genes)]
         bayes_factors_list = get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=other_cell_idx,
-                                               M_permutation=M_permutation, permutation=permutation)
+                                               log_ratios=log_ratios, M_permutation=M_permutation,
+                                               permutation=permutation)
         return bayes_factors_list
 
     @torch.no_grad()
@@ -528,8 +536,35 @@ def entropy_batch_mixing(latent_space, batches, n_neighbors=50, n_pools=50, n_sa
     return score / float(n_pools)
 
 
-def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes_idx=None,
-                      M_permutation=10000, permutation=False):
+def softmax(X, axis = None):
+    """
+    Compute the softmax of each element along an axis of X.
+
+    Parameters
+    ----------
+    X: ND-Array. Probably should be floats.
+    theta (optional): float parameter, used as a multiplier
+        prior to exponentiation. Default = 1.0
+    axis (optional): axis to compute values along. Default is the
+        first non-singleton axis.
+
+    Returns an array the same size as X. The result will sum to 1
+    along the specified axis.
+    """
+    y = np.atleast_2d(X)
+    if axis is None:
+        axis = next(j[0] for j in enumerate(y.shape) if j[1] > 1)
+    y = y - np.expand_dims(np.max(y, axis=axis), axis)
+    y = np.exp(y)
+    ax_sum = np.expand_dims(np.sum(y, axis=axis), axis)
+    p = y / ax_sum
+    if len(X.shape) == 1:
+        p = p.flatten()
+    return p
+
+
+def get_bayes_factors(px_scale, log_ratios, all_labels, cell_idx, other_cell_idx=None, genes_idx=None,
+                      importance_sampling=True, permutation=False, M_permutation=10000):
     '''
     Returns a list of bayes factor for all genes
     :param px_scale: The gene frequency array for all cells (might contain multiple samples per cells)
@@ -537,6 +572,8 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
     :param cell_idx: The first cell type population to consider. Either a string or an idx
     :param other_cell_idx: (optional) The second cell type population to consider. Either a string or an idx
     :param M_permutation: The number of permuted samples.
+    :param log_ratios: un-normalized weights for importance sampling
+    :param importance_sampling: whether to use IS
     :param permutation: Whether or not to permute.
     :return:
     '''
@@ -544,28 +581,51 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
     idx_other = (all_labels == other_cell_idx) if other_cell_idx is not None else (all_labels != other_cell_idx)
     if genes_idx is not None:
         px_scale = px_scale[:, genes_idx]
-    sample_rate_a = px_scale[idx].reshape(-1, px_scale.shape[1])
-    sample_rate_b = px_scale[idx_other].reshape(-1, px_scale.shape[1])
 
-    # agregate dataset
-    samples = np.vstack((sample_rate_a, sample_rate_b))
+    # first extract the data
+    sample_rate_a = px_scale[:, idx, :]
+    sample_rate_b = px_scale[:, idx_other, :]
+    weight_a = log_ratios[:, idx]
+    weight_b = log_ratios[:, idx_other]
+
+    # second let's normalize the weights
+    weight_a = softmax(weight_a, axis=0)
+    weight_b = softmax(weight_b, axis=0)
+
+    # reshape and aggregate dataset
+    sample_rate_a = sample_rate_a.reshape((-1, px_scale.shape[2]))
+    sample_rate_b = sample_rate_b.reshape((-1, px_scale.shape[2]))
+    weight_a = weight_a.flatten()
+    weight_b = weight_b.flatten()
+
+    samples = np.concatenate((sample_rate_a, sample_rate_b), axis=0)
+    weights = np.concatenate((weight_a, weight_b))
 
     # prepare the pairs for sampling
     list_1 = list(np.arange(sample_rate_a.shape[0]))
     list_2 = list(sample_rate_a.shape[0] + np.arange(sample_rate_b.shape[0]))
     if not permutation:
         # case1: no permutation, sample from A and then from B
-        u, v = np.random.choice(list_1, size=M_permutation), np.random.choice(list_2, size=M_permutation)
+        u, v = np.random.choice(list_1, size=M_permutation, p=weight_a / np.sum(idx)), \
+               np.random.choice(list_2, size=M_permutation, p=weight_b / np.sum(idx_other))
     else:
         # case2: permutation, sample from A+B twice
         u, v = (np.random.choice(list_1 + list_2, size=M_permutation),
                 np.random.choice(list_1 + list_2, size=M_permutation))
 
     # then constitutes the pairs
-    first_set = samples[u]
-    second_set = samples[v]
+    first_samples = samples[u]
+    second_samples = samples[v]
+    first_weights = weights[u]
+    second_weights = weights[v]
 
-    res = np.mean(first_set >= second_set, 0)
+    if importance_sampling:
+        to_sum = first_weights[:, np.newaxis] * second_weights[:, np.newaxis] * (first_samples >= second_samples)
+        incomplete_weights = first_weights * second_weights
+        res = np.sum(to_sum, axis=0) / np.sum(incomplete_weights, axis=0)
+
+    else:
+        res = np.mean(first_samples >= second_samples, axis=0)
     res = np.log(res + 1e-8) - np.log(1 - res + 1e-8)
     return res
 
