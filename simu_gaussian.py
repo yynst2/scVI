@@ -9,11 +9,11 @@ import torch
 import sys
 sys.stdout = open("figures/log_gaussian_training.txt", "w")
 print("STARTED TRAINING", flush=True)
-dim_z = 10
-dim_x = 100
-n_epochs = 50
-n_centers = 5
-dataset = SyntheticMixtureGaussianDataset(n_centers=n_centers, dim_z=dim_z, dim_x=dim_x, n_samples=10000, nu=1)
+# dim_z = 10
+# dim_x = 100
+# n_epochs = 50
+# n_centers = 5
+# dataset = SyntheticMixtureGaussianDataset(n_centers=n_centers, dim_z=dim_z, dim_x=dim_x, n_samples=10000, nu=1)
 
 #########
 # OLD Code
@@ -29,31 +29,31 @@ plt.clf()
 
 # learn_var, wake only, sleep only, wake-sleep for each loss
 scenarios = [  # WAKE updates
-    # (False, None, "ELBO", None),
-    # (False, None, "IWELBO", None),
-    # (False, None, "REVKL", None),
-    # (False, None, "CUBO", None),
-    # (False, None, "VRMAX", None),
-    # # SLEEP updates
-    # (False, None, None, "SLEEPKL"),
-    # # SAME THING BUT WITH LEARNING GEN MODEL
-    # # ELBO and WAKE updates
-    # (True, "ELBO", "ELBO", None),
-    # (True, "ELBO", "IWELBO", None),
-    # (True, "ELBO", "REVKL", None),
-    # (True, "ELBO", "CUBO", None),
-    # (True, "ELBO", "VRMAX", None),
-    # # IWELBO and WAKE updates
-    # (True, "IWELBO", "ELBO", None),
-    # (True, "IWELBO", "IWELBO", None),
-    # (True, "IWELBO", "REVKL", None),
-    # (True, "IWELBO", "CUBO", None),
-    # (True, "IWELBO", "VRMAX", None),
-    # # ELBO and SLEEP updates
-    # (True, "ELBO", None, "SLEEPKL"),
-    # # IWELBO and SLEEP updates
-    # (True, "IWELBO", None, "SLEEPKL"),
-    # #wAKE AND SLEEP
+    (False, None, "ELBO", None),
+    (False, None, "IWELBO", None),
+    (False, None, "REVKL", None),
+    (False, None, "CUBO", None),
+    (False, None, "VRMAX", None),
+    # SLEEP updates
+    (False, None, None, "SLEEPKL"),
+    # SAME THING BUT WITH LEARNING GEN MODEL
+    # ELBO and WAKE updates
+    (True, "ELBO", "ELBO", None),
+    (True, "ELBO", "IWELBO", None),
+    (True, "ELBO", "REVKL", None),
+    (True, "ELBO", "CUBO", None),
+    (True, "ELBO", "VRMAX", None),
+    # IWELBO and WAKE updates
+    (True, "IWELBO", "ELBO", None),
+    (True, "IWELBO", "IWELBO", None),
+    (True, "IWELBO", "REVKL", None),
+    (True, "IWELBO", "CUBO", None),
+    (True, "IWELBO", "VRMAX", None),
+    # ELBO and SLEEP updates
+    (True, "ELBO", None, "SLEEPKL"),
+    # IWELBO and SLEEP updates
+    (True, "IWELBO", None, "SLEEPKL"),
+    #wAKE AND SLEEP
     (True, "ELBO", "REVKL", "SLEEPKL"),
     # IWELBO and SLEEP updates
     (True, "IWELBO", "REVKL", "SLEEPKL"),
