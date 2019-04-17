@@ -44,13 +44,12 @@ class VAE(nn.Module):
 
     """
 
-    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0, iwelbo: bool = False,
+    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
                  log_variational: bool = True, reconstruction_loss: str = "zinb"):
         super().__init__()
         self.dispersion = dispersion
-        self.iwelbo = iwelbo
         self.n_latent = n_latent
         self.log_variational = log_variational
         self.reconstruction_loss = reconstruction_loss
@@ -178,7 +177,7 @@ class VAE(nn.Module):
         px_scale, _, _, _ = self.decoder('gene', z, library, batch_index)
         return px_scale
 
-    def inference(self, x, batch_index=None, y=None, n_samples=1):
+    def inference(self, x, batch_index=None, y=None, n_samples=1, reparam=True):
         x_ = x
         if self.log_variational:
             x_ = torch.log(1 + x_)
@@ -190,10 +189,15 @@ class VAE(nn.Module):
         if n_samples > 1:
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            z = Normal(qz_m, qz_v.sqrt()).rsample()
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
-            library = Normal(ql_m, ql_v.sqrt()).rsample()
+
+            if reparam:
+                z = Normal(qz_m, qz_v.sqrt()).rsample()
+                library = Normal(ql_m, ql_v.sqrt()).rsample()
+            else:
+                z = Normal(qz_m, qz_v.sqrt()).sample()
+                library = Normal(ql_m, ql_v.sqrt()).sample()
 
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
@@ -205,6 +209,53 @@ class VAE(nn.Module):
         px_r = torch.exp(px_r)
 
         return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
+
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
+        # Parameters for z latent distribution
+
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+
+        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        loss = - (torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
+        return loss
+
+    def cubo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
+        # Parameters for z latent distribution
+
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+
+        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        ws = torch.softmax(2 * log_ratio, dim=0)
+        cubo = ws.detach() * (- 1) * log_ratio
+        return cubo.sum(dim=0)
+
+    def kl(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
+        # Parameters for z latent distribution
+
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=False)
+
+        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        ws = torch.softmax(log_ratio, dim=0)
+        rev_kl = ws.detach() * (-1) * (log_qz_x + log_ql_x)
+        return rev_kl.sum(dim=0)
 
     def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
         r""" Returns the reconstruction loss and the Kullback divergences
@@ -230,11 +281,7 @@ class VAE(nn.Module):
         log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
         log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-
-        if self.iwelbo:
-            neg_elbo = - (torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
-        else:
-            neg_elbo = -log_ratio.mean(dim=0)
-        return neg_elbo, torch.zeros_like(neg_elbo)
+        neg_elbo = -log_ratio.mean(dim=0)
+        return neg_elbo
 
 

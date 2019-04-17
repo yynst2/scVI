@@ -98,10 +98,7 @@ class Trainer:
         if params is None:
             params = filter(lambda p: p.requires_grad, self.model.parameters())
 
-        # if hasattr(self, 'optimizer'):
-        #     optimizer = self.optimizer
-        # else:
-        optimizer = self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
+        self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
@@ -115,9 +112,9 @@ class Trainer:
                 pbar.update(1)
                 for tensors_list in self.data_loaders_loop():
                     loss = self.loss(*tensors_list)
-                    optimizer.zero_grad()
+                    self.optimizer.zero_grad()
                     loss.backward()
-                    optimizer.step()
+                    self.optimizer.step()
 
                 if not self.on_epoch_end():
                     break

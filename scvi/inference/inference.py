@@ -2,7 +2,9 @@ import copy
 
 import matplotlib.pyplot as plt
 import torch
-
+import time
+from tqdm import trange
+import sys
 from . import Trainer
 
 plt.switch_backend('agg')
@@ -36,18 +38,66 @@ class UnsupervisedTrainer(Trainer):
             self.train_set.to_monitor = ['ll']
             self.test_set.to_monitor = ['ll']
 
+    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_psi="ELBO"):
+        begin = time.time()
+        self.model.train()
+
+        params_gen = list(filter(lambda p: p.requires_grad, self.model.decoder.parameters())) + [self.model.px_r]
+        optimizer_gen = torch.optim.Adam(params_gen, lr=lr, eps=eps)
+
+        params_var = filter(lambda p: p.requires_grad, list(self.model.l_encoder.parameters())
+                            + list(self.model.z_encoder.parameters()))
+        optimizer_var = torch.optim.Adam(params_var, lr=lr, eps=eps)
+
+        self.compute_metrics_time = 0
+        self.n_epochs = n_epochs
+        self.compute_metrics()
+
+        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+            # We have to use tqdm this way so it works in Jupyter notebook.
+            # See https://stackoverflow.com/questions/42212810/tqdm-in-jupyter-notebook
+            for self.epoch in pbar:
+                self.on_epoch_begin()
+                pbar.update(1)
+
+                # for all minibatches, update phi and psi alternately
+                for tensors_list in self.data_loaders_loop():
+                    sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors_list[0]
+
+                    # wake theta update
+                    elbo = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
+                    loss = torch.mean(elbo)
+                    optimizer_gen.zero_grad()
+                    loss.backward()
+                    optimizer_gen.step()
+
+                    # wake theta update
+                    if wake_psi == "ELBO":
+                        loss = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
+                    if wake_psi == "CUBO":
+                        loss = self.model.cubo(sample_batch, local_l_mean, local_l_var, batch_index)
+                    if wake_psi == "KL":
+                        loss = self.model.kl(sample_batch, local_l_mean, local_l_var, batch_index)
+                    loss = torch.mean(loss)
+                    optimizer_var.zero_grad()
+                    loss.backward()
+                    optimizer_var.step()
+
+                if not self.on_epoch_end():
+                    break
+
+        if self.early_stopping.save_best_state_metric is not None:
+            self.model.load_state_dict(self.best_state_dict)
+            self.compute_metrics()
+
+        self.model.eval()
+        self.training_time += (time.time() - begin) - self.compute_metrics_time
+        if self.verbose and self.frequency:
+            print("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
+
     @property
     def posteriors_loop(self):
         return ['train_set']
-
-    def loss(self, tensors):
-        sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
-        reconst_loss, kl_divergence = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
-        loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
-        return loss
-
-    def on_epoch_begin(self):
-        self.kl_weight = self.kl if self.kl is not None else min(1, self.epoch / 400)  # self.n_epochs)
 
 
 class AdapterTrainer(UnsupervisedTrainer):

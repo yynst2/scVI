@@ -11,7 +11,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 
-save_path = "/home/romain/data_chenling"
+save_path = "data_chenling"
 iwelbo = True
 plot = False
 auto_reload = False

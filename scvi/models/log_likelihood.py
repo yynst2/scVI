@@ -16,7 +16,7 @@ def compute_log_likelihood(vae, posterior, **kwargs):
     log_lkl = 0
     for i_batch, tensors in enumerate(posterior):
         sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[:5]  # general fish case
-        reconst_loss, kl_divergence = vae(sample_batch, local_l_mean, local_l_var, batch_index=batch_index,
+        reconst_loss = vae(sample_batch, local_l_mean, local_l_var, batch_index=batch_index,
                                           y=labels, **kwargs)
         log_lkl += torch.sum(reconst_loss).item()
     n_samples = len(posterior.indices)

@@ -9,6 +9,7 @@ from scipy.stats import multivariate_normal
 from tqdm import trange
 import sys
 import numpy as np
+from torch.distributions import Normal
 
 plt.switch_backend('agg')
 
@@ -25,31 +26,37 @@ class GaussianTrainer(Trainer):
     """
     default_metrics_to_monitor = ['ll']
 
-    def __init__(self, model, dataset, wake_loss, train_size=0.8, test_size=None, **kwargs):
+    def __init__(self, model, dataset, train_size=0.8, test_size=None, **kwargs):
         super().__init__(model, dataset, **kwargs)
         if type(self) is GaussianTrainer:
             self.train_set, self.test_set = self.train_test(model, dataset, train_size,
                                                             test_size, type_class=GaussianPosterior)
-            self.wake_loss = wake_loss
             self.train_set.to_monitor = ['elbo']
             self.test_set.to_monitor = ['elbo']
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, params_gen=None, params_var=None):
+    def train(self, params, losses, n_epochs=20, lr=1e-3, eps=0.01):
+        params_gen, params_wvar, params_svar = params
+        loss_gen, loss_wvar, loss_svar = losses
         begin = time.time()
         self.model.train()
 
-        if params_gen is None:
-            print("NO GENERATIVE MODEL")
-        else:
-            optimizer_gen = torch.optim.Adam(params_gen, lr=lr, eps=eps)
+        optimizers = [0, 0, 0]
 
-        optimizer_var = torch.optim.Adam(params_var, lr=lr, eps=eps)
+        if params_gen is not None:
+            print("WAKE UPDATE GENERATIVE MODEL")
+            optimizers[0] = torch.optim.Adam(params_gen, lr=lr, eps=eps)
+        if params_wvar is not None:
+            print("WAKE UPDATE VAR MODEL")
+            optimizers[1] = torch.optim.Adam(params_wvar, lr=lr, eps=eps)
+        if params_svar is not None:
+            print("SLEEP UPDATE VAR MODEL")
+            optimizers[2] = torch.optim.Adam(params_svar, lr=lr, eps=eps)
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
         self.compute_metrics()
 
-        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+        with trange(n_epochs, desc="training", file=sys.stderr, disable=True) as pbar:
             # We have to use tqdm this way so it works in Jupyter notebook.
             # See https://stackoverflow.com/questions/42212810/tqdm-in-jupyter-notebook
             for self.epoch in pbar:
@@ -59,18 +66,32 @@ class GaussianTrainer(Trainer):
                 if params_gen is not None:
                     # WAKE PHASE for generative model
                     for tensors_list in self.data_loaders_loop():
-                        loss = self.loss(*tensors_list, "ELBO")
-                        optimizer_gen.zero_grad()
+                        data_tensor = torch.stack(*tensors_list, 0)
+                        loss = torch.mean(self.model(data_tensor, loss_gen))
+                        optimizers[0].zero_grad()
                         loss.backward()
-                        optimizer_gen.step()
+                        optimizers[0].step()
 
-                if params_var is not None:
+                if params_wvar is not None:
                     # WAKE PHASE for variational model
                     for tensors_list in self.data_loaders_loop():
-                        loss = self.loss(*tensors_list, self.wake_loss)
-                        optimizer_var.zero_grad()
+                        data_tensor = torch.stack(*tensors_list, 0)
+                        loss = torch.mean(self.model(data_tensor, loss_wvar))
+                        optimizers[1].zero_grad()
                         loss.backward()
-                        optimizer_var.step()
+                        optimizers[1].step()
+
+                if params_svar is not None:
+                    # SLEEP PHASE for variational model
+                    # use loss loss_svar
+                    # do not loop through real data but through simulated data
+                    for tensors_list in self.data_loaders_loop():
+                        # ignore the data
+                        x, z = self.model.generate_prior_data()
+                        loss = torch.mean(self.model((x, z), loss_svar))
+                        optimizers[2].zero_grad()
+                        loss.backward()
+                        optimizers[2].step()
 
                 if not self.on_epoch_end():
                     break
@@ -88,11 +109,6 @@ class GaussianTrainer(Trainer):
     @property
     def posteriors_loop(self):
         return ['train_set']
-
-    def loss(self, tensors, type):
-        data_tensor = torch.stack(tensors, 0)
-        loss = torch.mean(self.model(data_tensor, type))
-        return loss
 
 
 class GaussianPosterior(Posterior):

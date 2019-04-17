@@ -42,6 +42,7 @@ class LinearGaussian(nn.Module):
         self.learn_var = learn_var
         self.px_log_diag_var = torch.nn.Parameter(torch.randn(1, n_input))
 
+        self.gamma = torch.from_numpy(np.array(np.diag(gamma), dtype=np.float32)).cuda()
         log_det = np.log(np.linalg.det(gamma))
         self.log_det_px_z = torch.tensor(log_det, requires_grad=False, dtype=torch.float).cuda()
         inv_sqrt = sqrtm(np.linalg.inv(gamma))
@@ -90,15 +91,23 @@ class LinearGaussian(nn.Module):
         return px_mean, torch.exp(self.px_log_diag_var), qz_m, qz_v, z
 
     def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
-        zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
-        reshape_dim = x.shape[-1] + z.shape[-1]
+        if self.learn_var:
+            log_px_z = Normal(px_mean, torch.sqrt(px_var)).\
+                log_prob(x.repeat(px_mean.shape[0], 1, 1)).sum(dim=-1).view((px_mean.shape[0], -1))
+            log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+            log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            log_pxz = log_px_z + log_pz
 
-        log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-        log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
-                                       self.log_det_pxz, self.inv_sqrt_pxz
-                                       ).view((px_mean.shape[0], -1))
+        else:
+            zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
+            reshape_dim = x.shape[-1] + z.shape[-1]
+
+            log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
+                                           self.log_det_pxz, self.inv_sqrt_pxz
+                                           ).view((px_mean.shape[0], -1))
+
         log_ratio = log_pxz - log_qz_given_x
-
         if return_full:
             return log_ratio, log_pxz, log_qz_given_x
         else:
@@ -158,6 +167,24 @@ class LinearGaussian(nn.Module):
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         return -log_ratio.max(dim=0)[0]
 
+    def generate_prior_data(self):
+        shape_z = (128, self.n_latent)
+        z = Normal(torch.zeros(shape_z).cuda(), torch.ones(shape_z).cuda()).sample()
+        px_mean = torch.matmul(z, torch.transpose(self.A, 0, 1))
+        if self.learn_var:
+            px_var = torch.exp(self.px_log_diag_var)
+        else:
+            px_var = self.gamma
+        x = Normal(px_mean, torch.sqrt(px_var)).sample()
+        return x, z
+
+    def sleep_kl(self, x, z):
+        x = x.detach()
+        z = z.detach()
+        qz_m, qz_v, _ = self.encoder(x, None)
+        log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+        return -log_qz_x
+
     def forward(self, x, param):
         if param == "ELBO":
             return self.neg_elbo(x)
@@ -169,6 +196,10 @@ class LinearGaussian(nn.Module):
             return self.neg_iwelbo(x, n_samples_mc=80)
         if param == "VRMAX":
             return self.vr_max(x, n_samples_mc=20)
+        if param == "SLEEPKL":
+            # unpack and compute KL
+            x_data, z_data = x
+            return self.sleep_kl(x_data, z_data)
 
     def joint_log_likelihood(self, xz, pxz_mean, pxz_var):
         if self.learn_var:

@@ -12,14 +12,16 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 
-save_path = "/home/romain/data_chenling"
-iwelbo = True
+save_path = "data_chenling"
+wake_psi = "KL"
 plot = False
 auto_reload = False
 n_train = 3
 n_bayes = 10
 
 results = {}
+
+print(wake_psi)
 
 # read csv files
 count_matrix = pd.read_csv(os.path.join(save_path, "obs_counts.csv"),
@@ -53,7 +55,7 @@ if plot:
 for t in range(n_train):
 
     # now train scVI with all the possible parameters
-    vae = VAE(gene_dataset.nb_genes, iwelbo=iwelbo, dropout_rate=0.2, reconstruction_loss="zinb", n_latent=10)
+    vae = VAE(gene_dataset.nb_genes, dropout_rate=0.2, reconstruction_loss="zinb", n_latent=10)
     trainer = UnsupervisedTrainer(vae,
                                   gene_dataset,
                                   train_size=0.75,
@@ -68,7 +70,7 @@ for t in range(n_train):
     else:
         # train & save
         n_epochs = 100
-        trainer.train(n_epochs=n_epochs, lr=0.001)
+        trainer.train(n_epochs=n_epochs, lr=0.001, wake_psi=wake_psi)
         torch.save(trainer.model.state_dict(), file_name)
 
         # write training info
@@ -137,4 +139,4 @@ for t in range(n_train):
                 plt.savefig("figures/simulations_scRNA/comparison" + key + ".png")
                 plt.clf()
 
-pickle.dump(results, open("figures/simulations_scRNA/results.dic", "wb"))
+pickle.dump(results, open("figures/simulations_scRNA/results" + wake_psi + ".dic", "wb"))
