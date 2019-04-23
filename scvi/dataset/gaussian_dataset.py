@@ -61,7 +61,7 @@ class SyntheticGaussianDataset(GaussianDataset):
         # conditional covar
         # sqrt = 1 / np.sqrt(rank_c) * np.random.normal(size=(dim_x, rank_c))
         # self.px_condvz_var = nu * np.eye(dim_x) + np.dot(sqrt.T, sqrt)
-        self.gamma = nu * np.diag(np.random.normal(loc=1, scale=0.5, size=dim_x)**2)
+        self.gamma = nu * np.diag(np.random.normal(loc=1, scale=2, size=dim_x)**2)
         inv_gamma = np.linalg.inv(self.gamma)
 
         # marginal
@@ -84,7 +84,7 @@ class SyntheticGaussianDataset(GaussianDataset):
 
 
 class SyntheticMixtureGaussianDataset(GaussianDataset):
-    def __init__(self, dim_z=10, dim_x=100, nu=0.5, n_centers=3, n_samples=1000, seed=0):
+    def __init__(self, dim_z=10, dim_x=10, nu=0.5, n_centers=3, n_samples=1000, seed=0):
         np.random.seed(seed)
         # Generating samples according to a Mixture Linear Gaussian system
         self.pi = np.random.dirichlet([1]*n_centers)
@@ -93,12 +93,20 @@ class SyntheticMixtureGaussianDataset(GaussianDataset):
 
         # link from z to x
         self.A = 1 / np.sqrt(dim_z) * np.random.normal(size=(dim_x, dim_z))
-        self.gamma = nu * np.diag(np.random.normal(loc=1, scale=0.5, size=dim_x) ** 2)
-        inv_gamma = np.linalg.inv(self.gamma)
+        self.gamma = nu * np.random.normal(loc=1, scale=0.5, size=(n_centers, dim_x)) ** 2
 
         # marginal of x conditioned on w
         self.px_mean = np.dot(self.pz_mean, self.A.T)  # shape (n_centers, dim_x)
-        self.px_var = self.gamma + np.dot(self.A, self.A.T)  # shape (dim_x, dim_x)
+        self.px_var = np.zeros(shape=(n_centers, dim_x, dim_x))
+        for n in n_centers:
+            self.px_var = np.diag(self.gamma[n]) + np.dot(self.A, self.A.T)
+
+        # sampling process
+        mixture_assignment = np.random.multinomial(1, self.pi, size=(n_samples,))  # shape (n_samples, n_centers)
+        gaussian_mean = np.dot(mixture_assignment, self.px_mean)
+        gaussian_var = np.tensordot(mixture_assignment, self.px_var, axes=(1, 0))
+        epsilon = np.random.multivariate_normal(np.zeros(shape=(dim_x,)), gaussian_var, size=(n_samples,))
+        data = gaussian_mean + epsilon
 
         # posterior variance of z conditioned on x, w
         inv_pz_condxw_var = np.eye(dim_z) + np.dot(np.dot(self.A.T, inv_gamma), self.A)
@@ -112,10 +120,5 @@ class SyntheticMixtureGaussianDataset(GaussianDataset):
         self.pxz_condw_log_det = -np.log(np.linalg.det(precision_joint))
         self.pxz_condw_inv_sqrt = sqrtm(precision_joint)
 
-        # sampling process
-        mixture_assignment = np.random.multinomial(1, self.pi, size=(n_samples,))
-        gaussian_mean = np.dot(mixture_assignment, self.px_mean)
-        epsilon = np.random.multivariate_normal(np.zeros(shape=(dim_x,)), self.px_var, size=(n_samples,))
-        data = gaussian_mean + epsilon
 
         super().__init__(data)

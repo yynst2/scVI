@@ -18,10 +18,10 @@ print("STARTED TRAINING", flush=True)
 #########
 # OLD Code
 ########
-dim_z = 12
-dim_x = 100
-n_epochs = 50
-dataset = SyntheticGaussianDataset(dim_z=dim_z, dim_x=dim_x, n_samples=10000, nu=1)
+dim_z = 6
+dim_x = 10
+n_epochs = 100
+dataset = SyntheticGaussianDataset(dim_z=dim_z, dim_x=dim_x, n_samples=1000, nu=1)
 plt.imshow(dataset.pz_condx_var)
 plt.colorbar()
 plt.savefig("figures/post_covariance.png")
@@ -29,32 +29,30 @@ plt.clf()
 
 # learn_var, wake only, sleep only, wake-sleep for each loss
 scenarios = [  # WAKE updates
-    (False, None, "ELBO", None),
-    (False, None, "IWELBO", None),
-    (False, None, "REVKL", None),
-    (False, None, "CUBO", None),
-    (False, None, "VRMAX", None),
-    # SLEEP updates
-    (False, None, None, "SLEEPKL"),
+    # (False, None, "ELBO", None),
+    # (False, None, "IWELBO", None),
+    # (False, None, "REVKL", None),
+    # (False, None, "CUBO", None),
+    # (False, None, "VRMAX", None),
+    # # SLEEP updates
+    # (False, None, None, "SLEEPKL"),
     # SAME THING BUT WITH LEARNING GEN MODEL
-    # ELBO and WAKE updates
-    (True, "ELBO", "ELBO", None),
-    (True, "ELBO", "IWELBO", None),
-    (True, "ELBO", "REVKL", None),
-    (True, "ELBO", "CUBO", None),
-    (True, "ELBO", "VRMAX", None),
+    # (True, "ELBO", "ELBO", None),
+    # (True, "ELBO", "IWELBO", None),
+    # (True, "ELBO", "REVKL", None),
+    # (True, "ELBO", "CUBO", None),
+    # (True, "ELBO", "VRMAX", None),
+    # (True, "ELBO", None, "SLEEPKL"),
+    # (True, "ELBO", "REVKL", "SLEEPKL"),
     # IWELBO and WAKE updates
     (True, "IWELBO", "ELBO", None),
     (True, "IWELBO", "IWELBO", None),
     (True, "IWELBO", "REVKL", None),
     (True, "IWELBO", "CUBO", None),
     (True, "IWELBO", "VRMAX", None),
-    # ELBO and SLEEP updates
-    (True, "ELBO", None, "SLEEPKL"),
     # IWELBO and SLEEP updates
     (True, "IWELBO", None, "SLEEPKL"),
     #wAKE AND SLEEP
-    (True, "ELBO", "REVKL", "SLEEPKL"),
     # IWELBO and SLEEP updates
     (True, "IWELBO", "REVKL", "SLEEPKL"),
 ]
