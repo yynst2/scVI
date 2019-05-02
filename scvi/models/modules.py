@@ -115,6 +115,8 @@ class Encoder(nn.Module):
             l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=var.device)
             lower_idx = self.tril_indices(self.n_output, self.n_output)
             l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = var
+            rg = torch.arange(self.n_output, device=var.device)
+            l_mat[:, rg, rg] = l_mat[:, rg, rg].exp()
             cov_mat = torch.matmul(l_mat, l_mat.transpose(-1, -2))
             return MultivariateNormal(loc=mu, covariance_matrix=cov_mat)
         else:
