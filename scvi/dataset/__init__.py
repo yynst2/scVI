@@ -12,6 +12,7 @@ from .anndata import AnnDataset
 from .csv import CsvDataset, BreastCancerDataset, MouseOBDataset
 from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
+from .diff_expression import SymSimDataset
 
 __all__ = ['SyntheticDataset',
            'SyntheticRandomDataset',
@@ -35,4 +36,5 @@ __all__ = ['SyntheticDataset',
            'PurifiedPBMCDataset',
            'SyntheticDatasetCorr',
            'ZISyntheticDatasetCorr',
+           'SymSimDataset'
            ]
