@@ -47,7 +47,8 @@ class VAE(nn.Module):
     def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
                  n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
                  dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "zinb"):
+                 log_variational: bool = True, reconstruction_loss: str = "zinb",
+                 full_cov=False):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -69,12 +70,14 @@ class VAE(nn.Module):
 
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
+        self.z_full_cov = full_cov
         self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
-                                 dropout_rate=dropout_rate)
+                                 dropout_rate=dropout_rate, full_cov=full_cov)
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+        self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers,
+                                   n_hidden=n_hidden)
 
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
@@ -168,6 +171,7 @@ class VAE(nn.Module):
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
+            raise ValueError
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
             z = Normal(qz_m, qz_v.sqrt()).sample()
@@ -207,7 +211,10 @@ class VAE(nn.Module):
         mean = torch.zeros_like(qz_m)
         scale = torch.ones_like(qz_v)
 
-        kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(dim=1)
+        kl_divergence_z = kl(self.z_encoder.distrib(qz_m, qz_v),
+                             self.z_encoder.distrib(mean, scale))
+        if len(kl_divergence_z.size()) == 2:
+            kl_divergence_z = kl_divergence_z.sum(dim=1)
         kl_divergence_l = kl(Normal(ql_m, torch.sqrt(ql_v)), Normal(local_l_mean, torch.sqrt(local_l_var))).sum(dim=1)
         kl_divergence = kl_divergence_z
 
