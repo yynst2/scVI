@@ -14,7 +14,7 @@ from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainS
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
-from scvi.models import VAE, SCANVI, VAEC
+from scvi.models import VAE, SCANVI, VAEC, MeanVarianceVAE
 from scvi.models.classifier import Classifier
 import anndata
 import os.path
@@ -326,3 +326,14 @@ def test_gamma_de():
                                        M_permutation=M_permutation)
     full.differential_expression_gamma(cell_idx1, cell_idx2, n_samples=n_samples,
                                        M_permutation=M_permutation)
+
+
+def test_scvi_mean_var():
+    dataset = CortexDataset()
+    vae = MeanVarianceVAE(dataset.nb_genes, dataset.n_batches, n_r_hidden=32)
+    trainer = UnsupervisedTrainer(vae, dataset, train_size=0.5,
+                                  use_cuda=use_cuda)
+    trainer.train(n_epochs=2)
+
+    assert vae.px_r_net[0].weight.shape == (32, 1)
+    assert vae.px_r_net[-1].weight.shape == (1, 32)

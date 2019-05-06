@@ -268,3 +268,45 @@ class LDVAE(VAE):
         """ Extract per-gene weights (for each Z) in the linear decoder.
         """
         return self.decoder.factor_regressor.parameters()
+
+
+class MeanVarianceVAE(VAE):
+    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
+                 n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
+                 dropout_rate: float = 0.1,
+                 log_variational: bool = True, reconstruction_loss: str = "zinb", full_cov=False,
+                 n_r_hidden=128):
+        super().__init__(n_input, n_batch=n_batch, n_labels=n_labels,
+                         n_hidden=n_hidden, n_latent=n_latent, n_layers=n_layers,
+                         dropout_rate=dropout_rate,
+                         log_variational=log_variational, reconstruction_loss=reconstruction_loss,
+                         full_cov=full_cov)
+        # I am forced to put the px_r here as it depends not only on rho
+        # But also on the library size
+        self.px_r_net = torch.nn.Sequential(torch.nn.Linear(1, n_r_hidden),
+                                            torch.nn.ReLU(),
+                                            torch.nn.Linear(n_r_hidden, 1))
+
+    def inference(self, x, batch_index=None, y=None, n_samples=1):
+        x_ = x
+        if self.log_variational:
+            x_ = torch.log(1 + x_)
+
+        # Sampling
+        qz_m, qz_v, z = self.z_encoder(x_, y)
+        ql_m, ql_v, library = self.l_encoder(x_)
+
+        if n_samples > 1:
+            raise ValueError
+            qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
+            qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
+            z = Normal(qz_m, qz_v.sqrt()).sample()
+            ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
+            ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
+            library = Normal(ql_m, ql_v.sqrt()).sample()
+
+        px_scale, _, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
+        px_r = self.px_r_net(px_scale.view(-1, 1))
+        px_r = px_r.view(px_scale.size())
+        px_r = torch.exp(px_r)
+        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
