@@ -306,7 +306,10 @@ class MeanVarianceVAE(VAE):
             library = Normal(ql_m, ql_v.sqrt()).sample()
 
         px_scale, _, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
-        px_r = self.px_r_net(px_scale.view(-1, 1))
-        px_r = px_r.view(px_scale.size())
+        # TODO: Take library size into account through multiplication of concatenation
+        nb_mean = px_scale * library
+        px_r = self.px_r_net(nb_mean.view(-1, 1))
+        px_r = px_r.view(nb_mean.size())
+        assert px_r.size() == px_scale.size()
         px_r = torch.exp(px_r)
         return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
