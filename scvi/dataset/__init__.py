@@ -13,6 +13,7 @@ from .csv import CsvDataset, BreastCancerDataset, MouseOBDataset
 from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
 from .diff_expression import SymSimDataset
+from .powsimr import PowSimSynthetic, SignedGamma
 
 __all__ = ['SyntheticDataset',
            'SyntheticRandomDataset',
@@ -36,5 +37,7 @@ __all__ = ['SyntheticDataset',
            'PurifiedPBMCDataset',
            'SyntheticDatasetCorr',
            'ZISyntheticDatasetCorr',
-           'SymSimDataset'
+           'SymSimDataset',
+           'PowSimSynthetic',
+           'SignedGamma'
            ]

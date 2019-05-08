@@ -10,7 +10,8 @@ from scvi.benchmark import all_benchmarks, benchmark, benchmark_fish_scrna, ldva
 from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainSmallDataset, HematoDataset, \
     LoomDataset, AnnDataset, CsvDataset, CiteSeqDataset, CbmcDataset, PbmcDataset, SyntheticDataset, \
     SeqfishDataset, SmfishDataset, BreastCancerDataset, MouseOBDataset, \
-    GeneExpressionDataset, PurifiedPBMCDataset, SyntheticDatasetCorr, ZISyntheticDatasetCorr
+    GeneExpressionDataset, PurifiedPBMCDataset, SyntheticDatasetCorr, ZISyntheticDatasetCorr, \
+    PowSimSynthetic
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -337,3 +338,8 @@ def test_scvi_mean_var():
 
     assert vae.px_r_net[0].weight.shape == (32, 1)
     assert vae.px_r_net[-1].weight.shape == (1, 32)
+
+
+def test_powsimr():
+    data = PowSimSynthetic()
+    assert data.X.shape == (675, 10000)
