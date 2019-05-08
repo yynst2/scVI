@@ -11,7 +11,7 @@ from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainS
     LoomDataset, AnnDataset, CsvDataset, CiteSeqDataset, CbmcDataset, PbmcDataset, SyntheticDataset, \
     SeqfishDataset, SmfishDataset, BreastCancerDataset, MouseOBDataset, \
     GeneExpressionDataset, PurifiedPBMCDataset, SyntheticDatasetCorr, ZISyntheticDatasetCorr, \
-    PowSimSynthetic
+    PowSimSynthetic, Dataset10X
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -308,6 +308,7 @@ def test_sampling_zl(save_path):
     trainer_cortex_cls.test_set.accuracy()
 
 
+<<<<<<< HEAD
 def test_gamma_de():
     cortex_dataset = CortexDataset()
     cortex_vae = VAE(cortex_dataset.nb_genes, cortex_dataset.n_batches)
@@ -343,3 +344,13 @@ def test_scvi_mean_var():
 def test_powsimr():
     data = PowSimSynthetic()
     assert data.X.shape == (675, 10000)
+
+
+def test_new_10x():
+    """
+    Test new 10X data format, which is a bit different than newer ones
+    :return:
+    """
+    data = Dataset10X('pbmc_1k_v2')
+    data.subsample_genes(new_n_genes=100)
+    assert data.X.shape[1] == 100
