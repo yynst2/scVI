@@ -308,7 +308,6 @@ def test_sampling_zl(save_path):
     trainer_cortex_cls.test_set.accuracy()
 
 
-<<<<<<< HEAD
 def test_gamma_de():
     cortex_dataset = CortexDataset()
     cortex_vae = VAE(cortex_dataset.nb_genes, cortex_dataset.n_batches)
