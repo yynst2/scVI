@@ -37,7 +37,6 @@ class PowSimSynthetic(GeneExpressionDataset):
         """
 
         :param cluster_to_samples:
-        :param cluster_names:
         :param n_genes:
         :param de_p:
         :param de_lfc:
@@ -109,14 +108,23 @@ class PowSimSynthetic(GeneExpressionDataset):
             self.ids = self.de_genes_idx
             self.lfc = self.de_lfc
 
+        self._log_mu_mat = None
+        self._mu_mat = None
+        self._sizes = None
+
         sim_data = self.generate_data()
         assert sim_data.shape == (self.n_cells_total, n_genes)
 
         sim_data = np.expand_dims(sim_data, axis=0)
         labels = np.expand_dims(labels, axis=0)
+
+        gene_names = np.arange(self.nb_genes).astype(str)
         super().__init__(
             *GeneExpressionDataset.get_attributes_from_list(sim_data, list_labels=labels),
-            gene_names=np.arange(self.nb_genes).astype(str))
+            gene_names=gene_names)
+
+        gene_data = {'lfc{}'.format(idx): arr for (idx, arr) in self.de_lfc.T}
+        self.gene_properties = pd.DataFrame(data=gene_data, index=gene_names)
 
     def generate_data(self):
         if self.batch_lfc is None:
@@ -177,6 +185,10 @@ class PowSimSynthetic(GeneExpressionDataset):
 
         mu_mat = 2 ** log_mu_mat
         sizes = 2 ** log_sizes
+
+        self._log_mu_mat = log_mu_mat
+        self._mu_mat = mu_mat
+        self._sizes = sizes
 
         nb_proba = sizes / (sizes + mu_mat)
         # TODO: Verify no mistakes here
