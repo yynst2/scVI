@@ -344,6 +344,13 @@ def test_powsimr():
     data = PowSimSynthetic()
     assert data.X.shape == (675, 10000)
 
+    lfc_coefs = data.lfc
+    # Assert that all genes that are supposed to be differentially expressed
+    # Really are
+    lfc_coefs_de = lfc_coefs[data.de_genes_idx]
+    is_genes_de = (lfc_coefs_de != lfc_coefs_de[:, 0].reshape((-1, 1)))[:, 1:].all(axis=1)
+    assert is_genes_de.all()
+
 
 def test_new_10x():
     """
