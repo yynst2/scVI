@@ -123,7 +123,7 @@ class PowSimSynthetic(GeneExpressionDataset):
             *GeneExpressionDataset.get_attributes_from_list(sim_data, list_labels=labels),
             gene_names=gene_names)
 
-        gene_data = {'lfc{}'.format(idx): arr for (idx, arr) in self.de_lfc.T}
+        gene_data = {'lfc{}'.format(idx): arr for (idx, arr) in enumerate(self.de_lfc.T)}
         self.gene_properties = pd.DataFrame(data=gene_data, index=gene_names)
 
     def generate_data(self):
