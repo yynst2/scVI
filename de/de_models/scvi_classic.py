@@ -36,7 +36,7 @@ class ScVIClassic(DEModel):
                                      full_cov=self.full_cov)
         self.trainer = UnsupervisedTrainer(model=self.model, gene_dataset=self.dataset,
                                            use_cuda=True,
-                                           train_size=1, kl=1)
+                                           train_size=0.7, kl=1, frequency=1)
         self.is_fully_init = True
 
     def train(self, **train_params):

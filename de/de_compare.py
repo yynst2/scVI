@@ -1,8 +1,6 @@
 import argparse
-from scvi.models import VAE
-from scvi.inference import UnsupervisedTrainer
-from .utils import name_to_dataset
-from .de_models import ScVIClassic
+from utils import name_to_dataset
+from de_models import ScVIClassic
 
 
 def parse_args():
@@ -12,16 +10,11 @@ def parse_args():
     return parser.parse_args()
 
 
-models = [
-    ('scVI_classic', ScVIClassic()),
-    ()
-]
-
 if __name__ == '__main__':
     args = parse_args()
-    dataset_name = args['dataset']
-    nb_genes = args['nb_genes']
-    dataset = name_to_dataset[args[dataset_name]]()
+    dataset_name = args.dataset
+    nb_genes = args.nb_genes
+    dataset = name_to_dataset[dataset_name]()
     if nb_genes is not None:
         dataset.subsample_genes(new_n_genes=nb_genes)
 
@@ -37,7 +30,7 @@ if __name__ == '__main__':
     results = {}
     for model_name, model in models:
         model.full_init()
-        model.train()
+        model.train(lr=1e-3, n_epochs=150)
 
         model_perfs = model.predict_de()
         results[model_name] = model_perfs
