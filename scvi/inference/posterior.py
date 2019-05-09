@@ -287,7 +287,7 @@ class Posterior:
         bayes1 = get_bayes_factors(data, all_labels, mode='gamma',
                                    cell_idx=0, M_permutation=M_permutation,
                                    permutation=False, sample_pairs=sample_pairs)
-
+        bayes1 = pd.Series(data=bayes1, index=self.gene_dataset.gene_names)
         return bayes1
 
     @torch.no_grad()
