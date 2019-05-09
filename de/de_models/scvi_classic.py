@@ -58,10 +58,10 @@ class ScVIClassic(DEModel):
             cell_idx1 = idx1
             cell_idx2 = idx2
 
-        if mode == 'rho':
-            de_res = full.differential_expression_score(cell_idx1, cell_idx2, n_samples=n_samples,
-                                                        M_permutation=M_permutation)
-        else:
-            de_res = full.differential_expression_gamma(cell_idx1, cell_idx2, n_samples=n_samples,
-                                                        M_permutation=M_permutation)
+        de_res = full.differential_expression_score(cell_idx1, cell_idx2, n_samples=n_samples,
+                                                    M_permutation=M_permutation)
+        de_res_gamma = full.differential_expression_gamma(cell_idx1, cell_idx2, n_samples=n_samples,
+                                                          M_permutation=M_permutation)
+
+        de_res.loc[:, 'gamma_bayes1'] = de_res_gamma
         return de_res
