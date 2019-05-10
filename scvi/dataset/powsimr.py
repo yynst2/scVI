@@ -1,5 +1,6 @@
 from . import GeneExpressionDataset
 import numpy as np
+import os
 from scipy.interpolate import interp1d
 import pandas as pd
 import torch.distributions as distributions
@@ -32,7 +33,7 @@ class PowSimSynthetic(GeneExpressionDataset):
                  de_p=0.1, de_lfc=None,
                  batch_p=0.0, batch_lfc=None, batch_pattern=None, marker_p=0.0,
                  marker_lfc=0.0, do_spike_in=False, do_downsample=False,
-                 geneset=False,
+                 geneset=False, cst_mu=None,
                  mode='NB', seed=42):
         """
 
@@ -51,7 +52,8 @@ class PowSimSynthetic(GeneExpressionDataset):
         :param seed:
         """
         np.random.seed(seed)
-        real_data_path = '/home/pierre/scVI/data/kolodziejczk_param.csv'
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        real_data_path = os.path.join(dir_path, 'kolodziejczk_param.csv')
         self.real_data_df = pd.read_csv(real_data_path)
         if de_lfc is None:
             de_lfc = SignedGamma(dim=len(cluster_to_samples))
@@ -112,6 +114,8 @@ class PowSimSynthetic(GeneExpressionDataset):
         self._mu_mat = None
         self._sizes = None
 
+        self.cst_mu = cst_mu
+
         sim_data = self.generate_data()
         assert sim_data.shape == (self.n_cells_total, n_genes)
 
@@ -156,8 +160,12 @@ class PowSimSynthetic(GeneExpressionDataset):
         :param coeffs: LFC Coefficients (n_genes, n_clusters)
         :return:
         """
-        mu = self.real_data_df['means']
-        true_means = np.random.choice(a=mu, size=self.nb_genes, replace=True)
+
+        if self.cst_mu is not None:
+            true_means = self.cst_mu * np.ones(self.nb_genes)
+        else:
+            mu = self.real_data_df['means']
+            true_means = np.random.choice(a=mu, size=self.nb_genes, replace=True)
         log_mu = np.log2(1.0 + true_means)
 
         # NN interpolation
