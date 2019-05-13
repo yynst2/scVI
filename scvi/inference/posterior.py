@@ -240,7 +240,7 @@ class Posterior:
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
                 px_dispersion, px_rate = self.model.inference(sample_batch, batch_index, label)[1:3]
                 p = (px_rate / (px_rate + px_dispersion))
-                shapes_batch = px_rate
+                shapes_batch = px_dispersion
                 scales_batch = p / (1.0-p)
                 shapes.append(shapes_batch.cpu().numpy())
                 scales.append(scales_batch.cpu().numpy())
