@@ -222,7 +222,7 @@ class Posterior:
 
     @torch.no_grad()
     def sample_gamma_params_from_batch(self, n_samples, batchid=None, selection=None):
-        shapes, scales = [], []
+        shapes_res, scales_res = [], []
         if selection is None:
             raise ValueError("selections should be a list of cell subsets indices")
         else:
@@ -238,16 +238,28 @@ class Posterior:
             # fixed_batch = float(i)
             for tensors in self:
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-                px_dispersion, px_rate = self.model.inference(sample_batch, batch_index, label)[1:3]
-                p = (px_rate / (px_rate + px_dispersion))
-                shapes_batch = px_dispersion
-                scales_batch = p / (1.0-p)
-                shapes.append(shapes_batch.cpu().numpy())
-                scales.append(scales_batch.cpu().numpy())
+                px_scale, px_dispersion, px_rate = self.model.inference(sample_batch, batch_index, label)[0:3]
+
+                # p = (px_scale / (px_scale + px_dispersion))
+                p = (px_rate / (px_rate + px_dispersion)).cpu().numpy()
+                r = px_dispersion.cpu().numpy()
+
+                shapes_batch = r
+                scales_batch = p / (1.0 - p)
+
+                if len(shapes_batch.shape) == 1:
+                    shapes_batch = np.repeat(shapes_batch.reshape((1, -1)),
+                                             repeats=scales_batch.shape[0], axis=0)
+
+                shapes_res.append(shapes_batch)
+                scales_res.append(scales_batch)
         self.data_loader = old_loader
-        shapes = np.concatenate(shapes)
-        scales = np.concatenate(scales)
-        return shapes, scales
+        shapes_res = np.concatenate(shapes_res)
+        scales_res = np.concatenate(scales_res)
+
+        print(scales_res.shape)
+        assert shapes_res.shape == scales_res.shape, (shapes_res.shape, scales_res.shape)
+        return shapes_res, scales_res
 
     @torch.no_grad()
     def differential_expression_gamma(self, idx1, idx2, batchid1=None, batchid2=None,
@@ -281,7 +293,7 @@ class Posterior:
         shapes = np.concatenate((shapes1, shapes2), axis=0)
         scales = np.concatenate((scales1, scales2), axis=0)
 
-        assert shapes.shape == scales.shape
+        assert shapes.shape == scales.shape, (shapes.shape, scales.shape)
         data = (shapes, scales)
 
         bayes1 = get_bayes_factors(data, all_labels, mode='gamma',
