@@ -109,16 +109,12 @@ class Encoder(nn.Module):
     def reparameterize(self, mu, var):
         return self.distrib(mu, var).rsample()
 
+    def sample(self, mu, var, sample_size=torch.Size()):
+        return self.distrib(mu, var).sample(sample_size)
+
     def distrib(self, mu, var):
         if self.full_cov:
-            n_batch = var.size(0)
-            l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=var.device)
-            lower_idx = self.tril_indices(self.n_output, self.n_output)
-            l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = var
-            rg = torch.arange(self.n_output, device=var.device)
-            l_mat[:, rg, rg] = l_mat[:, rg, rg].exp()
-            cov_mat = torch.matmul(l_mat, l_mat.transpose(-1, -2))
-            return MultivariateNormal(loc=mu, covariance_matrix=cov_mat)
+            return MultivariateNormal(loc=mu, covariance_matrix=var)
         else:
             return Normal(mu, var.sqrt())
 
@@ -138,9 +134,22 @@ class Encoder(nn.Module):
         # Parameters for latent distribution
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
-        q_v = torch.exp(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
+        q_v = self.get_cov(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
         latent = self.reparameterize(q_m, q_v)
         return q_m, q_v, latent
+
+    def get_cov(self, x):
+        if self.full_cov:
+            n_batch = x.size(0)
+            l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=x.device)
+            lower_idx = self.tril_indices(self.n_output, self.n_output)
+            l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = x
+            rg = torch.arange(self.n_output, device=x.device)
+            l_mat[:, rg, rg] = l_mat[:, rg, rg].exp()
+            res = torch.matmul(l_mat, l_mat.transpose(-1, -2))
+            return res
+        else:
+            return torch.exp(x)
 
     @staticmethod
     def tril_indices(rows, cols, offset=0):

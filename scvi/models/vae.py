@@ -171,13 +171,13 @@ class VAE(nn.Module):
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
-            raise ValueError
+            assert not self.z_full_cov
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            z = Normal(qz_m, qz_v.sqrt()).sample()
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
-            library = Normal(ql_m, ql_v.sqrt()).sample()
+            z = self.z_encoder.sample(qz_m, qz_v)
+            library = self.l_encoder.sample(ql_m, ql_v)
 
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
@@ -297,13 +297,13 @@ class MeanVarianceVAE(VAE):
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
-            raise ValueError
+            assert not self.z_full_cov
             qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
             qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            z = Normal(qz_m, qz_v.sqrt()).sample()
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
-            library = Normal(ql_m, ql_v.sqrt()).sample()
+            z = self.z_encoder.sample(qz_m, qz_v)
+            library = self.l_encoder.sample(ql_m, ql_v)
 
         px_scale, _, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         # TODO: Take library size into account through multiplication of concatenation
