@@ -6,7 +6,7 @@ scVI
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/scVI.svg
    :target: https://pypi.org/project/scvi
-.. |bioconda| image:: https://img.shields.io/badge/bioconda-🐍-blue.svg
+.. |bioconda| image:: https://img.shields.io/badge/bioconda-blue.svg
    :target: http://bioconda.github.io/recipes/scvi/README.html
 .. |Docs| image:: https://readthedocs.org/projects/scvi/badge/?version=latest
         :target: https://scvi.readthedocs.io/en/latest/?badge=latest
@@ -26,7 +26,7 @@ Single-cell Variational Inference
 Quick Start
 -----------
 
-1. Install Python 3.6 or later. We typically use the Miniconda_ Python distribution.
+1. Install Python 3.7. We typically use the Miniconda_ Python distribution.
 
 .. _Miniconda: https://conda.io/miniconda.html
 
@@ -34,7 +34,11 @@ Quick Start
 
 .. _PyTorch: http://pytorch.org
 
-3. Install scVI through pip (``pip install scvi``). We also support conda (``conda install scvi -c bioconda`` ) but due to some packaging issues of pytorch, it will force pytorch 0.4.1. Alternatively, you may download or clone this repository and run ``python setup.py install``.
+3. Install scVI through conda:
+
+    ``conda install scvi -c bioconda -c conda-forge``
+
+   Alternatively, you may try pip (``pip install scvi``), or you may clone this repository and run ``python setup.py install``.
 
 4. Follow along with our Jupyter notebooks to quickly get familiar with scVI!
 

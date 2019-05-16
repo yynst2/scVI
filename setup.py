@@ -29,6 +29,7 @@ requirements = [
     "seaborn>=0.9.0",
     "leidenalg>=0.7.0",
     "python-igraph>=0.7.1",
+    "hyperopt>=0.1.2",
 ]
 
 setup_requirements = ['pytest-runner', ]
@@ -47,7 +48,7 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: POSIX :: Linux',
