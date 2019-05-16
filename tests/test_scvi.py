@@ -11,7 +11,7 @@ from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainS
     LoomDataset, AnnDataset, CsvDataset, CiteSeqDataset, CbmcDataset, PbmcDataset, SyntheticDataset, \
     SeqfishDataset, SmfishDataset, BreastCancerDataset, MouseOBDataset, \
     GeneExpressionDataset, PurifiedPBMCDataset, SyntheticDatasetCorr, ZISyntheticDatasetCorr, \
-    PowSimSynthetic, Dataset10X
+    PowSimSynthetic, Dataset10X, LogPoissonDataset
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -303,7 +303,7 @@ def test_sampling_zl(save_path):
 
     cortex_cls = Classifier((cortex_vae.n_latent+1), n_labels=cortex_dataset.n_labels)
     trainer_cortex_cls = ClassifierTrainer(cortex_cls, cortex_dataset,
-                                           sampling_model=cortex_vae, sampling_zl=True)
+                                              sampling_model=cortex_vae, sampling_zl=True)
     trainer_cortex_cls.train(n_epochs=2)
     trainer_cortex_cls.test_set.accuracy()
 
@@ -340,6 +340,20 @@ def test_scvi_mean_var():
     assert vae.px_r_net[-1].weight.shape == (1, 32)
 
 
+def test_full_cov():
+    dataset = CortexDataset()
+    mdl = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches,
+              reconstruction_loss='zinb', n_latent=2, full_cov=True)
+    trainer = UnsupervisedTrainer(model=mdl, gene_dataset=dataset, use_cuda=True, train_size=0.7,
+                                  frequency=1, kl=1,
+                                  early_stopping_kwargs={
+                                      'early_stopping_metric': 'll',
+                                      'save_best_state_metric': 'll',
+                                      'patience': 15, 'threshold': 3})
+    trainer.train(n_epochs=20, lr=1e-3)
+    assert not np.isnan(trainer.history['ll_test_set']).any()
+
+
 def test_powsimr():
     data = PowSimSynthetic()
     assert data.X.shape == (675, 10000)
@@ -360,3 +374,11 @@ def test_new_10x():
     data = Dataset10X('pbmc_1k_v2')
     data.subsample_genes(new_n_genes=100)
     assert data.X.shape[1] == 100
+
+
+def test_logpoisson():
+    dataset = LogPoissonDataset(mu0_path='mu_0_50genes_brainsmall02.npy',
+                                mu1_path='mu_2_50genes_brainsmall02.npy',
+                                sig0_path='sigma_0_50genes_brainsmall02.npy',
+                                sig1_path='sigma_2_50genes_brainsmall02.npy')
+    print(dataset.compute_bayes_factors(n_sim=500000))

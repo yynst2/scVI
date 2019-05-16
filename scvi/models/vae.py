@@ -172,10 +172,11 @@ class VAE(nn.Module):
 
         if n_samples > 1:
             assert not self.z_full_cov
-            qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
-            qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
-            ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
+            # TODO: Check no issues when full cov
+            qz_m = qz_m.unsqueeze(0).expand([n_samples] + list(qz_m.size()))
+            qz_v = qz_v.unsqueeze(0).expand([n_samples] + list(qz_v.size()))
+            ql_m = ql_m.unsqueeze(0).expand([n_samples] + list(ql_m.size()))
+            ql_v = ql_v.unsqueeze(0).expand([n_samples] + list(ql_v.size()))
             z = self.z_encoder.sample(qz_m, qz_v)
             library = self.l_encoder.sample(ql_m, ql_v)
 
@@ -208,8 +209,7 @@ class VAE(nn.Module):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
 
         # KL Divergence
-        mean = torch.zeros_like(qz_m)
-        scale = torch.ones_like(qz_v)
+        mean, scale = self.get_prior_params(device=qz_m.device)
 
         kl_divergence_z = kl(self.z_encoder.distrib(qz_m, qz_v),
                              self.z_encoder.distrib(mean, scale))
@@ -221,6 +221,14 @@ class VAE(nn.Module):
         reconst_loss = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
 
         return reconst_loss + kl_divergence_l, kl_divergence
+
+    def get_prior_params(self, device):
+        mean = torch.zeros((self.n_latent,), device=device)
+        if self.z_full_cov:
+            scale = torch.eye(self.n_latent, device=device)
+        else:
+            scale = torch.ones((self.n_latent,), device=device)
+        return mean, scale
 
 
 class LDVAE(VAE):
@@ -298,10 +306,11 @@ class MeanVarianceVAE(VAE):
 
         if n_samples > 1:
             assert not self.z_full_cov
-            qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
-            qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
-            ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
+            # TODO: Check no issues when full cov
+            qz_m = qz_m.unsqueeze(0).expand([n_samples] + list(qz_m.size()))
+            qz_v = qz_v.unsqueeze(0).expand([n_samples] + list(qz_v.size()))
+            ql_m = ql_m.unsqueeze(0).expand([n_samples] + list(ql_m.size()))
+            ql_v = ql_v.unsqueeze(0).expand([n_samples] + list(ql_v.size()))
             z = self.z_encoder.sample(qz_m, qz_v)
             library = self.l_encoder.sample(ql_m, ql_v)
 
