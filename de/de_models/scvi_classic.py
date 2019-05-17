@@ -7,9 +7,8 @@ import numpy as np
 
 class ScVIClassic(DEModel):
     def __init__(self, dataset, reconstruction_loss, n_latent, full_cov=False,
-                 do_mean_variance=False):
-        super().__init__()
-        self.dataset = dataset
+                 do_mean_variance=False, name=''):
+        super().__init__(dataset=dataset, name=name)
 
         self.reconstruction_loss = reconstruction_loss
         self.n_latent = n_latent
@@ -41,6 +40,8 @@ class ScVIClassic(DEModel):
 
     def train(self, **train_params):
         assert self.is_fully_init
+        if len(train_params) == 0:
+            train_params = {'n_epochs': 150, 'lr': 1e-3}
         self.trainer.train(**train_params)
 
     def predict_de(self, n_samples=10000, M_permutation=100000, n_for_each=10,
@@ -64,4 +65,7 @@ class ScVIClassic(DEModel):
                                                           M_permutation=M_permutation)
 
         de_res.loc[:, 'gamma_bayes1'] = de_res_gamma
+        de_res = de_res.sort_index()
+        self.de_pred = de_res.bayes1.abs()
+        de_res.columns = [self.name+'_'+col for col in de_res.columns]
         return de_res

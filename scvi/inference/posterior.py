@@ -827,8 +827,8 @@ def get_bayes_factors(data, all_labels, cell_idx, other_cell_idx=None, genes_idx
 
             :param k1: Shape of wa
             :param k2: Shape of wb
-            :param theta1: Scale of wb
-            :param theta2: Scale of wa
+            :param theta1: Scale of wa
+            :param theta2: Scale of wb
             :return:
             """
             a = k2
