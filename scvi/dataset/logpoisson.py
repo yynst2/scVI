@@ -38,20 +38,23 @@ class LogPoissonDataset(GeneExpressionDataset):
             *GeneExpressionDataset.get_attributes_from_list(gene_expressions, list_labels=labels),
             gene_names=gene_names)
 
-    def compute_bayes_factors(self, n_sim=10000):
+    def compute_bayes_factors(self, n_sim=10000, on='z'):
         """
         Computed numerically to gain some time
         :return:
         """
         # TODO: Derive exact value
+        assert on in ['z', 'exp_z']
         res = torch.zeros(self.nb_genes, dtype=torch.int)
         for _ in tqdm(range(n_sim)):
             obs0 = self.dist0.sample()
             obs1 = self.dist1.sample()
+            if on == 'exp_z':
+                obs0 = obs0.exp()
+                obs1 = obs1.exp()
             hypothesis = (obs0 >= obs1).int()
             res += hypothesis
         p_h0 = res.double() / n_sim
-        ratio = p_h0 / (1.0 - p_h0)
         res = np.log(p_h0+1e-8) - np.log(1.00 - p_h0 + 1e-8)
         return pd.Series(data=res, index=self.gene_names)
 
