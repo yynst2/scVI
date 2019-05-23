@@ -132,6 +132,25 @@ class VAE(nn.Module):
         """
         return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[0]
 
+    def get_log_ratio(self, x, batch_index=None, y=None, n_samples=1):
+        r"""Returns the tensor of log_pz + log_px_z - log_qz_x
+
+        :param x: tensor of values with shape ``(batch_size, n_input)``
+        :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
+        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
+        :param n_samples: number of samples
+        :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
+        :rtype: :py:class:`torch.Tensor`
+        """
+        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
+            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+
+        log_px_z = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+
+        return log_pz + log_px_z - log_qz_x
+
     def get_sample_rate(self, x, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of means of the negative binomial distribution
 
