@@ -43,9 +43,10 @@ class LogPoissonDataset(GeneExpressionDataset):
 
         z[zero_mask, :] = self.dist0.sample((zero_mask.sum(),))
         z[one_mask, :] = self.dist1.sample((one_mask.sum(),))
-
+        print(z.min(), z.max())
+        rate = torch.clamp(z.exp(), max=1e5)
         gene_expressions = np.expand_dims(
-            distributions.Poisson(rate=z.exp()).sample(), axis=0
+            distributions.Poisson(rate=rate).sample(), axis=0
         )
         labels = np.expand_dims(cell_type, axis=0)
         gene_names = np.arange(n_genes).astype(str)
