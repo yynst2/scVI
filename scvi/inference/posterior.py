@@ -385,19 +385,23 @@ class Posterior:
             batchid2 = np.arange(self.gene_dataset.n_batches)
 
         if sample_gamma:
-            px_scale1, log_probas1 = self.sample_poisson_from_batch(selection=idx1, batchid=batchid1,
-                                                       n_samples=n_samples)
-            px_scale2, log_probas2 = self.sample_poisson_from_batch(selection=idx2, batchid=batchid2,
-                                                       n_samples=n_samples)
+            px_scale1, log_probas1 = self.sample_poisson_from_batch(selection=idx1,
+                                                                    batchid=batchid1,
+                                                                    n_samples=n_samples)
+            px_scale2, log_probas2 = self.sample_poisson_from_batch(selection=idx2,
+                                                                    batchid=batchid2,
+                                                                    n_samples=n_samples)
         else:
             px_scale1, log_probas1 = self.sample_scale_from_batch(selection=idx1, batchid=batchid1,
-                                                     n_samples=n_samples)
+                                                                  n_samples=n_samples)
             px_scale2, log_probas2 = self.sample_scale_from_batch(selection=idx2, batchid=batchid2,
-                                                     n_samples=n_samples)
+                                                                  n_samples=n_samples)
         px_scale_mean1 = px_scale1.mean(axis=0)
         px_scale_mean2 = px_scale2.mean(axis=0)
         px_scale = np.concatenate((px_scale1, px_scale2), axis=0)
         log_probas = np.concatenate((log_probas1, log_probas2), axis=0)
+        # print('px_scales1 shapes', px_scale1.shape)
+        # print('px_scales2 shapes', px_scale2.shape)
         all_labels = np.concatenate((np.repeat(0, len(px_scale1)), np.repeat(1, len(px_scale2))),
                                     axis=0)
         if genes is not None:
@@ -934,7 +938,7 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
     :param permutation: Whether or not to permute.
     :return:
     """
-    assert importance_sampling == (log_ratios is not None)
+    # assert importance_sampling == (log_ratios is not None)
 
     idx = (all_labels == cell_idx)
     idx_other = (all_labels == other_cell_idx) if other_cell_idx is not None else (
@@ -957,6 +961,7 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
     list_2 = list(sample_rate_a.shape[0] + np.arange(sample_rate_b.shape[0]))
 
     if importance_sampling:
+        print('Importance Sampling')
         # weight_a = log_ratios[:, idx]
         # weight_b = log_ratios[:, idx_other]
         print(log_ratios.shape)
@@ -964,8 +969,8 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
         weight_b = log_ratios[idx_other]
 
         # second let's normalize the weights
-        weight_a = softmax(weight_a, axis=0)
-        weight_b = softmax(weight_b, axis=0)
+        weight_a = softmax(weight_a)
+        weight_b = softmax(weight_b)
         # reshape and aggregate dataset
         weight_a = weight_a.flatten()
         weight_b = weight_b.flatten()
@@ -974,6 +979,7 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
         probas_a = weight_a / np.sum(idx)
         probas_b = weight_b / np.sum(idx_other)
 
+        print('IS A MAX', probas_a.max(), 'IS B MAX', probas_b.max())
         u, v = get_sampling_pair_idx(list_1, list_2, do_sample=sample_pairs,
                                      permutation=permutation, M_permutation=M_permutation,
                                      probas_a=probas_a, probas_b=probas_b)
@@ -983,6 +989,9 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
         second_samples = samples[v]
         first_weights = weights[u]
         second_weights = weights[v]
+
+        # print('u v shapes', u.shape, v.shape)
+
         to_sum = first_weights[:, np.newaxis] * second_weights[:, np.newaxis] * (
                 first_samples >= second_samples)
         incomplete_weights = first_weights * second_weights
