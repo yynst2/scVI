@@ -5,6 +5,13 @@ import torch
 import pandas as pd
 from torch import distributions
 from .dataset import GeneExpressionDataset
+from pyro.infer import config_enumerate
+from pyro.infer.mcmc import NUTS, MCMC, HMC
+import matplotlib.pyplot as plt
+
+import pyro
+
+dist = pyro.distributions
 
 
 class LogPoissonDataset(GeneExpressionDataset):
@@ -16,24 +23,35 @@ class LogPoissonDataset(GeneExpressionDataset):
         mu1_path="mu_2.npy",
         sig0_path="sigma_0.npy",
         sig1_path="sigma_2.npy",
+        seed=42,
+        n_genes=None,
     ):
+        torch.manual_seed(seed)
+        assert len(pi) == 1
+        self.probas = torch.tensor([1.0 - pi[0], pi[0]])
+        self.logprobas = np.log(self.probas)
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        mu_0 = self.load_array(os.path.join(current_dir, mu0_path))
-        mu_1 = self.load_array(os.path.join(current_dir, mu1_path))
-        sigma_0 = self.load_array(os.path.join(current_dir, sig0_path))
-        sigma_1 = self.load_array(os.path.join(current_dir, sig1_path))
-        d1, d2 = sigma_1.shape
+        self.mu_0 = self.load_array(os.path.join(current_dir, mu0_path), n_genes)
+        self.mu_1 = self.load_array(os.path.join(current_dir, mu1_path), n_genes)
+        self.sigma_0 = self.load_array(os.path.join(current_dir, sig0_path), n_genes)
+        self.sigma_1 = self.load_array(os.path.join(current_dir, sig1_path), n_genes)
+
+        d1, d2 = self.sigma_1.shape
         assert d1 == d2
-        sigma_0 = sigma_0 + 2e-6 * torch.eye(d2, d2, dtype=sigma_0.dtype)
-        sigma_1 = sigma_1 + 2e-6 * torch.eye(d2, d2, dtype=sigma_1.dtype)
-        n_genes = len(mu_0)
+        self.sigma_0 = self.sigma_0 + 2e-6 * torch.eye(d2, d2, dtype=self.sigma_0.dtype)
+        self.sigma_1 = self.sigma_1 + 2e-6 * torch.eye(d2, d2, dtype=self.sigma_1.dtype)
+        n_genes = len(self.mu_0)
+
+        self.mus = torch.stack([self.mu_0, self.mu_1]).float()
+        self.sigmas = torch.stack([self.sigma_0, self.sigma_1]).float()
 
         self.dist0 = distributions.MultivariateNormal(
-            loc=mu_0, covariance_matrix=sigma_0
+            loc=self.mu_0, covariance_matrix=self.sigma_0
         )
         self.dist1 = distributions.MultivariateNormal(
-            loc=mu_1, covariance_matrix=sigma_1
+            loc=self.mu_1, covariance_matrix=self.sigma_1
         )
+        self.dist_x = distributions.Poisson
 
         cell_type = distributions.Bernoulli(probs=torch.tensor(pi)).sample((n_cells,))
         zero_mask = (cell_type == 0).squeeze()
@@ -80,6 +98,96 @@ class LogPoissonDataset(GeneExpressionDataset):
         res = np.log(p_h0 + 1e-8) - np.log(1.00 - p_h0 + 1e-8)
         return pd.Series(data=res, index=self.gene_names)
 
+    def logproba_z_fn(self, x):
+        def logproba_z(z):
+            if type(z) != torch.Tensor:
+                z = torch.tensor(z, requires_grad=True)
+            if z.grad is not None:
+                z.grad.zero_()
+            exp_z = z.exp()
+            p_x_z = self.dist_x(rate=exp_z).log_prob(x)
+            assert p_x_z.shape == x.shape
+            p_x_z = p_x_z.sum()
+            p_z_0 = self.logprobas[0] + self.dist0.log_prob(z)
+            p_z_1 = self.logprobas[1] + self.dist1.log_prob(z)
+            p_z = torch.tensor([p_z_0, p_z_1])
+            p_z = torch.logsumexp(p_z, dim=0)
+            res = p_x_z + p_z
+            res.backward()
+            grad = z.grad
+            # print(grad)
+            return res.item(), grad.numpy()
+        return logproba_z
+
+    @config_enumerate(default="sequential")
+    def pyro_mdl(self, data: torch.Tensor):
+        with pyro.plate("data", len(data)):
+            cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
+            z = pyro.sample(
+                "z",
+                dist.MultivariateNormal(
+                    self.mus[cell_type], covariance_matrix=self.sigmas[cell_type]
+                ),
+            )
+            exp_z = z.exp()
+            pyro.sample("x", dist.Poisson(rate=exp_z).to_event(1), obs=data)
+
+    def compute_posteriors(self, x_obs: torch.Tensor):
+        kernel = NUTS(
+            self.pyro_mdl, adapt_step_size=True, max_plate_nesting=1, jit_compile=True
+        )
+        mcmc_run = MCMC(kernel, num_samples=1000, warmup_steps=1000).run(data=x_obs)
+        marginals = mcmc_run.marginal(sites=["z", "cell_type"])
+        marginals_supp = marginals.support()
+        z_x, pi_x = marginals_supp["z"], marginals_supp["cell_type"]
+        return z_x, pi_x, marginals
+
+    def local_bayes(self, x_a: torch.Tensor, x_b: torch.Tensor, save_dir: str = None):
+        z_a, pi_a, marginals_a = self.compute_posteriors(x_a)
+        z_b, pi_b, marginals_b = self.compute_posteriors(x_b)
+
+        if save_dir is not None:
+            np.save(os.path.join(save_dir, "xa.npy"), x_a.numpy())
+            np.save(os.path.join(save_dir, "xb.npy"), x_b.numpy())
+            np.save(os.path.join(save_dir, "z_a.npy"), z_a.numpy())
+            np.save(os.path.join(save_dir, "z_b.npy"), z_b.numpy())
+            np.save(os.path.join(save_dir, "pi_a.npy"), pi_a.numpy())
+            np.save(os.path.join(save_dir, "pi_b.npy"), pi_b.numpy())
+
+            mcmc_stats_a = marginals_a.diagnostics()
+            mcmc_stats_b = marginals_b.diagnostics()
+
+            try:
+                self.save_figs(
+                    mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png")
+                )
+                self.save_figs(
+                    mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
+                )
+            except ValueError:
+                raise Warning(
+                    "Invalid values encountered in MCMC diagnostic."
+                    "Please rerun experiment"
+                )
+
     @staticmethod
-    def load_array(path):
-        return torch.tensor(np.load(path))
+    def save_figs(stats, savepath):
+        fig, axes = plt.subplots(ncols=2, figsize=(10, 6))
+        plt.sca(axes[0])
+        plt.title("R Hat")
+        plt.hist(stats["z"]["r_hat"].view(-1), bins=20)
+        plt.sca(axes[1])
+        plt.title("N effective")
+        plt.hist(stats["z"]["n_eff"].view(-1), bins=20)
+        plt.savefig(savepath)
+        plt.close()
+
+    @staticmethod
+    def load_array(path, n_genes=None):
+        arr = torch.tensor(np.load(path))
+        if n_genes is not None:
+            if arr.dim() == 1:
+                arr = arr[:n_genes]
+            else:
+                arr = arr[:n_genes, :n_genes]
+        return arr
