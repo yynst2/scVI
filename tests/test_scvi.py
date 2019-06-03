@@ -377,8 +377,13 @@ def test_new_10x():
 
 
 def test_logpoisson():
-    dataset = LogPoissonDataset(mu0_path='mu_0_50genes_brainsmall02.npy',
-                                mu1_path='mu_2_50genes_brainsmall02.npy',
-                                sig0_path='sigma_0_50genes_brainsmall02.npy',
-                                sig1_path='sigma_2_50genes_brainsmall02.npy')
-    print(dataset.compute_bayes_factors(n_sim=500000))
+    mu_skeletton = 'mu_{}_200genes_pbmc_diag.npy'
+    sgm_skeletton = 'sigma_{}full_200genes_pbmc_diag.npy'
+    dataset = LogPoissonDataset(
+        mu0_path=mu_skeletton.format(0),
+        mu1_path=mu_skeletton.format(1),
+        sig0_path=sgm_skeletton.format(0),
+        sig1_path=sgm_skeletton.format(1),
+        pi=[0.5], n_cells=20000
+    )
+    print(dataset.compute_bayes_factors(n_sim=30))

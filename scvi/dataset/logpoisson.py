@@ -1,15 +1,16 @@
 import os
-from tqdm import tqdm
-import numpy as np
-import torch
-import pandas as pd
-from torch import distributions
-from .dataset import GeneExpressionDataset
-from pyro.infer import config_enumerate
-from pyro.infer.mcmc import NUTS, MCMC, HMC
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import pyro
+import torch
+from pyro.infer import config_enumerate
+from pyro.infer.mcmc import NUTS, MCMC
+from torch import distributions
+from tqdm import tqdm
+
+from .dataset import GeneExpressionDataset
 
 dist = pyro.distributions
 
@@ -25,6 +26,7 @@ class LogPoissonDataset(GeneExpressionDataset):
         sig1_path="sigma_2.npy",
         seed=42,
         n_genes=None,
+        change_means=False
     ):
         torch.manual_seed(seed)
         assert len(pi) == 1
@@ -33,6 +35,12 @@ class LogPoissonDataset(GeneExpressionDataset):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         self.mu_0 = self.load_array(os.path.join(current_dir, mu0_path), n_genes)
         self.mu_1 = self.load_array(os.path.join(current_dir, mu1_path), n_genes)
+
+        n_genes = len(self.mu_0)
+        if change_means:
+            self.mu_0[:n_genes//4] = self.mu_0[:n_genes//4] / 1.5
+            self.mu_0[n_genes//4:n_genes//2] = self.mu_0[n_genes//4:n_genes//2] / 0.5
+
         self.sigma_0 = self.load_array(os.path.join(current_dir, sig0_path), n_genes)
         self.sigma_1 = self.load_array(os.path.join(current_dir, sig1_path), n_genes)
 
@@ -40,7 +48,6 @@ class LogPoissonDataset(GeneExpressionDataset):
         assert d1 == d2
         self.sigma_0 = self.sigma_0 + 2e-6 * torch.eye(d2, d2, dtype=self.sigma_0.dtype)
         self.sigma_1 = self.sigma_1 + 2e-6 * torch.eye(d2, d2, dtype=self.sigma_1.dtype)
-        n_genes = len(self.mu_0)
 
         self.mus = torch.stack([self.mu_0, self.mu_1]).float()
         self.sigmas = torch.stack([self.sigma_0, self.sigma_1]).float()
@@ -55,12 +62,11 @@ class LogPoissonDataset(GeneExpressionDataset):
 
         cell_type = distributions.Bernoulli(probs=torch.tensor(pi)).sample((n_cells,))
         zero_mask = (cell_type == 0).squeeze()
-        one_mask = (cell_type == 1).squeeze()
+        one_mask = ~zero_mask  # (cell_type == 1).squeeze()
 
         z = torch.zeros((n_cells, n_genes)).double()
-
-        z[zero_mask, :] = self.dist0.sample((zero_mask.sum(),))
-        z[one_mask, :] = self.dist1.sample((one_mask.sum(),))
+        z[zero_mask] = self.dist0.sample((zero_mask.sum(),))
+        z[one_mask] = self.dist1.sample((one_mask.sum(),))
         print(z.min(), z.max())
         rate = torch.clamp(z.exp(), max=1e5)
         gene_expressions = np.expand_dims(
@@ -69,8 +75,8 @@ class LogPoissonDataset(GeneExpressionDataset):
         labels = np.expand_dims(cell_type, axis=0)
         gene_names = np.arange(n_genes).astype(str)
 
-        print(gene_expressions.shape)
-        print(gene_expressions.min(), gene_expressions.max())
+        print("Dataset shape: ", gene_expressions.shape)
+        print("Gene expressions bounds: ", gene_expressions.min(), gene_expressions.max())
         super().__init__(
             *GeneExpressionDataset.get_attributes_from_list(
                 gene_expressions, list_labels=labels
@@ -136,7 +142,7 @@ class LogPoissonDataset(GeneExpressionDataset):
         kernel = NUTS(
             self.pyro_mdl, adapt_step_size=True, max_plate_nesting=1, jit_compile=True
         )
-        mcmc_run = MCMC(kernel, num_samples=1000, warmup_steps=1000).run(data=x_obs)
+        mcmc_run = MCMC(kernel, num_samples=1000, warmup_steps=1000, num_chains=4).run(data=x_obs)
         marginals = mcmc_run.marginal(sites=["z", "cell_type"])
         marginals_supp = marginals.support()
         z_x, pi_x = marginals_supp["z"], marginals_supp["cell_type"]
