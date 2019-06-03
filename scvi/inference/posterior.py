@@ -976,8 +976,12 @@ def get_bayes_factors(px_scale, all_labels, cell_idx, other_cell_idx=None, genes
         weight_b = weight_b.flatten()
         weights = np.concatenate((weight_a, weight_b))
 
-        probas_a = weight_a / np.sum(idx)
-        probas_b = weight_b / np.sum(idx_other)
+        # probas_a = weight_a / np.sum(idx)
+        # probas_b = weight_b / np.sum(idx_other)
+        probas_a = weight_a
+        probas_b = weight_b
+
+
 
         print('IS A MAX', probas_a.max(), 'IS B MAX', probas_b.max())
         u, v = get_sampling_pair_idx(list_1, list_2, do_sample=sample_pairs,
