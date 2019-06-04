@@ -304,3 +304,57 @@ class Decoder(nn.Module):
         p_m = self.mean_decoder(p)
         p_v = torch.exp(self.var_decoder(p))
         return p_m, p_v
+
+
+# Decoder
+class DecoderPoisson(nn.Module):
+    r"""Decodes data from latent space of ``n_input`` dimensions ``n_output``
+    dimensions using a fully-connected neural network of ``n_hidden`` layers.
+
+    :param n_input: The dimensionality of the input (latent space)
+    :param n_output: The dimensionality of the output (data space)
+    :param n_cat_list: A list containing the number of categories
+                       for each category of interest. Each category will be
+                       included using a one-hot encoding
+    :param n_layers: The number of fully-connected hidden layers
+    :param n_hidden: The number of nodes per hidden layer
+    :param dropout_rate: Dropout rate to apply to each of the hidden layers
+    """
+
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+    ):
+        super().__init__()
+        self.rate_decoder = FCLayers(
+            n_in=n_input,
+            n_out=n_output,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=5e-2,
+        )
+
+    def forward(self, z: torch.Tensor, library: torch.Tensor, *cat_list: int):
+        r"""The forward computation for a single sample.
+
+         #. Decodes the data from the latent space using the decoder network
+         #. Returns parameters for the ZINB distribution of expression
+         #. If ``dispersion != 'gene-cell'`` then value for that param will be ``None``
+
+        :param z: tensor with shape ``(n_input,)``
+        :param library: library size
+        :param cat_list: list of category membership(s) for this sample
+        :return: parameters for the ZINB distribution of expression
+        :rtype: 4-tuple of :py:class:`torch.Tensor`
+        """
+
+        # The decoder returns values for the parameters of the ZINB distribution
+        rate = self.rate_decoder(z, *cat_list)
+        px_rate = torch.exp(library) * rate  # torch.clamp( , max=12)
+        px_rate = 1e-6 + torch.clamp(px_rate, max=1e5)
+        return px_rate

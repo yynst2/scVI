@@ -1,6 +1,6 @@
 from .classifier import Classifier
 from .scanvi import SCANVI
-from .vae import VAE, LDVAE, MeanVarianceVAE
+from .vae import VAE, LDVAE, MeanVarianceVAE, LogNormalPoissonVAE
 from .vae_fish import VAEF
 from .vaec import VAEC
 
@@ -10,5 +10,6 @@ __all__ = ['SCANVI',
            'LDVAE',
            'VAEF',
            'Classifier',
-           'MeanVarianceVAE'
+           'MeanVarianceVAE',
+           'LogNormalPoissonVAE'
            ]

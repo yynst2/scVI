@@ -15,7 +15,7 @@ from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainS
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
-from scvi.models import VAE, SCANVI, VAEC, MeanVarianceVAE
+from scvi.models import VAE, SCANVI, VAEC, MeanVarianceVAE, LogNormalPoissonVAE
 from scvi.models.classifier import Classifier
 import anndata
 import os.path
@@ -384,6 +384,19 @@ def test_logpoisson():
         mu1_path=mu_skeletton.format(1),
         sig0_path=sgm_skeletton.format(0),
         sig1_path=sgm_skeletton.format(1),
-        pi=[0.5], n_cells=20000
+        pi=[0.5], n_cells=50
     )
-    print(dataset.compute_bayes_factors(n_sim=30))
+    # res = dataset.compute_bayes_factors(n_sim=30)
+
+    VAE = LogNormalPoissonVAE(dataset.nb_genes, dataset.n_batches)
+    trainer = UnsupervisedTrainer(model=VAE, gene_dataset=dataset, use_cuda=True, train_size=0.7,
+                                  frequency=1, kl=1,
+                                  early_stopping_kwargs={
+                                      'early_stopping_metric': 'll',
+                                      'save_best_state_metric': 'll',
+                                      'patience': 15, 'threshold': 3})
+    trainer.train(n_epochs=5, lr=1e-3)
+
+    train = trainer.train_set.sequential()
+    zs, _, _ = train.get_latent()
+    print(zs)
