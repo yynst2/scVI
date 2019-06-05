@@ -493,9 +493,8 @@ class LogNormalPoissonVAE(nn.Module):
         # log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
         #
         # return log_pz + log_px_z - log_qz_x
-
     @staticmethod
-    def reconstruction_loss(x, rate):
+    def _reconstruction_loss(x, rate):
         rl = - torch.distributions.Poisson(rate).log_prob(x)
         assert rl.dim() == 2
         return rl.sum()
@@ -563,7 +562,7 @@ class LogNormalPoissonVAE(nn.Module):
         ).sum(dim=1)
         kl_divergence = kl_divergence_z
 
-        reconst_loss = self.reconstruction_loss(x, px_rate)
+        reconst_loss = self._reconstruction_loss(x, px_rate)
 
         return reconst_loss + kl_divergence_l, kl_divergence
 
