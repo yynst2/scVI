@@ -138,19 +138,47 @@ class LogPoissonDataset(GeneExpressionDataset):
             exp_z = z.exp()
             pyro.sample("x", dist.Poisson(rate=exp_z).to_event(1), obs=data)
 
-    def compute_posteriors(self, x_obs: torch.Tensor):
+    def compute_posteriors(self, x_obs: torch.Tensor, mcmc_kwargs: dict = None):
+        """
+
+        :param x_obs:
+        :param mcmc_kwargs: By default:
+        {num_samples=1000, warmup_steps=1000, num_chains=4)
+        :return:
+        """
+        if mcmc_kwargs is None:
+            mcmc_kwargs = {
+                'num_samples': 1000,
+                'warmup_steps': 1000,
+                'num_chains': 4,
+            }
         kernel = NUTS(
             self.pyro_mdl, adapt_step_size=True, max_plate_nesting=1, jit_compile=True
         )
-        mcmc_run = MCMC(kernel, num_samples=1000, warmup_steps=1000, num_chains=4).run(data=x_obs)
+        mcmc_run = MCMC(kernel, **mcmc_kwargs).run(data=x_obs)
         marginals = mcmc_run.marginal(sites=["z", "cell_type"])
         marginals_supp = marginals.support()
         z_x, pi_x = marginals_supp["z"], marginals_supp["cell_type"]
         return z_x, pi_x, marginals
 
-    def local_bayes(self, x_a: torch.Tensor, x_b: torch.Tensor, save_dir: str = None):
-        z_a, pi_a, marginals_a = self.compute_posteriors(x_a)
-        z_b, pi_b, marginals_b = self.compute_posteriors(x_b)
+    def local_bayes(
+        self,
+        x_a: torch.Tensor,
+        x_b: torch.Tensor,
+        save_dir: str = None,
+        mcmc_kwargs: dict = None
+    ):
+        """
+
+        :param x_a:
+        :param x_b:
+        :param save_dir:
+        :param mcmc_kwargs: By default:
+        {num_samples=1000, warmup_steps=1000, num_chains=4)
+        :return:
+        """
+        z_a, pi_a, marginals_a = self.compute_posteriors(x_a, mcmc_kwargs=mcmc_kwargs)
+        z_b, pi_b, marginals_b = self.compute_posteriors(x_b, mcmc_kwargs=mcmc_kwargs)
 
         if save_dir is not None:
             np.save(os.path.join(save_dir, "xa.npy"), x_a.numpy())
@@ -170,6 +198,12 @@ class LogPoissonDataset(GeneExpressionDataset):
                 self.save_figs(
                     mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
                 )
+
+                n_eff_a = mcmc_stats_a['z']['n_eff']
+                n_eff_b = mcmc_stats_b['z']['n_eff']
+                np.save(os.path.join(save_dir, "n_eff_a.npy"), n_eff_a.numpy())
+                np.save(os.path.join(save_dir, "n_eff_b.npy"), n_eff_b.numpy())
+
             except ValueError:
                 raise Warning(
                     "Invalid values encountered in MCMC diagnostic."
