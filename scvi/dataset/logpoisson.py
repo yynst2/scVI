@@ -26,7 +26,8 @@ class LogPoissonDataset(GeneExpressionDataset):
         sig1_path="sigma_2.npy",
         seed=42,
         n_genes=None,
-        change_means=False
+        change_means=False,
+        cuda_mcmc=False,
     ):
         torch.manual_seed(seed)
         assert len(pi) == 1
@@ -38,8 +39,10 @@ class LogPoissonDataset(GeneExpressionDataset):
 
         n_genes = len(self.mu_0)
         if change_means:
-            self.mu_0[:n_genes//4] = self.mu_0[:n_genes//4] / 1.5
-            self.mu_0[n_genes//4:n_genes//2] = self.mu_0[n_genes//4:n_genes//2] / 0.5
+            self.mu_0[: n_genes // 4] = self.mu_0[: n_genes // 4] / 1.5
+            self.mu_0[n_genes // 4 : n_genes // 2] = (
+                self.mu_0[n_genes // 4 : n_genes // 2] / 0.5
+            )
 
         self.sigma_0 = self.load_array(os.path.join(current_dir, sig0_path), n_genes)
         self.sigma_1 = self.load_array(os.path.join(current_dir, sig1_path), n_genes)
@@ -51,7 +54,11 @@ class LogPoissonDataset(GeneExpressionDataset):
 
         self.mus = torch.stack([self.mu_0, self.mu_1]).float()
         self.sigmas = torch.stack([self.sigma_0, self.sigma_1]).float()
-
+        if cuda_mcmc:
+            self.mus.cuda()
+            self.sigmas.cuda()
+            self.probas.cuda()
+            self.logprobas.cuda()
         self.dist0 = distributions.MultivariateNormal(
             loc=self.mu_0, covariance_matrix=self.sigma_0
         )
@@ -76,7 +83,9 @@ class LogPoissonDataset(GeneExpressionDataset):
         gene_names = np.arange(n_genes).astype(str)
 
         print("Dataset shape: ", gene_expressions.shape)
-        print("Gene expressions bounds: ", gene_expressions.min(), gene_expressions.max())
+        print(
+            "Gene expressions bounds: ", gene_expressions.min(), gene_expressions.max()
+        )
         super().__init__(
             *GeneExpressionDataset.get_attributes_from_list(
                 gene_expressions, list_labels=labels
@@ -123,6 +132,7 @@ class LogPoissonDataset(GeneExpressionDataset):
             grad = z.grad
             # print(grad)
             return res.item(), grad.numpy()
+
         return logproba_z
 
     @config_enumerate(default="sequential")
@@ -147,13 +157,13 @@ class LogPoissonDataset(GeneExpressionDataset):
         :return:
         """
         if mcmc_kwargs is None:
-            mcmc_kwargs = {
-                'num_samples': 1000,
-                'warmup_steps': 1000,
-                'num_chains': 4,
-            }
+            mcmc_kwargs = {"num_samples": 1000, "warmup_steps": 1000, "num_chains": 4}
         kernel = NUTS(
-            self.pyro_mdl, adapt_step_size=True, max_plate_nesting=1, jit_compile=True
+            self.pyro_mdl,
+            adapt_step_size=True,
+            max_plate_nesting=1,
+            jit_compile=True,
+            target_accept_prob=0.6,
         )
         mcmc_run = MCMC(kernel, **mcmc_kwargs).run(data=x_obs)
         marginals = mcmc_run.marginal(sites=["z", "cell_type"])
@@ -166,7 +176,7 @@ class LogPoissonDataset(GeneExpressionDataset):
         x_a: torch.Tensor,
         x_b: torch.Tensor,
         save_dir: str = None,
-        mcmc_kwargs: dict = None
+        mcmc_kwargs: dict = None,
     ):
         """
 
@@ -199,8 +209,8 @@ class LogPoissonDataset(GeneExpressionDataset):
                     mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
                 )
 
-                n_eff_a = mcmc_stats_a['z']['n_eff']
-                n_eff_b = mcmc_stats_b['z']['n_eff']
+                n_eff_a = mcmc_stats_a["z"]["n_eff"]
+                n_eff_b = mcmc_stats_b["z"]["n_eff"]
                 np.save(os.path.join(save_dir, "n_eff_a.npy"), n_eff_a.numpy())
                 np.save(os.path.join(save_dir, "n_eff_b.npy"), n_eff_b.numpy())
 
