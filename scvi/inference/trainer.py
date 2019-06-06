@@ -38,7 +38,7 @@ class Trainer:
 
     def __init__(self, model, gene_dataset, use_cuda=True, metrics_to_monitor=None, benchmark=False,
                  verbose=False, frequency=None, weight_decay=1e-6, early_stopping_kwargs=dict(),
-                 data_loader_kwargs=dict(), show_progbar=True):
+                 data_loader_kwargs=dict(), show_progbar=True, optimizer_class=torch.optim.Adam):
 
         self.model = model
         self.gene_dataset = gene_dataset
@@ -76,6 +76,8 @@ class Trainer:
 
         self.show_progbar = show_progbar
 
+        self.optimizer_class = optimizer_class
+
     @torch.no_grad()
     def compute_metrics(self):
         begin = time.time()
@@ -104,7 +106,7 @@ class Trainer:
         if params is None:
             params = filter(lambda p: p.requires_grad, self.model.parameters())
 
-        optimizer = self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
+        optimizer = self.optimizer = self.optimizer_class(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
