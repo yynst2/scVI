@@ -474,28 +474,7 @@ class LogNormalPoissonVAE(nn.Module):
         """
         # TODO: Implement
         raise NotImplementedError
-        # (
-        #     px_scale,
-        #     px_r,
-        #     px_rate,
-        #     px_dropout,
-        #     qz_m,
-        #     qz_v,
-        #     z,
-        #     ql_m,
-        #     ql_v,
-        #     library,
-        # ) = self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
 
-        # log_px_z = self._reconstruction_loss(x, z)
-        # log_pz = (
-        #     Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v))
-        #     .log_prob(z)
-        #     .sum(dim=-1)
-        # )
-        # log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-        #
-        # return log_pz + log_px_z - log_qz_x
     @staticmethod
     def _reconstruction_loss(x, rate):
         rl = - torch.distributions.Poisson(rate).log_prob(x)
@@ -504,13 +483,6 @@ class LogNormalPoissonVAE(nn.Module):
 
     def scale_from_z(self, sample_batch, fixed_batch):
         raise NotImplementedError
-        # if self.log_variational:
-        #     sample_batch = torch.log(1 + sample_batch)
-        # qz_m, qz_v, z = self.z_encoder(sample_batch)
-        # batch_index = fixed_batch * torch.ones_like(sample_batch[:, [0]])
-        # library = 4.0 * torch.ones_like(sample_batch[:, [0]])
-        # px_scale, _, _, _ = self.decoder("gene", z, library, batch_index)
-        # return px_scale
 
     def inference(self, x, batch_index=None, y=None, n_samples=1):
         x_ = x
@@ -565,13 +537,7 @@ class LogNormalPoissonVAE(nn.Module):
             Normal(local_l_mean, torch.sqrt(local_l_var)),
         ).sum(dim=1)
         kl_divergence = kl_divergence_z
-
-        try:
-            reconst_loss = self._reconstruction_loss(x, px_rate)
-        except:
-            print(x, px_rate, qz_m, qz_v)
-            raise
-
+        reconst_loss = self._reconstruction_loss(x, px_rate)
         return reconst_loss + kl_divergence_l, kl_divergence
 
     def get_prior_params(self, device):
