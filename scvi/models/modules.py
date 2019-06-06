@@ -97,16 +97,21 @@ class Encoder(nn.Module):
 
     def __init__(self, n_input: int, n_output: int,
                  n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128, dropout_rate: float = 0.1, full_cov=False):
+                 n_hidden: int = 128, dropout_rate: float = 0.1, full_cov=False,
+                 autoregressive=False):
         super().__init__()
-
+        assert not (full_cov and autoregressive)
         self.encoder = FCLayers(n_in=n_input, n_out=n_hidden, n_cat_list=n_cat_list, n_layers=n_layers,
                                 n_hidden=n_hidden, dropout_rate=dropout_rate)
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.full_cov = full_cov
+        self.autoregressive = autoregressive
         self.n_output = n_output
         if full_cov:
             self.var_encoder = nn.Linear(n_hidden, int((n_output*(n_output+1))/2))
+        elif autoregressive:
+            self.var_encoder = nn.Linear(n_hidden, n_output)
+            self.ltria = nn.Linear(n_hidden, int((n_output*(n_output-1))/2))
         else:
             self.var_encoder = nn.Linear(n_hidden, n_output)
 
@@ -117,7 +122,7 @@ class Encoder(nn.Module):
         return self.distrib(mu, var).sample(sample_size)
 
     def distrib(self, mu, var):
-        if self.full_cov:
+        if self.full_cov or self.autoregressive:
             return MultivariateNormal(loc=mu, covariance_matrix=var)
         else:
             return Normal(mu, var.sqrt())
@@ -139,6 +144,18 @@ class Encoder(nn.Module):
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
         q_v = self.get_cov(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
+        if self.autoregressive:
+            l_vals = self.ltria(q)
+            n_batch = q.size(0)
+            l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=q.device)
+            indices = self.tril_indices(self.n_output, self.n_output, offset=-1)
+            rg = torch.arange(self.n_output, device=x.device)
+            l_mat[:, indices[:, 0], indices[:, 1]] = l_vals
+            l_mat[:, rg, rg] = 1.0
+            q_m = torch.bmm(l_mat, q_m.view(n_batch, self.n_output, 1)).squeeze()
+            last_term = q_v.view((n_batch, self.n_output, 1)) * l_mat.transpose(-1, -2)
+            q_v = torch.bmm(l_mat, last_term)
+
         latent = self.reparameterize(q_m, q_v)
         return q_m, q_v, latent
 
@@ -149,7 +166,8 @@ class Encoder(nn.Module):
             lower_idx = self.tril_indices(self.n_output, self.n_output)
             l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = x
             rg = torch.arange(self.n_output, device=x.device)
-            l_mat[:, rg, rg] = l_mat[:, rg, rg].exp()
+            l_mat[:, rg, rg] = 1e-4 + torch.nn.Softplus()(l_mat[:, rg, rg])
+
             res = torch.matmul(l_mat, l_mat.transpose(-1, -2))
             return res
         else:
