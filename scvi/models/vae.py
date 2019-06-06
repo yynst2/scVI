@@ -379,6 +379,7 @@ class LogNormalPoissonVAE(nn.Module):
         dropout_rate: float = 0.1,
         log_variational: bool = True,
         full_cov=False,
+        autoregressive=False
     ):
         super().__init__()
         self.n_latent = n_latent
@@ -391,6 +392,7 @@ class LogNormalPoissonVAE(nn.Module):
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_full_cov = full_cov
+        self.z_autoregressive = autoregressive
         self.z_encoder = Encoder(
             n_input,
             n_latent,
@@ -398,6 +400,7 @@ class LogNormalPoissonVAE(nn.Module):
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
             full_cov=full_cov,
+            autoregressive=autoregressive
         )
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(
@@ -497,7 +500,7 @@ class LogNormalPoissonVAE(nn.Module):
     def _reconstruction_loss(x, rate):
         rl = - torch.distributions.Poisson(rate).log_prob(x)
         assert rl.dim() == 2
-        return rl.sum()
+        return torch.sum(rl, dim=-1)
 
     def scale_from_z(self, sample_batch, fixed_batch):
         raise NotImplementedError
@@ -546,6 +549,7 @@ class LogNormalPoissonVAE(nn.Module):
         # Parameters for z latent distribution
 
         # TODO: Implement
+        torch.manual_seed(42)
         px_rate, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
 
         # KL Divergence
@@ -562,13 +566,17 @@ class LogNormalPoissonVAE(nn.Module):
         ).sum(dim=1)
         kl_divergence = kl_divergence_z
 
-        reconst_loss = self._reconstruction_loss(x, px_rate)
+        try:
+            reconst_loss = self._reconstruction_loss(x, px_rate)
+        except:
+            print(x, px_rate, qz_m, qz_v)
+            raise
 
         return reconst_loss + kl_divergence_l, kl_divergence
 
     def get_prior_params(self, device):
         mean = torch.zeros((self.n_latent,), device=device)
-        if self.z_full_cov:
+        if self.z_full_cov or self.z_autoregressive:
             scale = torch.eye(self.n_latent, device=device)
         else:
             scale = torch.ones((self.n_latent,), device=device)
