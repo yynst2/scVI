@@ -12,7 +12,7 @@ from scvi.dataset import BrainLargeDataset, CortexDataset, RetinaDataset, BrainS
     LoomDataset, AnnDataset, CsvDataset, CiteSeqDataset, CbmcDataset, PbmcDataset, SyntheticDataset, \
     SeqfishDataset, SmfishDataset, BreastCancerDataset, MouseOBDataset, \
     GeneExpressionDataset, PurifiedPBMCDataset, SyntheticDatasetCorr, ZISyntheticDatasetCorr, \
-    PowSimSynthetic, Dataset10X, LogPoissonDataset
+    PowSimSynthetic, Dataset10X, LogPoissonDataset, LatentLogPoissonDataset
 from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTrainer, ClassifierTrainer, \
     UnsupervisedTrainer, AdapterTrainer
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -376,7 +376,7 @@ def test_logpoisson():
         sig1_path=sgm_skeletton.format(1),
         pi=[0.5], n_cells=50
     )
-    # res = dataset.compute_bayes_factors(n_sim=30)
+    res = dataset.compute_bayes_factors(n_sim=30)
     kwargs = {
         'early_stopping_metric': 'll',
         'save_best_state_metric': 'll',
@@ -400,7 +400,7 @@ def test_logpoisson():
                                   early_stopping_kwargs=kwargs)
     torch.autograd.set_detect_anomaly(mode=True)
 
-    trainer.train(n_epochs=100, lr=1e-3)
+    trainer.train(n_epochs=5, lr=1e-3)
     train = trainer.train_set.sequential()
     trainer.train_set.show_t_sne(n_samples=1000, color_by='label')
     zs, _, _ = train.get_latent()
@@ -421,3 +421,23 @@ def test_vae_ratio_loss(save_path):
         ratio_loss=True
     )
     trainer_cortex_vae.train(n_epochs=2)
+
+
+def test_encoder_only():
+    dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=50)
+    dataset.compute_posteriors(
+        x_obs=torch.randint(0, 150, size=(1, 5), dtype=torch.float),
+        mcmc_kwargs={"num_samples": 20, "warmup_steps": 20, "num_chains": 1}
+    )
+
+    vae_mdl = LogNormalPoissonVAE(
+        dataset.nb_genes,
+        dataset.n_batches,
+        autoregressive=True,
+        n_latent=5,
+        gt_decoder=dataset
+    )
+    params = vae_mdl.encoder_params
+    trainer = UnsupervisedTrainer(model=vae_mdl, gene_dataset=dataset, use_cuda=True, train_size=0.7,
+                                  frequency=1, kl=1)
+    trainer.train(n_epochs=5, lr=1e-3, params=params)

@@ -14,32 +14,34 @@ from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
 from .diff_expression import SymSimDataset
 from .powsimr import PowSimSynthetic, SignedGamma
-from .logpoisson import LogPoissonDataset
+from .logpoisson import LogPoissonDataset, LatentLogPoissonDataset
 
-__all__ = ['SyntheticDataset',
-           'SyntheticRandomDataset',
-           'CortexDataset',
-           'BrainLargeDataset',
-           'RetinaDataset',
-           'GeneExpressionDataset',
-           'CiteSeqDataset',
-           'BrainSmallDataset',
-           'HematoDataset',
-           'CbmcDataset',
-           'PbmcDataset',
-           'LoomDataset',
-           'AnnDataset',
-           'CsvDataset',
-           'Dataset10X',
-           'SeqfishDataset',
-           'SmfishDataset',
-           'BreastCancerDataset',
-           'MouseOBDataset',
-           'PurifiedPBMCDataset',
-           'SyntheticDatasetCorr',
-           'ZISyntheticDatasetCorr',
-           'SymSimDataset',
-           'PowSimSynthetic',
-           'SignedGamma',
-           'LogPoissonDataset'
-           ]
+__all__ = [
+    'SyntheticDataset',
+    'SyntheticRandomDataset',
+    'CortexDataset',
+    'BrainLargeDataset',
+    'RetinaDataset',
+    'GeneExpressionDataset',
+    'CiteSeqDataset',
+    'BrainSmallDataset',
+    'HematoDataset',
+    'CbmcDataset',
+    'PbmcDataset',
+    'LoomDataset',
+    'AnnDataset',
+    'CsvDataset',
+    'Dataset10X',
+    'SeqfishDataset',
+    'SmfishDataset',
+    'BreastCancerDataset',
+    'MouseOBDataset',
+    'PurifiedPBMCDataset',
+    'SyntheticDatasetCorr',
+    'ZISyntheticDatasetCorr',
+    'SymSimDataset',
+    'PowSimSynthetic',
+    'SignedGamma',
+    'LogPoissonDataset',
+    'LatentLogPoissonDataset'
+]

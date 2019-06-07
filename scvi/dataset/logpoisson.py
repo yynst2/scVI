@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyro
-import torch
 from pyro.infer import config_enumerate
 from pyro.infer.mcmc import NUTS, MCMC
-from torch import distributions
+import torch
+from torch import distributions, nn
 from tqdm import tqdm
 
 from .dataset import GeneExpressionDataset
@@ -225,7 +225,7 @@ class LogPoissonDataset(GeneExpressionDataset):
         fig, axes = plt.subplots(ncols=2, figsize=(10, 6))
         plt.sca(axes[0])
         plt.title("R Hat")
-        plt.hist(stats["z"]["r_hat"].view(-1), bins=20)
+        plt.hist(stats["z"]["rdoes_hat"].view(-1), bins=20)
         plt.sca(axes[1])
         plt.title("N effective")
         plt.hist(stats["z"]["n_eff"].view(-1), bins=20)
@@ -241,3 +241,168 @@ class LogPoissonDataset(GeneExpressionDataset):
             else:
                 arr = arr[:n_genes, :n_genes]
         return arr
+
+
+class LatentLogPoissonDataset(GeneExpressionDataset, nn.Module):
+    def __init__(self, n_genes, n_latent, n_cells):
+        self.n_latent = n_latent
+        self.cat = torch.tensor([0.5])
+        self.probas = torch.tensor([1.0 - self.cat[0], self.cat[0]])
+        self.logprobas = np.log(self.probas)
+        np.random.seed(42)
+        torch.manual_seed(42)
+
+        # possible_values = torch.tensor(np.geomspace(1, 300, num=n_values))
+        # mu0 = possible_values[torch.randint(high=n_values, size=(n_genes,))]
+        mu0 = 1.0 + 0.5 * torch.randn(size=(n_latent,))
+        mu1 = mu0 + 0.1 * torch.randn(size=(n_latent,))
+
+        print(mu0.shape)
+        print(mu1.shape)
+
+        # mu1 = torch.ones_like(mu0)
+        self.mus = torch.stack([mu0, mu1]).float()
+        sigma0 = torch.eye(n_latent)
+        sigma1 = torch.eye(n_latent)
+        self.sigmas = torch.stack([sigma0, sigma1]).float()
+
+        # a_mat = torch.eye(n_genes)
+        # indices = tril_indices(n_genes, n_genes, offset=-1)
+        # a_mat[indices[:, 0], indices[:, 1]] = torch.rand(size=(int(n_genes*(n_genes-1)/2),))
+        a_mat = torch.rand(size=(n_genes, n_latent))
+        self.a_mat = a_mat
+
+        self.dist0 = distributions.MultivariateNormal(
+            loc=self.mus[0], covariance_matrix=self.sigmas[0]
+        )
+        self.dist1 = distributions.MultivariateNormal(
+            loc=self.mus[1], covariance_matrix=self.sigmas[1]
+        )
+        self.dist_x = distributions.Poisson
+
+        cell_type = distributions.Bernoulli(probs=torch.tensor(self.cat)).sample(
+            (n_cells,)
+        )
+        zero_mask = (cell_type == 0).squeeze()
+        one_mask = ~zero_mask  # (cell_type == 1).squeeze()
+
+        z = torch.zeros((n_cells, n_latent)).float()
+        z[zero_mask, :] = self.dist0.sample((zero_mask.sum(),))
+        z[one_mask, :] = self.dist1.sample((one_mask.sum(),))
+        self.z = z
+        rate = self.compute_rate(z)
+        self.h = rate
+
+        gene_expressions = np.expand_dims(
+            distributions.Poisson(rate=rate).sample(), axis=0
+        )
+        labels = np.expand_dims(cell_type, axis=0)
+        gene_names = np.arange(n_genes).astype(str)
+
+        super(LatentLogPoissonDataset, self).__init__(
+            *GeneExpressionDataset.get_attributes_from_list(
+                gene_expressions, list_labels=labels
+            ),
+            gene_names=gene_names
+        )
+
+    def forward(self, z: torch.Tensor, library: torch.Tensor, *cat_list: int):
+        """
+
+        :param z:
+        :param library:
+        :param cat_list:
+        :return:
+        """
+
+        return self.compute_rate(z)
+
+    def compute_rate(self, z: torch.Tensor):
+        rate = (self.a_mat @ z.reshape(-1, self.n_latent, 1)).squeeze()
+        rate = torch.clamp(rate.exp(), max=1e5)
+        return rate
+
+    @config_enumerate(default="sequential")
+    def pyro_mdl(self, data: torch.Tensor):
+        with pyro.plate("data", len(data)):
+            cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
+            z = pyro.sample(
+                "z",
+                dist.MultivariateNormal(
+                    self.mus[cell_type], covariance_matrix=self.sigmas[cell_type]
+                ),
+            )
+            rate = self.compute_rate(z)
+            pyro.sample("x", dist.Poisson(rate=rate).to_event(1), obs=data)
+
+    def compute_posteriors(self, x_obs: torch.Tensor, mcmc_kwargs: dict = None):
+        """
+
+        :param x_obs:
+        :param mcmc_kwargs: By default:
+        {num_samples=1000, warmup_steps=1000, num_chains=4)
+        :return:
+        """
+        if mcmc_kwargs is None:
+            mcmc_kwargs = {"num_samples": 1000, "warmup_steps": 1000, "num_chains": 4}
+        kernel = NUTS(
+            self.pyro_mdl,
+            adapt_step_size=True,
+            max_plate_nesting=1,
+            jit_compile=True,
+            target_accept_prob=0.6,
+        )
+        mcmc_run = MCMC(kernel, **mcmc_kwargs).run(data=x_obs)
+        marginals = mcmc_run.marginal(sites=["z", "cell_type"])
+        marginals_supp = marginals.support()
+        z_x, pi_x = marginals_supp["z"], marginals_supp["cell_type"]
+        return z_x, pi_x, marginals
+
+    def local_bayes(
+        self,
+        x_a: torch.Tensor,
+        x_b: torch.Tensor,
+        save_dir: str = None,
+        mcmc_kwargs: dict = None,
+    ):
+        """
+
+        :param x_a:
+        :param x_b:
+        :param save_dir:
+        :param mcmc_kwargs: By default:
+        {num_samples=1000, warmup_steps=1000, num_chains=4)
+        :return:
+        """
+        z_a, pi_a, marginals_a = self.compute_posteriors(x_a, mcmc_kwargs=mcmc_kwargs)
+        z_b, pi_b, marginals_b = self.compute_posteriors(x_b, mcmc_kwargs=mcmc_kwargs)
+
+        if save_dir is not None:
+            np.save(os.path.join(save_dir, "xa.npy"), x_a.numpy())
+            np.save(os.path.join(save_dir, "xb.npy"), x_b.numpy())
+            np.save(os.path.join(save_dir, "z_a.npy"), z_a.numpy())
+            np.save(os.path.join(save_dir, "z_b.npy"), z_b.numpy())
+            np.save(os.path.join(save_dir, "pi_a.npy"), pi_a.numpy())
+            np.save(os.path.join(save_dir, "pi_b.npy"), pi_b.numpy())
+
+            mcmc_stats_a = marginals_a.diagnostics()
+            mcmc_stats_b = marginals_b.diagnostics()
+
+            try:
+                self.save_figs(
+                    mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png")
+                )
+                self.save_figs(
+                    mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
+                )
+
+                n_eff_a = mcmc_stats_a["z"]["n_eff"]
+                n_eff_b = mcmc_stats_b["z"]["n_eff"]
+                np.save(os.path.join(save_dir, "n_eff_a.npy"), n_eff_a.numpy())
+                np.save(os.path.join(save_dir, "n_eff_b.npy"), n_eff_b.numpy())
+
+            except ValueError:
+                raise Warning(
+                    "Invalid values encountered in MCMC diagnostic."
+                    "Please rerun experiment"
+                )
