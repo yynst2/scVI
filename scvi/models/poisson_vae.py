@@ -139,7 +139,6 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         # Parameters for z latent distribution
 
         # TODO: Implement
-        torch.manual_seed(42)
         px_rate, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
 
         # KL Divergence

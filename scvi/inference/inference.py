@@ -26,9 +26,19 @@ class UnsupervisedTrainer(Trainer):
     """
     default_metrics_to_monitor = ['ll']
 
-    def __init__(self, model, gene_dataset, train_size=0.8, test_size=None, kl=None, **kwargs):
+    def __init__(
+        self,
+        model,
+        gene_dataset,
+        train_size=0.8,
+        test_size=None,
+        kl=None,
+        ratio_loss: bool = False,
+        **kwargs
+        ):
         super().__init__(model, gene_dataset, **kwargs)
         self.kl = kl
+        self.ratio_loss = ratio_loss
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
             self.train_set.to_monitor = ['ll']
@@ -38,9 +48,9 @@ class UnsupervisedTrainer(Trainer):
     def posteriors_loop(self):
         return ['train_set']
 
-    def loss(self, tensors, ratio_loss=False):
+    def loss(self, tensors):
         sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
-        if ratio_loss:
+        if self.ratio_loss:
             loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
         else:
             reconst_loss, kl_divergence = self.model(

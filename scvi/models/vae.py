@@ -108,7 +108,7 @@ class NormalEncoderVAE(nn.Module):
 
     def get_prior_params(self, device):
         mean = torch.zeros((self.n_latent,), device=device)
-        if self.z_full_cov:
+        if self.z_full_cov or self.z_autoregressive:
             scale = torch.eye(self.n_latent, device=device)
         else:
             scale = torch.ones((self.n_latent,), device=device)

@@ -399,7 +399,10 @@ class Posterior:
         px_scale_mean1 = px_scale1.mean(axis=0)
         px_scale_mean2 = px_scale2.mean(axis=0)
         px_scale = np.concatenate((px_scale1, px_scale2), axis=0)
-        log_probas = np.concatenate((log_probas1, log_probas2), axis=0)
+        if log_probas1 is not None:
+            log_probas = np.concatenate((log_probas1, log_probas2), axis=0)
+        else:
+            log_probas = None
         # print('px_scales1 shapes', px_scale1.shape)
         # print('px_scales2 shapes', px_scale2.shape)
         all_labels = np.concatenate((np.repeat(0, len(px_scale1)), np.repeat(1, len(px_scale2))),
