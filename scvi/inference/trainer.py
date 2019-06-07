@@ -99,7 +99,7 @@ class Trainer:
                 self.model.train()
         self.compute_metrics_time += time.time() - begin
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, params=None):
+    def train(self, n_epochs=20, lr=1e-3, eps=0.01, params=None, ratio_loss=False):
         begin = time.time()
         self.model.train()
 
@@ -124,7 +124,7 @@ class Trainer:
                 self.on_epoch_begin()
                 pbar.update(1)
                 for tensors_list in self.data_loaders_loop():
-                    loss = self.loss(*tensors_list)
+                    loss = self.loss(*tensors_list, ratio_loss=ratio_loss)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()

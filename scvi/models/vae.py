@@ -79,6 +79,29 @@ class VAE(nn.Module):
         self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers,
                                    n_hidden=n_hidden)
 
+    @property
+    def encoder_params(self):
+        """
+        :return: List of learnable encoder parameters (to feed to torch.optim object
+        for instance
+        """
+        return self.get_list_params(
+            self.z_encoder.parameters(),
+            self.l_encoder.parameters()
+        )
+
+    @property
+    def decoder_params(self):
+        """
+        :return: List of learnable decoder parameters (to feed to torch.optim object
+        for instance
+        """
+        return self.get_list_params(self.decoder.parameters()) + [self.px_r]
+
+    # TODO: iwelbo
+    # TODO: cubo
+    # TODO: kl
+
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
 
@@ -241,6 +264,28 @@ class VAE(nn.Module):
 
         return reconst_loss + kl_divergence_l, kl_divergence
 
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+        (
+            px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
+         ) = self.inference(x, batch_index, y)
+        # KL Divergence
+        z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
+
+        log_px_zl = -self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+
+        log_pz = self.z_encoder.distrib(z_prior_m, z_prior_v).log_prob(z).sum(dim=-1)
+        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z).sum(dim=-1)
+        if log_pz.dim() == 2 and log_qz_x.dim() == 2:
+            log_pz = log_pz.sum(dim=1)
+            log_qz_x = log_qz_x.sum(dim=1)
+
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        neg_elbo = -log_ratio.mean(dim=0)
+        return neg_elbo
+
     def get_prior_params(self, device):
         mean = torch.zeros((self.n_latent,), device=device)
         if self.z_full_cov:
@@ -248,6 +293,13 @@ class VAE(nn.Module):
         else:
             scale = torch.ones((self.n_latent,), device=device)
         return mean, scale
+
+    @staticmethod
+    def get_list_params(*params):
+        res = []
+        for param_li in params:
+            res += list(filter(lambda p: p.requires_grad, param_li))
+        return res
 
 
 class LDVAE(VAE):
@@ -526,7 +578,6 @@ class LogNormalPoissonVAE(nn.Module):
 
         # KL Divergence
         mean, scale = self.get_prior_params(device=qz_m.device)
-
         kl_divergence_z = kl(
             self.z_encoder.distrib(qz_m, qz_v), self.z_encoder.distrib(mean, scale)
         )

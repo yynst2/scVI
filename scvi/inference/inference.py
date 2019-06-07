@@ -1,8 +1,6 @@
 import copy
-
 import matplotlib.pyplot as plt
 import torch
-
 from scvi.inference import Trainer
 
 plt.switch_backend('agg')
@@ -40,14 +38,24 @@ class UnsupervisedTrainer(Trainer):
     def posteriors_loop(self):
         return ['train_set']
 
-    def loss(self, tensors):
+    def loss(self, tensors, ratio_loss=False):
         sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
-        reconst_loss, kl_divergence = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
-        loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
+        if ratio_loss:
+            loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
+        else:
+            reconst_loss, kl_divergence = self.model(
+                sample_batch,
+                local_l_mean,
+                local_l_var,
+                batch_index
+            )
+            loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
         return loss
 
     def on_epoch_begin(self):
         self.kl_weight = self.kl if self.kl is not None else min(1, self.epoch / 400)  # self.n_epochs)
+
+    # TODO: Train Wake Sleep Procedure when CUBO and everything implemented
 
 
 class AdapterTrainer(UnsupervisedTrainer):

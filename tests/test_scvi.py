@@ -401,7 +401,7 @@ def test_logpoisson():
     trainer.train(n_epochs=5, lr=1e-3)
     train = trainer.train_set.sequential()
     zs, _, _ = train.get_latent()
-    assert not torch.isnan(zs).any()
+    assert not np.isnan(zs).any()
 
     VAE = LogNormalPoissonVAE(dataset.nb_genes, dataset.n_batches,
                               autoregressive=True,
@@ -419,3 +419,11 @@ def test_logpoisson():
     assert not np.isnan(zs).any()
 
     print(trainer.history)
+
+
+def test_vae_ratio_loss(save_path):
+    cortex_dataset = CortexDataset(save_path=save_path)
+    cortex_vae = VAE(cortex_dataset.nb_genes, cortex_dataset.n_batches)
+    trainer_cortex_vae = UnsupervisedTrainer(cortex_vae, cortex_dataset, train_size=0.5,
+                                             use_cuda=use_cuda)
+    trainer_cortex_vae.train(n_epochs=2, ratio_loss=True)
