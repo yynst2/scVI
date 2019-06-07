@@ -8,6 +8,10 @@ from torch.distributions import Normal, MultivariateNormal
 from scvi.models.utils import one_hot
 
 
+def tril_indices(rows, cols, offset=0):
+    return torch.ones(rows, cols, dtype=torch.uint8).tril(offset).nonzero()
+
+
 class FCLayers(nn.Module):
     r"""A helper class to build fully-connected layers for a neural network.
 
@@ -148,7 +152,7 @@ class Encoder(nn.Module):
             l_vals = self.ltria(q)
             n_batch = q.size(0)
             l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=q.device)
-            indices = self.tril_indices(self.n_output, self.n_output, offset=-1)
+            indices = tril_indices(self.n_output, self.n_output, offset=-1)
             rg = torch.arange(self.n_output, device=x.device)
             l_mat[:, indices[:, 0], indices[:, 1]] = l_vals
             l_mat[:, rg, rg] = 1.0
@@ -163,7 +167,7 @@ class Encoder(nn.Module):
         if self.full_cov:
             n_batch = x.size(0)
             l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=x.device)
-            lower_idx = self.tril_indices(self.n_output, self.n_output)
+            lower_idx = tril_indices(self.n_output, self.n_output)
             l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = x
             rg = torch.arange(self.n_output, device=x.device)
             l_mat[:, rg, rg] = 1e-4 + torch.nn.Softplus()(l_mat[:, rg, rg])
@@ -172,10 +176,6 @@ class Encoder(nn.Module):
             return res
         else:
             return torch.exp(x)
-
-    @staticmethod
-    def tril_indices(rows, cols, offset=0):
-        return torch.ones(rows, cols, dtype=torch.uint8).tril(offset).nonzero()
 
 
 # Decoder
