@@ -15,6 +15,18 @@ from .dataset import GeneExpressionDataset
 dist = pyro.distributions
 
 
+def save_figs(stats, savepath):
+    fig, axes = plt.subplots(ncols=2, figsize=(10, 6))
+    plt.sca(axes[0])
+    plt.title("R Hat")
+    plt.hist(stats["z"]["r_hat"].view(-1), bins=20)
+    plt.sca(axes[1])
+    plt.title("N effective")
+    plt.hist(stats["z"]["n_eff"].view(-1), bins=20)
+    plt.savefig(savepath)
+    plt.close()
+
+
 class LogPoissonDataset(GeneExpressionDataset):
     def __init__(
         self,
@@ -202,10 +214,10 @@ class LogPoissonDataset(GeneExpressionDataset):
             mcmc_stats_b = marginals_b.diagnostics()
 
             try:
-                self.save_figs(
+                save_figs(
                     mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png")
                 )
-                self.save_figs(
+                save_figs(
                     mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
                 )
 
@@ -221,18 +233,6 @@ class LogPoissonDataset(GeneExpressionDataset):
                 )
 
     @staticmethod
-    def save_figs(stats, savepath):
-        fig, axes = plt.subplots(ncols=2, figsize=(10, 6))
-        plt.sca(axes[0])
-        plt.title("R Hat")
-        plt.hist(stats["z"]["rdoes_hat"].view(-1), bins=20)
-        plt.sca(axes[1])
-        plt.title("N effective")
-        plt.hist(stats["z"]["n_eff"].view(-1), bins=20)
-        plt.savefig(savepath)
-        plt.close()
-
-    @staticmethod
     def load_array(path, n_genes=None):
         arr = torch.tensor(np.load(path))
         if n_genes is not None:
@@ -244,32 +244,49 @@ class LogPoissonDataset(GeneExpressionDataset):
 
 
 class LatentLogPoissonDataset(GeneExpressionDataset, nn.Module):
-    def __init__(self, n_genes, n_latent, n_cells):
+    def __init__(
+        self,
+        n_genes: int,
+        n_latent: int,
+        n_cells: int,
+        diff_coef: float = 1.0,
+        z_center: float = 1.0,
+        scale_coef: float = 0.1,
+        mu_init: torch.Tensor = None,
+        requires_grad: bool = False
+    ):
+
         self.n_latent = n_latent
         self.cat = torch.tensor([0.5])
-        self.probas = torch.tensor([1.0 - self.cat[0], self.cat[0]])
-        self.logprobas = np.log(self.probas)
+        self.probas = torch.tensor([1.0 - self.cat[0], self.cat[0]], requires_grad=False)
+        self.logprobas = self.probas.log()
         np.random.seed(42)
         torch.manual_seed(42)
 
         # possible_values = torch.tensor(np.geomspace(1, 300, num=n_values))
         # mu0 = possible_values[torch.randint(high=n_values, size=(n_genes,))]
-        mu0 = 1.0 + 0.5 * torch.randn(size=(n_latent,))
-        mu1 = mu0 + 0.1 * torch.randn(size=(n_latent,))
+        if mu_init is None:
+            mu_init = torch.randn(size=(n_latent,), requires_grad=False)
+        mu0 = diff_coef * mu_init
+        mu1 = -mu0
+
+        mu0 += z_center
+        mu1 += z_center
+        #  *torch.randn(size=(n_latent,))
 
         print(mu0.shape)
         print(mu1.shape)
 
         # mu1 = torch.ones_like(mu0)
         self.mus = torch.stack([mu0, mu1]).float()
-        sigma0 = torch.eye(n_latent)
-        sigma1 = torch.eye(n_latent)
+        sigma0 = scale_coef * torch.eye(n_latent)
+        sigma1 = scale_coef * torch.eye(n_latent)
         self.sigmas = torch.stack([sigma0, sigma1]).float()
 
         # a_mat = torch.eye(n_genes)
         # indices = tril_indices(n_genes, n_genes, offset=-1)
         # a_mat[indices[:, 0], indices[:, 1]] = torch.rand(size=(int(n_genes*(n_genes-1)/2),))
-        a_mat = torch.rand(size=(n_genes, n_latent))
+        a_mat = torch.rand(size=(n_genes, n_latent), requires_grad=requires_grad)
         self.a_mat = a_mat
 
         self.dist0 = distributions.MultivariateNormal(
@@ -335,6 +352,29 @@ class LatentLogPoissonDataset(GeneExpressionDataset, nn.Module):
             rate = self.compute_rate(z)
             pyro.sample("x", dist.Poisson(rate=rate).to_event(1), obs=data)
 
+    def log_p_z(self, z: torch.Tensor):
+        dist0 = distributions.MultivariateNormal(
+            loc=self.mus[0].to(z.device), covariance_matrix=self.sigmas[0].to(z.device)
+        )
+        dist1 = distributions.MultivariateNormal(
+            loc=self.mus[1].to(z.device), covariance_matrix=self.sigmas[1].to(z.device)
+        )
+        logprobas = self.logprobas.to(z.device).view(2, -1)
+
+        assert z.shape[-1] == self.mus.shape[-1], 'Latent representations dimensions must match'
+        log_p_z_0 = dist0.log_prob(z)
+        log_p_z_1 = dist1.log_prob(z)
+        assert log_p_z_0.shape == log_p_z_1.shape
+        assert log_p_z_1.dim() == 1
+        logits = torch.stack([log_p_z_0, log_p_z_0])
+        # Shape (2, N_batch)
+        assert logits.shape[0] == 2
+
+        # print('logits logprobas shapes: ', logits.shape, logprobas.shape)
+        logits += logprobas
+        res = torch.logsumexp(logits, dim=0)
+        return res
+
     def compute_posteriors(self, x_obs: torch.Tensor, mcmc_kwargs: dict = None):
         """
 
@@ -389,10 +429,10 @@ class LatentLogPoissonDataset(GeneExpressionDataset, nn.Module):
             mcmc_stats_b = marginals_b.diagnostics()
 
             try:
-                self.save_figs(
+                save_figs(
                     mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png")
                 )
-                self.save_figs(
+                save_figs(
                     mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
                 )
 
