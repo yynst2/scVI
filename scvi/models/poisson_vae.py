@@ -43,8 +43,11 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         log_variational: bool = True,
         full_cov=False,
         autoregressive=False,
-        gt_decoder: nn.Module = None
+        gt_decoder: nn.Module = None,
+        log_p_z=None,
     ):
+        self.trained_decoder = gt_decoder is None
+
         super().__init__(
             n_input=n_input,
             n_hidden=n_hidden,
@@ -52,7 +55,8 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
             dropout_rate=dropout_rate,
             log_variational=log_variational,
             full_cov=full_cov,
-            autoregresssive=autoregressive
+            autoregresssive=autoregressive,
+            log_p_z=log_p_z,
         )
 
         # decoder goes from n_latent-dimensional space to n_input-d data
@@ -95,7 +99,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
 
     @staticmethod
     def _reconstruction_loss(x, rate):
-        rl = - torch.distributions.Poisson(rate).log_prob(x)
+        rl = -torch.distributions.Poisson(rate).log_prob(x)
         assert rl.dim() == 2
         return torch.sum(rl, dim=-1)
 
@@ -136,9 +140,9 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         :return: the reconstruction loss and the Kullback divergences
         :rtype: 2-tuple of :py:class:`torch.FloatTensor`
         """
-        # Parameters for z latent distribution
+        # assert self.trained_decoder, "If you train the encoder alone please use the `ratio_loss`" \
+        #                              "In `forward`, the KL terms are wrong"
 
-        # TODO: Implement
         px_rate, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
 
         # KL Divergence
@@ -155,3 +159,38 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         kl_divergence = kl_divergence_z
         reconst_loss = self._reconstruction_loss(x, px_rate)
         return reconst_loss + kl_divergence_l, kl_divergence
+
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+        (px_rate, qz_m, qz_v, z, ql_m, ql_v, library) = self.inference(
+            x, batch_index, y
+        )
+
+        # KL Divergence
+        # z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
+
+        log_px_zl = -self._reconstruction_loss(x, px_rate)
+        log_pl = (
+            Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        )
+
+        log_pz = self.log_p_z(z)
+        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z)
+
+        # assert log_qz_x.shape == log_pz.shape, (log_qz_x.shape, log_pz.shape)
+        if log_pz.dim() == 2:
+            log_pz = log_pz.sum(dim=1)
+        if log_qz_x.dim() == 2:
+            log_qz_x = log_qz_x.sum(dim=1)
+
+        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+
+        assert (
+            log_px_zl.shape
+            == log_pl.shape
+            == log_pz.shape
+            == log_qz_x.shape
+            == log_ql_x.shape
+        ), (log_px_zl.shape, log_pl.shape, log_pz.shape, log_qz_x.shape, log_ql_x.shape)
+        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        neg_elbo = -log_ratio.mean(dim=0)
+        return neg_elbo
