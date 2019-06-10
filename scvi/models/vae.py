@@ -22,9 +22,11 @@ class NormalEncoderVAE(nn.Module):
         dropout_rate: float = 0.1,
         log_variational: bool = True,
         full_cov: bool = False,
-        autoregresssive: bool = False
+        autoregresssive: bool = False,
+        log_p_z=None,
     ):
         super().__init__()
+        self.log_p_z_fixed = log_p_z
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_full_cov = full_cov
@@ -45,6 +47,14 @@ class NormalEncoderVAE(nn.Module):
 
     def forward(self, *input):
         pass
+
+    def log_p_z(self, z: torch.Tensor):
+        if self.log_p_z_fixed is not None:
+            return self.log_p_z_fixed(z)
+        else:
+            z_prior_m, z_prior_v = self.get_prior_params(device=z.device)
+            return self.z_encoder.distrib(z_prior_m, z_prior_v).log_prob(z)
+
 
     @property
     def encoder_params(self):
@@ -153,11 +163,21 @@ class VAE(NormalEncoderVAE):
 
     """
 
-    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
-                 n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
-                 dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "zinb",
-                 full_cov=False, autoregresssive=False):
+    def __init__(self,
+                 n_input: int,
+                 n_batch: int = 0,
+                 n_labels: int = 0,
+                 n_hidden: int = 128,
+                 n_latent: int = 10,
+                 n_layers: int = 1,
+                 dropout_rate: float = 0.1,
+                 dispersion: str = "gene",
+                 log_variational: bool = True,
+                 reconstruction_loss: str = "zinb",
+                 full_cov: bool = False,
+                 autoregresssive: bool = False,
+                 log_p_z=None,
+                 ):
         super().__init__(
             n_input=n_input,
             n_hidden=n_hidden,
@@ -165,7 +185,8 @@ class VAE(NormalEncoderVAE):
             dropout_rate=dropout_rate,
             log_variational=log_variational,
             full_cov=full_cov,
-            autoregresssive=autoregresssive
+            autoregresssive=autoregresssive,
+            log_p_z=log_p_z,
         )
         self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers,
                                    n_hidden=n_hidden)
