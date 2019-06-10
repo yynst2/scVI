@@ -376,7 +376,7 @@ def test_logpoisson():
         sig1_path=sgm_skeletton.format(1),
         pi=[0.5], n_cells=50
     )
-    res = dataset.compute_bayes_factors(n_sim=30)
+    # res = dataset.compute_bayes_factors(n_sim=30)
     kwargs = {
         'early_stopping_metric': 'll',
         'save_best_state_metric': 'll',
@@ -424,20 +424,32 @@ def test_vae_ratio_loss(save_path):
 
 
 def test_encoder_only():
+    torch.autograd.set_detect_anomaly(mode=True)
     dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=50)
-    dataset.compute_posteriors(
-        x_obs=torch.randint(0, 150, size=(1, 5), dtype=torch.float),
-        mcmc_kwargs={"num_samples": 20, "warmup_steps": 20, "num_chains": 1}
-    )
+    # _, _, marginals = dataset.compute_posteriors(
+    #     x_obs=torch.randint(0, 150, size=(1, 5), dtype=torch.float),
+    #     mcmc_kwargs={"num_samples": 20, "warmup_steps": 20, "num_chains": 1}
+    # )
+    # stats = marginals.diagnostics()
+    # print(stats)
 
     vae_mdl = LogNormalPoissonVAE(
         dataset.nb_genes,
         dataset.n_batches,
         autoregressive=True,
-        n_latent=5,
-        gt_decoder=dataset
+        n_latent=2,
+        gt_decoder=dataset,
+        log_p_z=dataset.log_p_z
     )
     params = vae_mdl.encoder_params
-    trainer = UnsupervisedTrainer(model=vae_mdl, gene_dataset=dataset, use_cuda=True, train_size=0.7,
-                                  frequency=1, kl=1)
-    trainer.train(n_epochs=5, lr=1e-3, params=params)
+    trainer = UnsupervisedTrainer(
+        model=vae_mdl,
+        gene_dataset=dataset,
+        use_cuda=True,
+        train_size=0.7,
+        frequency=1,
+        kl=1,
+        ratio_loss=True,
+        verbose=True
+    )
+    trainer.train(n_epochs=100, lr=1e-3, params=params)
