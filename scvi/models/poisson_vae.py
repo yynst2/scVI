@@ -44,10 +44,12 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         full_cov=False,
         autoregressive=False,
         gt_decoder: nn.Module = None,
-        log_p_z=None,
     ):
         self.trained_decoder = gt_decoder is None
-
+        if self.trained_decoder:
+            log_p_z = None
+        else:
+            log_p_z = gt_decoder.log_p_z
         super().__init__(
             n_input=n_input,
             n_hidden=n_hidden,
@@ -60,7 +62,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         )
 
         # decoder goes from n_latent-dimensional space to n_input-d data
-        if self.decoder is None:
+        if self.trained_decoder is None:
             self.decoder = DecoderPoisson(
                 n_latent,
                 n_input,
@@ -191,6 +193,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
             == log_qz_x.shape
             == log_ql_x.shape
         ), (log_px_zl.shape, log_pl.shape, log_pz.shape, log_qz_x.shape, log_ql_x.shape)
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        # log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        log_ratio = log_px_zl + log_pz - log_qz_x
         neg_elbo = -log_ratio.mean(dim=0)
         return neg_elbo
