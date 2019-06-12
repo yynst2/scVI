@@ -424,7 +424,7 @@ def test_vae_ratio_loss(save_path):
 
 
 def test_encoder_only():
-    torch.autograd.set_detect_anomaly(mode=True)
+    # torch.autograd.set_detect_anomaly(mode=True)
     dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=50)
     # _, _, marginals = dataset.compute_posteriors(
     #     x_obs=torch.randint(0, 150, size=(1, 5), dtype=torch.float),
@@ -432,14 +432,14 @@ def test_encoder_only():
     # )
     # stats = marginals.diagnostics()
     # print(stats)
+    dataset.cuda()
 
     vae_mdl = LogNormalPoissonVAE(
         dataset.nb_genes,
         dataset.n_batches,
         autoregressive=True,
         n_latent=2,
-        gt_decoder=dataset,
-        log_p_z=dataset.log_p_z
+        gt_decoder=dataset.nn_model,
     )
     params = vae_mdl.encoder_params
     trainer = UnsupervisedTrainer(
@@ -447,9 +447,13 @@ def test_encoder_only():
         gene_dataset=dataset,
         use_cuda=True,
         train_size=0.7,
-        frequency=1,
+        # frequency=1,
         kl=1,
         ratio_loss=True,
-        verbose=True
+        verbose=False
     )
-    trainer.train(n_epochs=100, lr=1e-3, params=params)
+    trainer.train(
+        n_epochs=5,
+        lr=1e-3,
+        params=params,
+    )
