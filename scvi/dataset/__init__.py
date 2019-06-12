@@ -14,7 +14,8 @@ from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
 from .diff_expression import SymSimDataset
 from .powsimr import PowSimSynthetic, SignedGamma
-from .logpoisson import LogPoissonDataset, LatentLogPoissonDataset
+from .logpoisson import LogPoissonDataset
+from .latentlogpoisson import LatentLogPoissonDataset
 
 __all__ = [
     'SyntheticDataset',
