@@ -13,7 +13,6 @@ dist = pyro.distributions
 
 
 def compute_rate(a_mat: torch.Tensor, z: torch.Tensor):
-    print('DEVICES: ', a_mat.device, z.device)
     n_latent = a_mat.shape[1]
     rate = (a_mat @ z.reshape(-1, n_latent, 1)).squeeze()
     rate = torch.clamp(rate.exp(), max=1e5)
@@ -23,6 +22,15 @@ def compute_rate(a_mat: torch.Tensor, z: torch.Tensor):
 @torch.no_grad()
 class LatentLogPoissonModel(nn.Module):
     def __init__(self, a_mat, mus, sigmas, logprobas):
+        """
+        Object to be used as Decoder for scvi.VAE class.
+        Serves as non trainable, perfect decoder
+
+        :param a_mat:
+        :param mus:
+        :param sigmas:
+        :param logprobas:
+        """
         super().__init__()
         self.a_mat = nn.Parameter(a_mat)
         self.mus = nn.Parameter(mus)
@@ -74,6 +82,21 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         mu_init: torch.Tensor = None,
         requires_grad: bool = False
     ):
+        """
+        Latent Log Poisson Model:
+            z ~ Mixture of 2 Gaussians
+            h = log(z)
+            x ~ Poisson(h)
+
+        :param n_genes:
+        :param n_latent:
+        :param n_cells:
+        :param diff_coef:
+        :param z_center:
+        :param scale_coef:
+        :param mu_init:
+        :param requires_grad:
+        """
         self.n_genes = n_genes
         self.n_latent = n_latent
         self.n_cells = n_cells
@@ -227,3 +250,6 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
 
     def cuda(self, device=None):
         self.nn_model.cuda(device=device)
+
+    def compute_rate(self, z: torch.Tensor):
+        return compute_rate(self.a_mat, z)
