@@ -7,7 +7,7 @@ from scvi.models.vae import NormalEncoderVAE
 
 
 class LogNormalPoissonVAE(NormalEncoderVAE):
-    r"""Variational auto-encoder model.
+    """Variational auto-encoder model for LogPoisson latent- Poisson gene expressions.
 
     :param n_input: Number of input genes
     :param n_batch: Number of batches
@@ -16,19 +16,8 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
     :param n_latent: Dimensionality of the latent space
     :param n_layers: Number of hidden layers used for encoder and decoder NNs
     :param dropout_rate: Dropout rate for neural networks
-    :param dispersion: One of the following
-
-        * ``'gene'`` - dispersion parameter of NB is constant per gene across cells
-        * ``'gene-batch'`` - dispersion can differ between different batches
-        * ``'gene-label'`` - dispersion can differ between different labels
-        * ``'gene-cell'`` - dispersion can differ for every gene in every cell
 
     :param log_variational: Log variational distribution
-    Examples:
-        >>> gene_dataset = CortexDataset()
-        >>> vae = VAE(gene_dataset.nb_genes, n_batch=gene_dataset.n_batches * False,
-        ... n_labels=gene_dataset.n_labels)
-
     """
 
     def __init__(
@@ -62,7 +51,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         )
 
         # decoder goes from n_latent-dimensional space to n_input-d data
-        if self.trained_decoder is None:
+        if self.trained_decoder:
             self.decoder = DecoderPoisson(
                 n_latent,
                 n_input,
