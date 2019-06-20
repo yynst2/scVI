@@ -25,6 +25,19 @@ class NormalEncoderVAE(nn.Module):
         autoregresssive: bool = False,
         log_p_z=None,
     ):
+        """
+        Serves as model class for any VAE with Gaussian latent variables for scVI
+
+        :param n_input:
+        :param n_hidden:
+        :param n_latent:
+        :param n_layers:
+        :param dropout_rate:
+        :param log_variational:
+        :param full_cov: Train full posterior cov matrices for variational posteriors
+        :param autoregresssive: Train posterior cov matrices using Inverse Autoregressive Flow
+        :param log_p_z: Give value of log_p_z (useful if you have a ground truth decoder)
+        """
         super().__init__()
         self.log_p_z_fixed = log_p_z
         # z encoder goes from the n_input-dimensional data to an n_latent-d
