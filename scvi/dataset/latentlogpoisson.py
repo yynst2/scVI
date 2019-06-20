@@ -9,30 +9,46 @@ from torch import distributions, nn
 
 from .dataset import GeneExpressionDataset
 from .logpoisson import save_figs
+
 dist = pyro.distributions
 
 
-def compute_rate(a_mat: torch.Tensor, z: torch.Tensor):
+def compute_rate(a_mat: torch.Tensor, b: torch.Tensor, z: torch.Tensor):
     n_latent = a_mat.shape[1]
     rate = (a_mat @ z.reshape(-1, n_latent, 1)).squeeze()
+    rate += b
     rate = torch.clamp(rate.exp(), max=1e5)
     return rate
 
 
 @torch.no_grad()
 class LatentLogPoissonModel(nn.Module):
-    def __init__(self, a_mat, mus, sigmas, logprobas):
+    def __init__(
+        self,
+        a_mat: torch.Tensor,
+        bias: torch.Tensor,
+        mus: torch.Tensor,
+        sigmas: torch.Tensor,
+        logprobas: torch.Tensor,
+    ):
         """
         Object to be used as Decoder for scvi.VAE class.
         Serves as non trainable, perfect decoder
 
         :param a_mat:
-        :param mus:
-        :param sigmas:
-        :param logprobas:
+        :param bias:
+        :param mus: shape (n_comps, n_latent)
+        :param sigmas: shape (n_comps, n_latent, n_latent)
+        :param logprobas: shape(n_comps,)
         """
         super().__init__()
         self.a_mat = nn.Parameter(a_mat)
+        self.b = nn.Parameter(bias)
+
+        assert mus.dim() == 2
+        assert mus.shape[0] == sigmas.shape[0], 'Number of mixtures must match'
+        self.n_comps = mus.shape[0]
+
         self.mus = nn.Parameter(mus)
         self.sigmas = nn.Parameter(sigmas)
         self.logprobas = nn.Parameter(logprobas)
@@ -46,27 +62,37 @@ class LatentLogPoissonModel(nn.Module):
         :return:
         """
 
-        return compute_rate(self.a_mat, z)
+        return compute_rate(self.a_mat, self.b, z)
 
     def log_p_z(self, z: torch.Tensor):
+        # Case where there are 2 mixtures
         dist0 = distributions.MultivariateNormal(
             loc=self.mus[0], covariance_matrix=self.sigmas[0]
         )
-        dist1 = distributions.MultivariateNormal(
-            loc=self.mus[1], covariance_matrix=self.sigmas[1]
-        )
-        logprobas = self.logprobas.view(2, -1)
+        if self.n_comps == 2:
+            dist1 = distributions.MultivariateNormal(
+                loc=self.mus[1], covariance_matrix=self.sigmas[1]
+            )
+            logprobas = self.logprobas.view(2, -1)
 
-        assert z.shape[-1] == self.mus.shape[-1], 'Latent representations dimensions must match'
-        log_p_z_0 = dist0.log_prob(z)
-        log_p_z_1 = dist1.log_prob(z)
-        assert log_p_z_0.shape == log_p_z_1.shape
-        assert log_p_z_1.dim() == 1
-        logits = torch.stack([log_p_z_0, log_p_z_1])
-        # Shape (2, N_batch)
-        assert logits.shape[0] == 2
-        logits += logprobas
-        res = torch.logsumexp(logits, dim=0)
+            assert (
+                z.shape[-1] == self.mus.shape[-1]
+            ), "Latent representations dimensions must match"
+            log_p_z_0 = dist0.log_prob(z)
+            log_p_z_1 = dist1.log_prob(z)
+            assert log_p_z_0.shape == log_p_z_1.shape
+            assert log_p_z_1.dim() == 1
+            logits = torch.stack([log_p_z_0, log_p_z_1])
+            # Shape (2, N_batch)
+            assert logits.shape[0] == 2
+            logits += logprobas
+            res = torch.logsumexp(logits, dim=0)
+
+        # Easier case when only 1 mixture
+        elif self.n_comps == 1:
+            res = dist0.log_prob(z)
+        else:
+            raise NotImplementedError
         return res
 
 
@@ -76,11 +102,14 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         n_genes: int,
         n_latent: int,
         n_cells: int,
+        n_comps: int = 2,
         diff_coef: float = 1.0,
         z_center: float = 1.0,
         scale_coef: float = 0.1,
+        a_mat: torch.Tensor = None,
+        b: torch.Tensor = None,
         mu_init: torch.Tensor = None,
-        requires_grad: bool = False
+        requires_grad: bool = False,
     ):
         """
         Latent Log Poisson Model:
@@ -91,81 +120,109 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         :param n_genes:
         :param n_latent:
         :param n_cells:
+        :param n_comps: Number of mixtures in p(z)
         :param diff_coef:
         :param z_center:
         :param scale_coef:
         :param mu_init:
         :param requires_grad:
         """
-        self.n_genes = n_genes
-        self.n_latent = n_latent
-        self.n_cells = n_cells
-        self.cat = torch.tensor([0.5])
-        self.probas = torch.tensor([1.0 - self.cat[0], self.cat[0]], requires_grad=False)
-        self.logprobas = self.probas.log()
         np.random.seed(42)
         torch.manual_seed(42)
 
-        if mu_init is None:
-            mu_init = torch.randn(size=(n_latent,), requires_grad=False)
-        mu0 = diff_coef * mu_init
-        mu1 = -mu0
+        self.n_genes = n_genes
+        self.n_latent = n_latent
+        self.n_cells = n_cells
+        self.n_comps = n_comps
+        assert n_comps in [1, 2], 'More than 2 mixtures not implemented'
 
-        mu0 += z_center
-        mu1 += z_center
-
-        self.mus = torch.stack([mu0, mu1]).float()
-        sigma0 = scale_coef * torch.eye(n_latent)
-        sigma1 = scale_coef * torch.eye(n_latent)
-        self.sigmas = torch.stack([sigma0, sigma1]).float()
-
-        a_mat = torch.rand(size=(n_genes, n_latent), requires_grad=requires_grad)
-        self.a_mat = a_mat
-
-        self.dist0 = distributions.MultivariateNormal(
-            loc=self.mus[0], covariance_matrix=self.sigmas[0]
+        self.cat = torch.tensor([0.5])
+        self.probas = torch.tensor(
+            [1.0 - self.cat[0], self.cat[0]], requires_grad=False
         )
-        self.dist1 = distributions.MultivariateNormal(
-            loc=self.mus[1], covariance_matrix=self.sigmas[1]
-        )
+        self.logprobas = self.probas.log()
+
+        if self.n_comps == 2:
+            if mu_init is None:
+                mu_init = torch.randn(size=(n_latent,), requires_grad=False)
+            mu0 = diff_coef * mu_init
+            mu1 = -mu0
+            mu0 += z_center
+            mu1 += z_center
+
+            sigma0 = scale_coef * torch.eye(n_latent)
+            sigma1 = scale_coef * torch.eye(n_latent)
+
+            dist0 = distributions.MultivariateNormal(
+                loc=mu0, covariance_matrix=sigma0
+            )
+            dist1 = distributions.MultivariateNormal(
+                loc=mu1, covariance_matrix=sigma1
+            )
+
+            self.mus = torch.stack([mu0, mu1]).float()
+            self.sigmas = torch.stack([sigma0, sigma1]).float()
+            self.dists = [dist0, dist1]
+        elif self.n_comps == 1:
+            self.mus = torch.zeros(1, n_latent)
+            self.sigmas = torch.eye(n_latent).reshape(1, n_latent, n_latent)
+            self.dists = [
+                distributions.MultivariateNormal(loc=self.mus[0], covariance_matrix=self.sigmas[0])
+            ]
+        else:
+            raise NotImplementedError
+
+        if a_mat is None and b is None:
+            self.a_mat = (torch.rand(size=(n_genes, n_latent)) >= 0.5).float()
+            self.b = 1.5 * torch.ones(size=(n_genes,))
+        else:
+            self.a_mat = a_mat
+            self.b = b
+
         self.dist_x = distributions.Poisson
 
         self.z = None
         self.h = None
         self.generate_data()
 
-        self.nn_model = LatentLogPoissonModel(a_mat=a_mat, mus=self.mus, sigmas=self.sigmas, logprobas=self.logprobas)
+        self.nn_model = LatentLogPoissonModel(
+            a_mat=self.a_mat, bias=self.b, mus=self.mus, sigmas=self.sigmas, logprobas=self.logprobas
+        )
+
+        assert self.nn_model.n_comps == self.n_comps
 
     def generate_data(self):
-        cell_type = distributions.Bernoulli(probs=torch.tensor(self.cat)).sample(
-            (self.n_cells,)
-        )
-        zero_mask = (cell_type == 0).squeeze()
-        one_mask = ~zero_mask  # (cell_type == 1).squeeze()
-
+        if self.n_comps == 2:
+            cell_type = distributions.Bernoulli(probs=torch.tensor(self.cat)).sample(
+                (self.n_cells,)
+            )
+        else:
+            cell_type = torch.zeros(self.n_cells)
         z = torch.zeros((self.n_cells, self.n_latent)).float()
-        z[zero_mask, :] = self.dist0.sample((zero_mask.sum(),))
-        z[one_mask, :] = self.dist1.sample((one_mask.sum(),))
+        for idx in range(z.shape[0]):
+            z[idx, :] = self.dists[int(cell_type[idx])].sample()
         self.z = z
-        rate = compute_rate(self.a_mat, z)
+        rate = compute_rate(self.a_mat, self.b, z)
         self.h = rate
 
         gene_expressions = np.expand_dims(
             distributions.Poisson(rate=rate).sample(), axis=0
         )
-        labels = np.expand_dims(cell_type, axis=0)
+        labels = np.expand_dims(cell_type, axis=0) if self.n_comps == 2 else None
         gene_names = np.arange(self.n_genes).astype(str)
 
         super(LatentLogPoissonDataset, self).__init__(
             *GeneExpressionDataset.get_attributes_from_list(
-                gene_expressions, list_labels=labels
+                gene_expressions,
+                list_labels=labels
             ),
             gene_names=gene_names
         )
 
     @config_enumerate(default="sequential")
     def pyro_mdl(self, data: torch.Tensor):
-        with pyro.plate("data", len(data)):
+        n_batch = data.shape[0]
+        with pyro.plate("data", n_batch):
             cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
             z = pyro.sample(
                 "z",
@@ -176,12 +233,18 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
             rate = compute_rate(self.a_mat, z)
             pyro.sample("x", dist.Poisson(rate=rate).to_event(1), obs=data)
 
-    def compute_posteriors(self, x_obs: torch.Tensor, mcmc_kwargs: dict = None):
+    def compute_posteriors(
+        self,
+        x_obs: torch.Tensor,
+        mcmc_kwargs: dict = None,
+        target_p: float = 0.6
+    ):
         """
 
         :param x_obs:
         :param mcmc_kwargs: By default:
         {num_samples=1000, warmup_steps=1000, num_chains=4)
+        :param target_p: Target probability for NUTS MCMC Sampler
         :return:
         """
         if mcmc_kwargs is None:
@@ -191,7 +254,7 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
             adapt_step_size=True,
             max_plate_nesting=1,
             jit_compile=True,
-            target_accept_prob=0.6,
+            target_accept_prob=target_p,
         )
         mcmc_run = MCMC(kernel, **mcmc_kwargs).run(data=x_obs)
         marginals = mcmc_run.marginal(sites=["z", "cell_type"])
@@ -230,12 +293,8 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
             mcmc_stats_b = marginals_b.diagnostics()
 
             try:
-                save_figs(
-                    mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png")
-                )
-                save_figs(
-                    mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png")
-                )
+                save_figs(mcmc_stats_a, savepath=os.path.join(save_dir, "stats_a.png"))
+                save_figs(mcmc_stats_b, savepath=os.path.join(save_dir, "stats_b.png"))
 
                 n_eff_a = mcmc_stats_a["z"]["n_eff"]
                 n_eff_b = mcmc_stats_b["z"]["n_eff"]
