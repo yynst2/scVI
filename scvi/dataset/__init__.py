@@ -16,6 +16,8 @@ from .diff_expression import SymSimDataset
 from .powsimr import PowSimSynthetic, SignedGamma
 from .logpoisson import LogPoissonDataset
 from .latentlogpoisson import LatentLogPoissonDataset
+from .latentgaussiantoy import LatentGaussianToy
+
 
 __all__ = [
     'SyntheticDataset',
@@ -44,5 +46,6 @@ __all__ = [
     'PowSimSynthetic',
     'SignedGamma',
     'LogPoissonDataset',
-    'LatentLogPoissonDataset'
+    'LatentLogPoissonDataset',
+    'LatentGaussianToy'
 ]
