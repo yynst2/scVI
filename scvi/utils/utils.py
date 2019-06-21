@@ -8,6 +8,13 @@ def make_dir_if_necessary(directory):
 
 
 class IterativeDict:
+    """
+    Structure useful to save metrics for different models over different trainings
+
+    Saved in a nested dictionnary
+    Structure:
+    model_name ==> metric_name ==> table [n_trainings, ...]
+    """
     def __init__(self, model_names):
         self.values = {key: {} for key in model_names}
 
