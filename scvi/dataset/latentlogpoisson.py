@@ -15,8 +15,7 @@ dist = pyro.distributions
 
 def compute_rate(a_mat: torch.Tensor, b: torch.Tensor, z: torch.Tensor):
     n_latent = a_mat.shape[1]
-    rate = (a_mat @ z.reshape(-1, n_latent, 1)).squeeze()
-    rate += b
+    rate = (a_mat @ z.reshape(-1, n_latent, 1) + b.reshape(-1, 1)).squeeze()
     rate = torch.clamp(rate.exp(), max=1e5)
     return rate
 
@@ -173,8 +172,8 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
             raise NotImplementedError
 
         if a_mat is None and b is None:
-            self.a_mat = (torch.rand(size=(n_genes, n_latent)) >= 0.5).float()
-            self.b = 1.5 * torch.ones(size=(n_genes,))
+            self.a_mat = (torch.rand(size=(n_genes, n_latent), requires_grad=False) >= 0.5).float()
+            self.b = 1.5 * torch.ones(size=(n_genes,), requires_grad=False)
         else:
             self.a_mat = a_mat
             self.b = b
@@ -223,14 +222,17 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
     def pyro_mdl(self, data: torch.Tensor):
         n_batch = data.shape[0]
         with pyro.plate("data", n_batch):
-            cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
+            # if self.n_comps == 2:
+            #     cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
+            # else:
+            cell_type = 0
             z = pyro.sample(
                 "z",
                 dist.MultivariateNormal(
                     self.mus[cell_type], covariance_matrix=self.sigmas[cell_type]
                 ),
             )
-            rate = compute_rate(self.a_mat, z)
+            rate = compute_rate(self.a_mat, self.b, z)
             pyro.sample("x", dist.Poisson(rate=rate).to_event(1), obs=data)
 
     def compute_posteriors(
@@ -257,10 +259,10 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
             target_accept_prob=target_p,
         )
         mcmc_run = MCMC(kernel, **mcmc_kwargs).run(data=x_obs)
-        marginals = mcmc_run.marginal(sites=["z", "cell_type"])
+        marginals = mcmc_run.marginal(sites=["z"])
         marginals_supp = marginals.support()
-        z_x, pi_x = marginals_supp["z"], marginals_supp["cell_type"]
-        return z_x, pi_x, marginals
+        z_x= marginals_supp["z"]
+        return z_x, marginals
 
     def local_bayes(
         self,
