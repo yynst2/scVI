@@ -24,6 +24,7 @@ class NormalEncoderVAE(nn.Module):
         full_cov: bool = False,
         autoregresssive: bool = False,
         log_p_z=None,
+        learn_prior_scale: bool = True,
     ):
         """
         Serves as model class for any VAE with Gaussian latent variables for scVI
@@ -37,6 +38,8 @@ class NormalEncoderVAE(nn.Module):
         :param full_cov: Train full posterior cov matrices for variational posteriors
         :param autoregresssive: Train posterior cov matrices using Inverse Autoregressive Flow
         :param log_p_z: Give value of log_p_z (useful if you have a ground truth decoder)
+        :param learn_prior_scale: Bool: Should a scalar scaling the prior covariance be learned
+
         """
         super().__init__()
         self.log_p_z_fixed = log_p_z
@@ -57,6 +60,11 @@ class NormalEncoderVAE(nn.Module):
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = None
         self.log_variational = log_variational
+
+        if learn_prior_scale:
+            self.prior_scale = nn.Parameter(torch.rand(1))
+        else:
+            self.prior_scale = 1.0
 
     def forward(self, *input):
         pass
@@ -132,9 +140,9 @@ class NormalEncoderVAE(nn.Module):
     def get_prior_params(self, device):
         mean = torch.zeros((self.n_latent,), device=device)
         if self.z_full_cov or self.z_autoregressive:
-            scale = torch.eye(self.n_latent, device=device)
+            scale = self.prior_scale * torch.eye(self.n_latent, device=device)
         else:
-            scale = torch.ones((self.n_latent,), device=device)
+            scale = self.prior_scale * torch.ones((self.n_latent,), device=device)
         return mean, scale
 
     @staticmethod

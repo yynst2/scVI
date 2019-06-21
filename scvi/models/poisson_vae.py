@@ -33,6 +33,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         full_cov=False,
         autoregressive=False,
         gt_decoder: nn.Module = None,
+        learn_prior_scale: bool = False
     ):
         self.trained_decoder = gt_decoder is None
         if self.trained_decoder:
@@ -48,6 +49,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
             full_cov=full_cov,
             autoregresssive=autoregressive,
             log_p_z=log_p_z,
+            learn_prior_scale=learn_prior_scale
         )
 
         # decoder goes from n_latent-dimensional space to n_input-d data
