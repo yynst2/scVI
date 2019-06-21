@@ -4,6 +4,7 @@ from .vae import VAE, LDVAE
 from .poisson_vae import LogNormalPoissonVAE
 from .vae_fish import VAEF
 from .vaec import VAEC
+from .modules import LinearExpLayer
 
 __all__ = ['SCANVI',
            'VAEC',
@@ -11,5 +12,6 @@ __all__ = ['SCANVI',
            'LDVAE',
            'VAEF',
            'LogNormalPoissonVAE',
-           'Classifier'
+           'Classifier',
+           'LinearExpLayer'
            ]

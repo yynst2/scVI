@@ -18,6 +18,7 @@ from scvi.inference import JointSemiSupervisedTrainer, AlternateSemiSupervisedTr
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
 from scvi.models import VAE, SCANVI, VAEC, LogNormalPoissonVAE
 from scvi.models.classifier import Classifier
+from scvi.models.modules import LinearExpLayer
 import anndata
 import os.path
 
@@ -475,3 +476,45 @@ def test_encoder_only():
         params=params,
     )
 
+
+def test_linear_exp_layer():
+    from tqdm import tqdm
+    import matplotlib.pyplot as plt
+
+    import torch.nn as nn
+    torch.manual_seed(42)
+    n_samples = 1000
+    x_dim = 2
+    a_val = [2, 1]
+    x = 2.0*torch.rand(n_samples, x_dim).float() - 1.0
+    a = torch.tensor(a_val).reshape(1, x_dim).float()
+    b = torch.tensor([0.5]).reshape(1).float()
+    y = a @ x.reshape(n_samples, x_dim, 1)
+    y = y.squeeze()
+    y += b
+    y = y.exp()
+
+    y += 0.001 * torch.randn_like(y)
+    print(x.shape, y.shape)
+
+    mdl = LinearExpLayer(n_in=2, n_out=1, use_batch_norm=False, dropout_rate=0.0)
+    loss = nn.MSELoss()
+    # loss = nn.L1Loss()
+    optimizer = torch.optim.Adam(mdl.parameters(), lr=1e-2)
+
+    losses = []
+    for _ in tqdm(range(3000)):
+        optimizer.zero_grad()
+
+        preds = mdl(x).squeeze()
+        loss_epoch = loss(preds, y)
+        loss_epoch.backward()
+        losses.append(loss_epoch)
+        optimizer.step()
+    plt.plot(losses)
+    plt.show()
+    print('MSE on weight : ', loss(a, mdl.linear_layer[0].weight))
+    print('MSE on bias : ', loss(b, mdl.linear_layer[0].bias))
+
+    print('weight : ', a, mdl.linear_layer[0].weight)
+    print('bias : ', b, mdl.linear_layer[0].bias)

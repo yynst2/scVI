@@ -84,6 +84,31 @@ class FCLayers(nn.Module):
         return x
 
 
+class LinearExpLayer(nn.Module):
+    def __init__(self, n_in: int, n_out: int, n_cat_list: Iterable[int] = None, use_batch_norm=True,
+                 dropout_rate: float = 0.1):
+        super().__init__()
+
+        self.linear_layer = nn.Sequential(
+            nn.Linear(n_in, n_out),
+            nn.BatchNorm1d(n_out, momentum=.01, eps=0.001) if use_batch_norm else None,
+            nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
+        )
+
+    def forward(self, x: torch.Tensor, *cat_list: int):
+        r"""Forward computation on ``x``.
+
+        :param x: tensor of values with shape ``(n_in,)``
+        :param cat_list: list of category membership(s) for this sample
+        :return: tensor of shape ``(n_out,)``
+        :rtype: :py:class:`torch.Tensor`
+        """
+        for layer in self.linear_layer:
+            if layer is not None:
+                x = layer(x)
+        return torch.clamp(x.exp(), max=1e6)
+
+
 # Encoder
 class Encoder(nn.Module):
     r"""Encodes data of ``n_input`` dimensions into a latent space of ``n_output``
