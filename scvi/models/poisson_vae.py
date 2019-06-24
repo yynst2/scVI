@@ -1,6 +1,7 @@
 import torch
 from torch import nn as nn
 from torch.distributions import kl_divergence as kl, Normal
+import numpy as np
 
 from scvi.models.modules import DecoderPoisson
 from scvi.models.vae import NormalEncoderVAE
@@ -153,7 +154,16 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         reconst_loss = self._reconstruction_loss(x, px_rate)
         return reconst_loss + kl_divergence_l, kl_divergence
 
-    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def compute_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+        """
+        Computes log p(x, latents) / q(latents | x) for each element in x
+        :param x:
+        :param local_l_mean:
+        :param local_l_var:
+        :param batch_index:
+        :param y:
+        :return:
+        """
         (px_rate, qz_m, qz_v, z, ql_m, ql_v, library) = self.inference(
             x, batch_index, y
         )
@@ -186,5 +196,46 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         ), (log_px_zl.shape, log_pl.shape, log_pz.shape, log_qz_x.shape, log_ql_x.shape)
         # log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
         log_ratio = log_px_zl + log_pz - log_qz_x
-        neg_elbo = -log_ratio.mean(dim=0)
+        return log_ratio
+
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+        """
+        Compute estimate of E_q log(p(x, latents) / q(latents|x)) using Variationnal EM
+
+        :param x:
+        :param local_l_mean:
+        :param local_l_var:
+        :param batch_index:
+        :param y:
+        :return:
+        """
+        log_ratios = self.compute_log_ratio(x, local_l_mean, local_l_var, batch_index=None, y=None)
+        neg_elbo = -log_ratios.mean(dim=0)
         return neg_elbo
+
+    def marginal_ll(self, posterior, n_samples_mc=2000):
+        """
+        Computes estimate of marginal log likelihood E_q(z) [log ratio]
+
+        :param posterior:
+        :return:
+        """
+        log_lkl = 0.0
+        for i_batch, tensors in enumerate(posterior):
+            x, local_l_mean, local_l_var, batch_index, labels = tensors
+            to_sum = torch.zeros(x.size()[0], n_samples_mc)
+
+            for i in range(n_samples_mc):
+                log_ratios = self.compute_log_ratio(
+                    x,
+                    local_l_mean,
+                    local_l_var,
+                    batch_index=batch_index,
+                    y=labels
+                )
+                to_sum[:, i] = log_ratios
+
+            batch_log_lkl = torch.logsumexp(to_sum, dim=-1) - np.log(n_samples_mc)
+            log_lkl += torch.sum(batch_log_lkl).item()
+        return log_lkl
+
