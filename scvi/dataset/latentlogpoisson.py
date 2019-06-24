@@ -29,6 +29,7 @@ class LatentLogPoissonModel(nn.Module):
         mus: torch.Tensor,
         sigmas: torch.Tensor,
         logprobas: torch.Tensor,
+        learn_prior_scale: bool,
     ):
         """
         Object to be used as Decoder for scvi.VAE class.
@@ -51,6 +52,11 @@ class LatentLogPoissonModel(nn.Module):
         self.mus = nn.Parameter(mus)
         self.sigmas = nn.Parameter(sigmas)
         self.logprobas = nn.Parameter(logprobas)
+        if learn_prior_scale:
+            assert self.n_comps == 1
+            self.prior_scale = nn.Parameter(torch.FloatTensor([4.0]))
+        else:
+            self.prior_scale = 1.0
 
     def forward(self, z: torch.Tensor, library: torch.Tensor, *cat_list: int):
         """
@@ -66,7 +72,7 @@ class LatentLogPoissonModel(nn.Module):
     def log_p_z(self, z: torch.Tensor):
         # Case where there are 2 mixtures
         dist0 = distributions.MultivariateNormal(
-            loc=self.mus[0], covariance_matrix=self.sigmas[0]
+            loc=self.mus[0], covariance_matrix=self.prior_scale * self.sigmas[0]
         )
         if self.n_comps == 2:
             dist1 = distributions.MultivariateNormal(
@@ -108,6 +114,7 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         a_mat: torch.Tensor = None,
         b: torch.Tensor = None,
         mu_init: torch.Tensor = None,
+        learn_prior_scale: bool = False,
         requires_grad: bool = False,
     ):
         """
@@ -185,7 +192,12 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         self.generate_data()
 
         self.nn_model = LatentLogPoissonModel(
-            a_mat=self.a_mat, bias=self.b, mus=self.mus, sigmas=self.sigmas, logprobas=self.logprobas
+            a_mat=self.a_mat,
+            bias=self.b,
+            mus=self.mus,
+            sigmas=self.sigmas,
+            logprobas=self.logprobas,
+            learn_prior_scale=learn_prior_scale
         )
 
         assert self.nn_model.n_comps == self.n_comps
