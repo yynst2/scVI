@@ -1,7 +1,8 @@
-from .utils import make_dir_if_necessary, IterativeDict
+from .utils import *
 
 
 __all__ = [
     'make_dir_if_necessary',
-    'IterativeDict'
+    'IterativeDict',
+    'plot_traj'
 ]

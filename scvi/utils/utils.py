@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def make_dir_if_necessary(directory):
@@ -26,3 +28,22 @@ class IterativeDict:
 
     def to_df(self):
         return pd.DataFrame(self.values)
+
+
+def plot_traj(history, x=None, **plot_params):
+    """
+    :param history: (n_sim, n_x_values) array
+    :param x: associated x values used for plotting
+    :param plot_params: Plot parameters fed to plt.plot
+    :return:
+    """
+    plot_params = {} if plot_params is None else plot_params
+    history_np = np.array(history)
+    theta_mean = np.mean(history_np, axis=0)
+    theta_std = np.std(history_np, axis=0)
+    n_iter = len(theta_mean)
+
+    x = np.arange(n_iter) if x is None else x
+    plt.plot(x, theta_mean, **plot_params)
+
+    plt.fill_between(x=x, y1=theta_mean - theta_std, y2=theta_mean + theta_std, alpha=0.25)
