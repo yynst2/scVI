@@ -373,12 +373,19 @@ class DecoderPoisson(nn.Module):
         n_hidden: int = 128,
     ):
         super().__init__()
-        self.rate_decoder = FCLayers(
+        # self.rate_decoder = FCLayers(
+        #     n_in=n_input,
+        #     n_out=n_output,
+        #     n_cat_list=n_cat_list,
+        #     n_layers=n_layers,
+        #     n_hidden=n_hidden,
+        #     dropout_rate=5e-2,
+        # )
+
+        self.rate_decoder = LinearExpLayer(
             n_in=n_input,
             n_out=n_output,
             n_cat_list=n_cat_list,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
             dropout_rate=5e-2,
         )
 
