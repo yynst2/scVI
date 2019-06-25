@@ -75,6 +75,8 @@ class LatentLogPoissonModel(nn.Module):
             loc=self.mus[0], covariance_matrix=self.prior_scale * self.sigmas[0]
         )
         if self.n_comps == 2:
+            # TODO: Generalize if useful
+            assert z.dim() == 2  # Case where z has a weird shape (3 or more) not taken into account yet
             dist1 = distributions.MultivariateNormal(
                 loc=self.mus[1], covariance_matrix=self.sigmas[1]
             )

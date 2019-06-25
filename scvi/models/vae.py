@@ -55,6 +55,7 @@ class NormalEncoderVAE(nn.Module):
             full_cov=full_cov,
             autoregressive=autoregresssive
         )
+        self.n_input = n_input
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
         # decoder goes from n_latent-dimensional space to n_input-d data
@@ -62,7 +63,7 @@ class NormalEncoderVAE(nn.Module):
         self.log_variational = log_variational
 
         if learn_prior_scale:
-            self.prior_scale = nn.Parameter(torch.rand(1))
+            self.prior_scale = nn.Parameter(torch.FloatTensor([4.0]))
         else:
             self.prior_scale = 1.0
 

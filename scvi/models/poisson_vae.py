@@ -2,6 +2,7 @@ import torch
 from torch import nn as nn
 from torch.distributions import kl_divergence as kl, Normal
 import numpy as np
+from tqdm import tqdm
 
 from scvi.models.modules import DecoderPoisson
 from scvi.models.vae import NormalEncoderVAE
@@ -94,32 +95,12 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
     @staticmethod
     def _reconstruction_loss(x, rate):
         rl = -torch.distributions.Poisson(rate).log_prob(x)
-        assert rl.dim() == 2
+        assert rl.dim() == rate.dim()  # rl should be (n_batch, n_input)
+        # or (n_samples, n_batch, n_input)
         return torch.sum(rl, dim=-1)
 
     def scale_from_z(self, sample_batch, fixed_batch):
         raise NotImplementedError
-
-    def inference(self, x, batch_index=None, y=None, n_samples=1):
-        x_ = x
-        if self.log_variational:
-            x_ = torch.log(1 + x_)
-
-        # Sampling
-        qz_m, qz_v, z = self.z_encoder(x_, y)
-        ql_m, ql_v, library = self.l_encoder(x_)
-
-        if n_samples > 1:
-            assert not self.z_full_cov
-            qz_m = qz_m.unsqueeze(0).expand([n_samples] + list(qz_m.size()))
-            qz_v = qz_v.unsqueeze(0).expand([n_samples] + list(qz_v.size()))
-            ql_m = ql_m.unsqueeze(0).expand([n_samples] + list(ql_m.size()))
-            ql_v = ql_v.unsqueeze(0).expand([n_samples] + list(ql_v.size()))
-            z = self.z_encoder.sample(qz_m, qz_v)
-            library = self.l_encoder.sample(ql_m, ql_v)
-
-        px_rate = self.decoder(z, library, batch_index, y)
-        return px_rate, qz_m, qz_v, z, ql_m, ql_v, library
 
     def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
         r""" Returns the reconstruction loss and the Kullback divergences
@@ -154,7 +135,35 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         reconst_loss = self._reconstruction_loss(x, px_rate)
         return reconst_loss + kl_divergence_l, kl_divergence
 
-    def compute_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def inference(self, x, batch_index=None, y=None, n_samples=1):
+        x_ = x
+        if self.log_variational:
+            x_ = torch.log(1 + x_)
+
+        # Sampling
+        qz_m, qz_v, z = self.z_encoder(x_, y)
+        ql_m, ql_v, library = self.l_encoder(x_)
+
+        n_batches, n_dim = qz_m.shape
+        if n_samples > 1:
+            z = self.z_encoder.reparameterize(qz_m, qz_v, sample_size=(n_samples,))
+            library = self.l_encoder.reparameterize(ql_m, ql_v, sample_size=(n_samples,))
+
+            assert z.shape == (n_samples, n_batches, n_dim)
+            px_rate = torch.zeros(size=(n_samples, n_batches, self.n_input), device=z.device)
+            for sample_id in range(n_samples):
+                px_rate[sample_id, :] = self.decoder(
+                    z[sample_id, :],
+                    library[sample_id, :],
+                    batch_index,
+                    y
+                )
+
+        else:
+            px_rate = self.decoder(z, library, batch_index, y)
+        return px_rate, qz_m, qz_v, z, ql_m, ql_v, library
+
+    def compute_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1):
         """
         Computes log p(x, latents) / q(latents | x) for each element in x
         :param x:
@@ -162,10 +171,11 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         :param local_l_var:
         :param batch_index:
         :param y:
+        :param n_samples:
         :return:
         """
         (px_rate, qz_m, qz_v, z, ql_m, ql_v, library) = self.inference(
-            x, batch_index, y
+            x, batch_index, y, n_samples=n_samples
         )
 
         # KL Divergence
@@ -177,13 +187,17 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         )
 
         log_pz = self.log_p_z(z)
-        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z)
+        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z).sum(dim=-1)
 
         # assert log_qz_x.shape == log_pz.shape, (log_qz_x.shape, log_pz.shape)
-        if log_pz.dim() == 2:
-            log_pz = log_pz.sum(dim=1)
-        if log_qz_x.dim() == 2:
-            log_qz_x = log_qz_x.sum(dim=1)
+
+        # Below should not be useful now
+        if log_pz.dim() == 2 and n_samples == 1:
+            raise ValueError
+        if log_qz_x.dim() == 2 and n_samples == 1:
+            raise ValueError
+        if log_qz_x.dim() == 3 and n_samples > 1:
+            raise ValueError
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
 
@@ -213,29 +227,29 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         neg_elbo = -log_ratios.mean(dim=0)
         return neg_elbo
 
-    def marginal_ll(self, posterior, n_samples_mc=2000):
+    @torch.no_grad()
+    def marginal_ll(self, posterior, n_samples_mc=100):
         """
         Computes estimate of marginal log likelihood E_q(z) [log ratio]
 
         :param posterior:
+        :param n_samples_mc:
         :return:
         """
         log_lkl = 0.0
-        for i_batch, tensors in enumerate(posterior):
+        for i_batch, tensors in enumerate(tqdm(posterior)):
             x, local_l_mean, local_l_var, batch_index, labels = tensors
-            to_sum = torch.zeros(x.size()[0], n_samples_mc)
-
-            for i in range(n_samples_mc):
-                log_ratios = self.compute_log_ratio(
-                    x,
-                    local_l_mean,
-                    local_l_var,
-                    batch_index=batch_index,
-                    y=labels
-                )
-                to_sum[:, i] = log_ratios
-
-            batch_log_lkl = torch.logsumexp(to_sum, dim=-1) - np.log(n_samples_mc)
+            n_batches = x.shape[0]
+            log_ratios = self.compute_log_ratio(
+                x,
+                local_l_mean,
+                local_l_var,
+                batch_index=batch_index,
+                y=labels,
+                n_samples=n_samples_mc
+            )
+            assert log_ratios.shape == (n_samples_mc, n_batches)
+            batch_log_lkl = torch.logsumexp(log_ratios, dim=0) - np.log(n_samples_mc)
             log_lkl += torch.sum(batch_log_lkl).item()
         return log_lkl
 

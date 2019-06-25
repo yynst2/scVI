@@ -144,8 +144,8 @@ class Encoder(nn.Module):
         else:
             self.var_encoder = nn.Linear(n_hidden, n_output)
 
-    def reparameterize(self, mu, var):
-        return self.distrib(mu, var).rsample()
+    def reparameterize(self, mu, var, sample_size=torch.Size()):
+        return self.distrib(mu, var).rsample(sample_size)
 
     def sample(self, mu, var, sample_size=torch.Size()):
         return self.distrib(mu, var).sample(sample_size)
