@@ -47,3 +47,9 @@ def plot_traj(history, x=None, **plot_params):
     plt.plot(x, theta_mean, **plot_params)
 
     plt.fill_between(x=x, y1=theta_mean - theta_std, y2=theta_mean + theta_std, alpha=0.25)
+
+
+def plot_identity():
+    xmin, xmax = plt.xlim()
+    vals = np.linspace(xmin, xmax, 50)
+    plt.plot(vals, vals, "--", label="identity")
