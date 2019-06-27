@@ -442,8 +442,9 @@ def test_vae_ratio_loss(save_path):
 def test_encoder_only():
     # torch.autograd.set_detect_anomaly(mode=True)
     dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=300, n_comps=1)
-    dataset = LatentLogPoissonDataset(n_genes=3, n_latent=2, n_cells=50, n_comps=2)
-    dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=50)
+    dataset = LatentLogPoissonDataset(n_genes=3, n_latent=2, n_cells=15, n_comps=2)
+    dataset = LatentLogPoissonDataset(n_genes=5, n_latent=2, n_cells=150, n_comps=1,
+                                      learn_prior_scale=True)
 
     # _, _, marginals = dataset.compute_posteriors(
     #     x_obs=torch.randint(0, 150, size=(1, 5), dtype=torch.float),
@@ -456,7 +457,8 @@ def test_encoder_only():
     vae_mdl = LogNormalPoissonVAE(
         dataset.nb_genes,
         dataset.n_batches,
-        autoregressive=True,
+        autoregressive=False,
+        full_cov=True,
         n_latent=2,
         gt_decoder=dataset.nn_model,
     )
@@ -471,10 +473,13 @@ def test_encoder_only():
         verbose=False
     )
     trainer.train(
-        n_epochs=5,
+        n_epochs=2,
         lr=1e-3,
         params=params,
     )
+
+    full = trainer.create_posterior(trainer.model, dataset, indices=np.arange(len(dataset)))
+    lkl_estimate = vae_mdl.marginal_ll(full, n_samples_mc=50)
 
 
 def test_linear_exp_layer():
