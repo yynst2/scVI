@@ -187,17 +187,23 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         )
 
         log_pz = self.log_p_z(z)
-        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z).sum(dim=-1)
+        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z)  # .sum(dim=-1)
 
         # assert log_qz_x.shape == log_pz.shape, (log_qz_x.shape, log_pz.shape)
 
+        # TODO: Find cleaner and safer way
         # Below should not be useful now
         if log_pz.dim() == 2 and n_samples == 1:
-            raise ValueError
+            log_pz = log_pz.sum(-1)
+            # raise ValueError
         if log_qz_x.dim() == 2 and n_samples == 1:
-            raise ValueError
+            log_qz_x = log_qz_x.sum(-1)
+            # raise ValueError
         if log_qz_x.dim() == 3 and n_samples > 1:
-            raise ValueError
+            log_qz_x = log_qz_x.sum(-1)
+            # raise ValueError
+        if log_pz.dim() == 3 and n_samples > 1:
+            log_pz = log_pz.sum(-1)
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
 
