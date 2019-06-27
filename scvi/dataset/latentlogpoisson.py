@@ -54,7 +54,7 @@ class LatentLogPoissonModel(nn.Module):
         self.logprobas = nn.Parameter(logprobas)
         if learn_prior_scale:
             assert self.n_comps == 1
-            self.prior_scale = nn.Parameter(torch.FloatTensor([4.0]))
+            self.prior_scale = nn.Parameter(torch.FloatTensor([2.5]))
         else:
             self.prior_scale = 1.0
 
