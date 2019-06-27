@@ -1,16 +1,21 @@
+import logging
 import sys
 import time
+
 from abc import abstractmethod
 from collections import defaultdict, OrderedDict
 from itertools import cycle
 
 import numpy as np
 import torch
+
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 from tqdm import trange
 
 from scvi.inference.posterior import Posterior
+
+logger = logging.getLogger(__name__)
 
 
 class Trainer:
@@ -37,8 +42,11 @@ class Trainer:
     default_metrics_to_monitor = []
 
     def __init__(self, model, gene_dataset, use_cuda=True, metrics_to_monitor=None, benchmark=False,
-                 verbose=False, frequency=None, weight_decay=1e-6, early_stopping_kwargs=dict(),
-                 data_loader_kwargs=dict(), show_progbar=True, optimizer_class=torch.optim.Adam):
+                 verbose=False, frequency=None, weight_decay=1e-6, early_stopping_kwargs=None,
+                 data_loader_kwargs=None, show_progbar=True):
+        # handle mutable defaults
+        early_stopping_kwargs = early_stopping_kwargs if early_stopping_kwargs else dict()
+        data_loader_kwargs = data_loader_kwargs if data_loader_kwargs else dict()
 
         self.model = model
         self.gene_dataset = gene_dataset
@@ -56,11 +64,14 @@ class Trainer:
         self.training_time = 0
 
         if metrics_to_monitor is not None:
-            self.metrics_to_monitor = metrics_to_monitor
+            self.metrics_to_monitor = set(metrics_to_monitor)
         else:
-            self.metrics_to_monitor = self.default_metrics_to_monitor
+            self.metrics_to_monitor = set(self.default_metrics_to_monitor)
 
         self.early_stopping = EarlyStopping(**early_stopping_kwargs)
+
+        if self.early_stopping.early_stopping_metric:
+            self.metrics_to_monitor.add(self.early_stopping.early_stopping_metric)
 
         self.use_cuda = use_cuda and torch.cuda.is_available()
         if self.use_cuda:
@@ -76,11 +87,6 @@ class Trainer:
 
         self.show_progbar = show_progbar
 
-        self.optimizer_class = optimizer_class
-
-        self.train_losses = []
-        self.prior_scales = []
-
     @torch.no_grad()
     def compute_metrics(self):
         begin = time.time()
@@ -89,16 +95,20 @@ class Trainer:
             with torch.set_grad_enabled(False):
                 self.model.eval()
                 if self.verbose:
-                    print("\nEPOCH [%d/%d]: " % (epoch, self.n_epochs))
+                    logging.info("\nEPOCH [%d/%d]: " % (epoch, self.n_epochs))
 
                 for name, posterior in self._posteriors.items():
-                    print_name = ' '.join([s.capitalize() for s in name.split('_')[-2:]])
+                    logging.info_name = ' '.join([s.capitalize() for s in name.split('_')[-2:]])
                     if hasattr(posterior, 'to_monitor'):
                         for metric in posterior.to_monitor:
-                            if self.verbose:
-                                print(print_name, end=' : ')
-                            result = getattr(posterior, metric)(verbose=self.verbose)
-                            self.history[metric + '_' + name] += [result]
+                            if metric not in self.metrics_to_monitor:
+                                if self.verbose:
+                                    logging.info(logging.info_name, end=' : ')
+                                result = getattr(posterior, metric)(verbose=self.verbose)
+                                self.history[metric + '_' + name] += [result]
+                    for metric in self.metrics_to_monitor:
+                        result = getattr(posterior, metric)(verbose=self.verbose)
+                        self.history[metric + '_' + name] += [result]
                 self.model.train()
         self.compute_metrics_time += time.time() - begin
 
@@ -109,7 +119,12 @@ class Trainer:
         if params is None:
             params = filter(lambda p: p.requires_grad, self.model.parameters())
 
-        optimizer = self.optimizer = self.optimizer_class(params, lr=lr, eps=eps)  # weight_decay=self.weight_decay,
+        optimizer = self.optimizer = torch.optim.Adam(
+            params,
+            lr=lr,
+            eps=eps,
+            weight_decay=self.weight_decay
+        )
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
@@ -126,20 +141,12 @@ class Trainer:
             for self.epoch in pbar:
                 self.on_epoch_begin()
                 pbar.update(1)
-
-                loss_mean = []
-
                 for tensors_list in self.data_loaders_loop():
                     loss = self.loss(*tensors_list)
                     optimizer.zero_grad()
-                    loss_mean.append(loss.item())
                     loss.backward()
                     optimizer.step()
 
-                loss_mean = np.mean(loss_mean)
-                self.train_losses.append(loss_mean)
-                # self.prior_scales.append(self.model.decoder.prior_scale.cpu().item())
-                # print(self.prior_scales[-1])
                 if not self.on_epoch_end():
                     break
 
@@ -150,7 +157,7 @@ class Trainer:
         self.model.eval()
         self.training_time += (time.time() - begin) - self.compute_metrics_time
         if self.verbose and self.frequency:
-            print("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
+            logging.info("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
 
     def on_epoch_begin(self):
         pass
@@ -167,9 +174,14 @@ class Trainer:
 
         continue_training = True
         if early_stopping_metric is not None and on is not None:
-            continue_training = self.early_stopping.update(
+            continue_training, reduce_lr = self.early_stopping.update(
                 self.history[early_stopping_metric + '_' + on][-1]
             )
+            if reduce_lr:
+                logging.info("Reducing LR.")
+                for param_group in self.optimizer.param_groups:
+                    param_group["lr"] *= self.early_stopping.lr_factor
+
         return continue_training
 
     @property
@@ -250,13 +262,24 @@ class SequentialSubsetSampler(SubsetRandomSampler):
 
 
 class EarlyStopping:
-    def __init__(self, early_stopping_metric=None, save_best_state_metric=None, on='test_set',
-                 patience=15, threshold=3, benchmark=False):
+    def __init__(
+        self,
+        early_stopping_metric: str = None,
+        save_best_state_metric: str = None,
+        on: str = 'test_set',
+        patience: int = 15,
+        threshold: int = 3,
+        benchmark: bool = False,
+        reduce_lr_on_plateau: bool = False,
+        lr_patience: int = 10,
+        lr_factor: float = 0.5,
+    ):
         self.benchmark = benchmark
         self.patience = patience
         self.threshold = threshold
         self.epoch = 0
         self.wait = 0
+        self.wait_lr = 0
         self.mode = getattr(Posterior, early_stopping_metric).mode if early_stopping_metric is not None else None
         # We set the best to + inf because we're dealing with a loss we want to minimize
         self.current_performance = np.inf
@@ -274,14 +297,27 @@ class EarlyStopping:
         self.early_stopping_metric = early_stopping_metric
         self.save_best_state_metric = save_best_state_metric
         self.on = on
+        self.reduce_lr_on_plateau = reduce_lr_on_plateau
+        self.lr_patience = lr_patience
+        self.lr_factor = lr_factor
 
     def update(self, scalar):
         self.epoch += 1
-        if self.benchmark or self.epoch < self.patience:
+        if self.benchmark:
             continue_training = True
+            reduce_lr = False
         elif self.wait >= self.patience:
             continue_training = False
+            reduce_lr = False
         else:
+            # Check if we should reduce the learning rate
+            if not self.reduce_lr_on_plateau:
+                reduce_lr = False
+            elif self.wait_lr >= self.lr_patience:
+                reduce_lr = True
+                self.wait_lr = 0
+            else:
+                reduce_lr = False
             # Shift
             self.current_performance = scalar
 
@@ -290,6 +326,8 @@ class EarlyStopping:
                 improvement = self.current_performance - self.best_performance
             elif self.mode == "min":
                 improvement = self.best_performance - self.current_performance
+            else:
+                raise NotImplementedError("Unknown optimization mode")
 
             # updating best performance
             if improvement > 0:
@@ -297,16 +335,19 @@ class EarlyStopping:
 
             if improvement < self.threshold:
                 self.wait += 1
+                self.wait_lr += 1
             else:
                 self.wait = 0
+                self.wait_lr = 0
 
             continue_training = True
         if not continue_training:
-            print("\nStopping early: no improvement of more than " + str(self.threshold) +
-                  " nats in " + str(self.patience) + " epochs")
-            print("If the early stopping criterion is too strong, "
-                  "please instantiate it with different parameters in the train method.")
-        return continue_training
+            # FIXME: log total number of epochs run
+            logging.info("\nStopping early: no improvement of more than " + str(self.threshold) +
+                         " nats in " + str(self.patience) + " epochs")
+            logging.info("If the early stopping criterion is too strong, "
+                         "please instantiate it with different parameters in the train method.")
+        return continue_training, reduce_lr
 
     def update_state(self, scalar):
         improved = ((self.mode_save_state == "max" and scalar - self.best_performance_state > 0) or

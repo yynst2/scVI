@@ -29,7 +29,7 @@ class SCANVI(VAE):
         * ``'gene-label'`` - dispersion can differ between different labels
         * ``'gene-cell'`` - dispersion can differ for every gene in every cell
 
-    :param log_variational: Log variational distribution
+    :param log_variational: Log(data+1) prior to encoding for numerical stability. Not normalization.
     :param reconstruction_loss:  One of
 
         * ``'nb'`` - Negative binomial distribution
@@ -60,7 +60,6 @@ class SCANVI(VAE):
                          log_variational=log_variational, reconstruction_loss=reconstruction_loss)
 
         self.n_labels = n_labels
-        self.n_latent_layers = 2
         # Classifier takes n_latent as input
         cls_parameters = {"n_layers": n_layers, "n_hidden": n_hidden, "dropout_rate": dropout_rate}
         cls_parameters.update(classifier_parameters)
@@ -124,7 +123,7 @@ class SCANVI(VAE):
         qz2_m, qz2_v, z2 = self.encoder_z2_z1(z1s, ys)
         pz1_m, pz1_v = self.decoder_z1_z2(z2, ys)
 
-        reconst_loss = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        reconst_loss = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
         # KL Divergence
         mean = torch.zeros_like(qz2_m)

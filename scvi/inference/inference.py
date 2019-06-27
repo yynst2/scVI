@@ -1,6 +1,8 @@
 import copy
+
 import matplotlib.pyplot as plt
 import torch
+
 from scvi.inference import Trainer
 
 plt.switch_backend('agg')
@@ -14,6 +16,9 @@ class UnsupervisedTrainer(Trainer):
         :gene_dataset: A gene_dataset instance like ``CortexDataset()``
         :train_size: The train size, either a float between 0 and 1 or and integer for the number of training samples
          to use Default: ``0.8``.
+        :n_epochs_kl_warmup: Number of epochs for linear warmup of KL(q(z|x)||p(z)) term. After `n_epochs_kl_warmup`,
+            the training objective is the ELBO. This might be used to prevent inactivity of latent units, and/or to
+            improve clustering of latent space, as a long warmup turns the model into something more of an autoencoder.
         :\*\*kwargs: Other keywords arguments from the general Trainer class.
 
     Examples:
@@ -24,25 +29,18 @@ class UnsupervisedTrainer(Trainer):
         >>> infer = VariationalInference(gene_dataset, vae, train_size=0.5)
         >>> infer.train(n_epochs=20, lr=1e-3)
     """
-    default_metrics_to_monitor = ['ll']
+    default_metrics_to_monitor = ['elbo']
 
-    def __init__(
-        self,
-        model,
-        gene_dataset,
-        train_size=0.8,
-        test_size=None,
-        kl=None,
-        ratio_loss: bool = False,
-        **kwargs
-        ):
+    def __init__(self, model, gene_dataset, train_size=0.8, test_size=None, n_epochs_kl_warmup=400,
+                 ratio_loss: bool = False,
+                 **kwargs):
         super().__init__(model, gene_dataset, **kwargs)
-        self.kl = kl
+        self.n_epochs_kl_warmup = n_epochs_kl_warmup
         self.ratio_loss = ratio_loss
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
-            self.train_set.to_monitor = ['ll']
-            self.test_set.to_monitor = ['ll']
+            self.train_set.to_monitor = ['elbo']
+            self.test_set.to_monitor = ['elbo']
 
     @property
     def posteriors_loop(self):
@@ -63,7 +61,10 @@ class UnsupervisedTrainer(Trainer):
         return loss
 
     def on_epoch_begin(self):
-        self.kl_weight = self.kl if self.kl is not None else min(1, self.epoch / 400)  # self.n_epochs)
+        if self.n_epochs_kl_warmup is not None:
+            self.kl_weight = min(1, self.epoch / self.n_epochs_kl_warmup)
+        else:
+            self.kl_weight = 1.0
 
     # TODO: Train Wake Sleep Procedure when CUBO and everything implemented
 
@@ -72,7 +73,7 @@ class AdapterTrainer(UnsupervisedTrainer):
     def __init__(self, model, gene_dataset, posterior_test, frequency=5):
         super().__init__(model, gene_dataset, frequency=frequency)
         self.test_set = posterior_test
-        self.test_set.to_monitor = ['ll']
+        self.test_set.to_monitor = ['elbo']
         self.params = list(self.model.z_encoder.parameters()) + list(self.model.l_encoder.parameters())
         self.z_encoder_state = copy.deepcopy(model.z_encoder.state_dict())
         self.l_encoder_state = copy.deepcopy(model.l_encoder.state_dict())
@@ -88,4 +89,4 @@ class AdapterTrainer(UnsupervisedTrainer):
             self.model.l_encoder.load_state_dict(self.l_encoder_state)
             super().train(n_epochs, params=self.params, **kwargs)
 
-        return min(self.history["ll_test_set"])
+        return min(self.history["elbo_test_set"])

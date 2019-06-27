@@ -15,7 +15,7 @@ from subprocess import Popen
 from typing import Any, Callable, Dict, List, Type, Union
 from queue import Empty
 
-from hyperopt import fmin, tpe, Trials, hp, STATUS_OK
+from hyperopt import fmin, tpe, Trials, hp, STATUS_OK, STATUS_FAIL
 from hyperopt.mongoexp import (
     as_mongo_str,
     MongoJobs,
@@ -24,6 +24,7 @@ from hyperopt.mongoexp import (
     ReserveTimeout,
 )
 
+import numpy as np
 import torch
 import tqdm
 
@@ -148,12 +149,12 @@ def _cleanup_decorator(func: Callable):
                 )
             )
             _cleanup_processes_files()
+            _cleanup_logger()
             raise
 
     return decorated
 
 
-@_cleanup_decorator
 def auto_tune_scvi_model(
     exp_key: str,
     gene_dataset: GeneExpressionDataset,
@@ -169,12 +170,12 @@ def auto_tune_scvi_model(
     pickle_result: bool = True,
     save_path: str = ".",
     use_batches: bool = False,
-    parallel: bool = False,
+    parallel: bool = True,
     n_cpu_workers: int = None,
     gpu_ids: List[int] = None,
     n_workers_per_gpu: int = 1,
     reserve_timeout: float = 30.0,
-    fmin_timeout: float = 60.0,
+    fmin_timeout: float = 300.0,
     fmin_timer: float = None,
     mongo_port: str = "1234",
     mongo_host: str = "localhost",
@@ -217,7 +218,8 @@ def auto_tune_scvi_model(
     :param save_path: Path where to save best model, trainer, trials and mongo files.
     :param use_batches: If ``False``, pass ``n_batch=0`` to model else pass ``gene_dataset.n_batches``.
     :param parallel: If ``True``, use ``MongoTrials`` object to run trainings in parallel.
-    :param n_cpu_workers: Number of cpu workers to launch.
+    :param n_cpu_workers: Number of cpu workers to launch. If None, and no GPUs are found,
+        defaults to ``os.cpucount() - 1``. Else, defaults to 0.
     :param gpu_ids: Ids of the GPUs to use. If None defaults to all GPUs found by ``torch``.
         Note that considered gpu ids are int from 0 to ``torch.cuda.device_count()``.
     :param n_workers_per_gpu: Number of workers to launch per gpu found by ``torch``.
@@ -279,12 +281,19 @@ def auto_tune_scvi_model(
     if "early_stopping_kwargs" not in trainer_specific_kwargs:
         logger.debug("Adding default early stopping behaviour.")
         early_stopping_kwargs = {
-            "early_stopping_metric": "ll",
-            "save_best_state_metric": "ll",
+            "early_stopping_metric": "elbo",
+            "save_best_state_metric": "elbo",
             "patience": 50,
-            "threshold": 3,
+            "threshold": 0,
+            "reduce_lr_on_plateau": True,
+            "lr_patience": 25,
+            "lr_factor": 0.2,
         }
         trainer_specific_kwargs["early_stopping_kwargs"] = early_stopping_kwargs
+        # add elbo to metrics to monitor
+        metrics_to_monitor = trainer_specific_kwargs.get("metrics_to_monitor", [])
+        metrics_to_monitor.append("elbo")
+        trainer_specific_kwargs["metrics_to_monitor"] = metrics_to_monitor
 
     # default search space
     if space is None:
@@ -442,7 +451,8 @@ def _auto_tune_parallel(
         when performing hyperoptimization. Default: mutable, see source code.
     :param max_evals: Maximum number of evaluations of the objective.
     :param save_path: Path where to save best model, trainer, trials and mongo files.
-    :param n_cpu_workers: Number of cpu workers to launch.
+    :param n_cpu_workers: Number of cpu workers to launch. If None, and no GPUs are found,
+        defaults to ``os.cpucount() - 1``. Else, defaults to 0.
     :param gpu_ids: Ids of the GPUs to use. If None defaults to all GPUs found by ``torch``.
         Note that considered gpu ids are int from ``0`` to ``torch.cuda.device_count()``.
     :param n_workers_per_gpu: Number of workers ton launch per gpu found by ``torch``.
@@ -715,8 +725,8 @@ def launch_workers(
 ):
     """Launches the local workers which are going to run the jobs required by the minimization process.
     Terminates when the worker_watchdog call finishes.
-    Specifically, first ``n_cpu_workers`` CPU workers are launched in their own spawned process.
-    Then, ``n_gpu_workers`` are launched per GPU in ``gpu_ids``, also in their own spawned process.
+    Specifically, first ``n_gpu_workers`` are launched per GPU in ``gpu_ids`` in their own spawned process.
+    Then, ``n_cpu_workers`` CPU workers are launched, also in their own spawned process.
     The use of spawned processes (each have their own python interpreter) is mandatory for compatiblity with CUDA.
     See https://pytorch.org/docs/stable/notes/multiprocessing.html for more information.
 
@@ -724,7 +734,8 @@ def launch_workers(
         which checks that local workers are still running.
     :param exp_key: This key is used by hyperopt as a suffix to the part of the MongoDb
         which corresponds to the current experiment. In particular, it has to be passed to ``MongoWorker``.
-    :param n_cpu_workers: Number of cpu workers to launch.
+    :param n_cpu_workers: Number of cpu workers to launch. If None, and no GPUs are found,
+        defaults to ``os.cpu_count() - 1``. Else, defaults to 0.
     :param gpu_ids: Ids of the GPUs to use. If None defaults to all GPUs found by ``torch``.
         Note that considered gpu ids are int from ``0`` to ``torch.cuda.device_count()``.
     :param n_workers_per_gpu: Number of workers ton launch per gpu found by ``torch``.
@@ -744,11 +755,26 @@ def launch_workers(
     started_processes.append(listener)
 
     if gpu_ids is None:
-        logger.debug("gpu_ids is None, defaulting to all gpus found by torch.")
-        gpu_ids = list(range(torch.cuda.device_count()))
-    if n_cpu_workers is None:
-        logger.debug("n_cpu_workers is None, defaulting to max(0, os.cpu_count() - 1).")
-        n_cpu_workers = max(0, os.cpu_count() - 1)
+        n_gpus = torch.cuda.device_count()
+        logger.debug(
+            "gpu_ids is None, defaulting to all {n_gpus} GPUs found by torch.".format(
+                n_gpus=n_gpus
+            )
+        )
+        gpu_ids = list(range(n_gpus))
+        if n_gpus and n_cpu_workers is None:
+            n_cpu_workers = 0
+            logging.debug(
+                "Some GPU.s found and n_cpu_wokers is None, defaulting to n_cpu_workers = 0"
+            )
+        if not n_gpus and n_cpu_workers is None:
+            n_cpu_workers = os.cpu_count() - 1
+            logging.debug(
+                "No GPUs found and n_cpu_wokers is None, defaulting to n_cpu_workers = "
+                "{n_cpu_workers} (os.cpu_count() - 1)".format(
+                    n_cpu_workers=n_cpu_workers
+                )
+            )
     if not gpu_ids and not n_cpu_workers and not multiple_hosts:
         raise ValueError("No hardware (cpu/gpu) selected/found.")
 
@@ -792,7 +818,9 @@ def launch_workers(
 
     # launch cpu workers
     # TODO: add cpu affinity?
-    logger.info("Starting {n_cpu} cpu worker.s".format(n_cpu=n_cpu_workers))
+    logger.info(
+        "Starting {n_cpu_workers} cpu worker.s".format(n_cpu_workers=n_cpu_workers)
+    )
     for cpu_id in range(n_cpu_workers):
         worker_kwargs = {
             "progress_queue": progress_queue,
@@ -852,7 +880,6 @@ def progress_listener(progress_queue, logging_queue):
             break
 
 
-@_cleanup_decorator
 def hyperopt_worker(
     progress_queue: multiprocessing.Queue,
     logging_queue: multiprocessing.Queue,
@@ -1033,37 +1060,50 @@ def _objective_function(
     else:
         # select metric from early stopping kwargs if possible
         metric = None
-        if "early_stopping_kwargs" in trainer_specific_kwargs:
-            early_stopping_kwargs = trainer_specific_kwargs["early_stopping_kwargs"]
-            if "early_stopping_metric" in early_stopping_kwargs:
-                metric = early_stopping_kwargs["early_stopping_metric"]
+        early_stopping_kwargs = trainer_specific_kwargs.get(
+            "early_stopping_kwargs", None
+        )
+        if early_stopping_kwargs:
+            metric = early_stopping_kwargs.get("early_stopping_metric", None)
+
         # store run results
         if metric:
-            loss_is_best = True
+            early_stopping_loss_is_best = True
             best_epoch = trainer.best_epoch
             # add actual number of epochs to be used when training best model
             space["train_func_tunable_kwargs"]["n_epochs"] = best_epoch
-            loss = trainer.early_stopping.best_performance
+            early_stopping_loss = trainer.early_stopping.best_performance
             metric += "_" + trainer.early_stopping.on
-        # default to ll_test_set
+        # default to elbo
         else:
-            loss_is_best = False
-            metric = "ll_test_set"
-            loss = trainer.history[metric][-1]
+            early_stopping_loss_is_best = False
+            metric = "elbo_test_set"
+            early_stopping_loss = trainer.history[metric][-1]
             best_epoch = len(trainer.history[metric])
+
+        # compute true ll
+        loss = trainer.test_set.marginal_ll(n_mc_samples=100)
+
         logger.debug(
-            "Training of {n_epochs} epochs finished in {time}".format(
+            "Training of {n_epochs} epochs finished in {time} with loss = {loss}".format(
                 n_epochs=len(trainer.history[metric]),
                 time=str(datetime.timedelta(seconds=elapsed_time)),
+                loss=loss,
             )
         )
 
+        # check status
+        status = STATUS_OK
+        if np.isnan(loss):
+            status = STATUS_FAIL
+
         return {
             "loss": loss,
-            "loss_is_best": loss_is_best,
+            "early_stopping_loss": early_stopping_loss,
+            "early_stopping_loss_is_best": early_stopping_loss_is_best,
             "best_epoch": best_epoch,
             "elapsed_time": elapsed_time,
-            "status": STATUS_OK,
+            "status": status,
             "history": trainer.history,
             "space": space,
             "worker_name": multiprocessing.current_process().name,
