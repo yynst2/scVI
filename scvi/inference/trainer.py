@@ -79,6 +79,7 @@ class Trainer:
         self.optimizer_class = optimizer_class
 
         self.train_losses = []
+        self.prior_scales = []
 
     @torch.no_grad()
     def compute_metrics(self):
@@ -137,7 +138,8 @@ class Trainer:
 
                 loss_mean = np.mean(loss_mean)
                 self.train_losses.append(loss_mean)
-
+                # self.prior_scales.append(self.model.decoder.prior_scale.cpu().item())
+                # print(self.prior_scales[-1])
                 if not self.on_epoch_end():
                     break
 
