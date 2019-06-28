@@ -1,6 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import average_precision_score
 import matplotlib.pyplot as plt
 
 
@@ -53,3 +55,20 @@ def plot_identity():
     xmin, xmax = plt.xlim()
     vals = np.linspace(xmin, xmax, 50)
     plt.plot(vals, vals, "--", label="identity")
+
+
+def plot_precision_recall(y_test, y_score, label=''):
+    average_precision = average_precision_score(y_test, y_score)
+    precision, recall, _ = precision_recall_curve(y_test, y_score)
+
+    # In matplotlib < 1.5, plt.fill_between does not have a 'step' argument
+    step_kwargs = {'step': 'post'}
+    legend = '{0} PR curve: AP={1:0.2f}'.format(label, average_precision)
+
+    plt.step(recall, precision, color='b', alpha=0.2,
+             where='post', label=legend)
+    plt.fill_between(recall, precision, alpha=0.2, **step_kwargs)
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.0])
