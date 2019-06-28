@@ -87,6 +87,8 @@ class Trainer:
 
         self.show_progbar = show_progbar
 
+        self.train_losses = []
+
     @torch.no_grad()
     def compute_metrics(self):
         begin = time.time()
@@ -141,11 +143,17 @@ class Trainer:
             for self.epoch in pbar:
                 self.on_epoch_begin()
                 pbar.update(1)
+
+                loss_mean = []
                 for tensors_list in self.data_loaders_loop():
                     loss = self.loss(*tensors_list)
                     optimizer.zero_grad()
+                    loss_mean.append(loss.item())
                     loss.backward()
                     optimizer.step()
+
+                loss_mean = np.mean(loss_mean)
+                self.train_losses.append(loss_mean)
 
                 if not self.on_epoch_end():
                     break
