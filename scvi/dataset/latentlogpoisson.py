@@ -327,4 +327,4 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         self.nn_model.cuda(device=device)
 
     def compute_rate(self, z: torch.Tensor):
-        return compute_rate(self.a_mat, z)
+        return compute_rate(self.a_mat, self.b, z)
