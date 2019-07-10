@@ -206,7 +206,7 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
 
     def generate_data(self):
         if self.n_comps == 2:
-            cell_type = distributions.Bernoulli(probs=torch.tensor(self.cat)).sample(
+            cell_type = distributions.Bernoulli(probs=self.cat).sample(
                 (self.n_cells,)
             )
         else:
@@ -236,10 +236,10 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
     def pyro_mdl(self, data: torch.Tensor):
         n_batch = data.shape[0]
         with pyro.plate("data", n_batch):
-            # if self.n_comps == 2:
-            #     cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
-            # else:
-            cell_type = 0
+            if self.n_comps == 2:
+                cell_type = pyro.sample("cell_type", dist.Categorical(self.probas))
+            else:
+                cell_type = 0
             z = pyro.sample(
                 "z",
                 dist.MultivariateNormal(
