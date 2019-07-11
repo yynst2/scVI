@@ -405,6 +405,7 @@ class DecoderPoisson(nn.Module):
 
         # The decoder returns values for the parameters of the ZINB distribution
         rate = self.rate_decoder(z, *cat_list)
-        px_rate = torch.exp(library) * rate  # torch.clamp( , max=12)
+        # px_rate = torch.exp(library) * rate  # torch.clamp( , max=12)
+        px_rate = rate
         px_rate = 1e-6 + torch.clamp(px_rate, max=1e5)
         return px_rate

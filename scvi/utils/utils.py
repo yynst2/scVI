@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 import matplotlib.pyplot as plt
+import arviz as az
 
 
 def make_dir_if_necessary(directory):
@@ -72,3 +73,37 @@ def plot_precision_recall(y_test, y_score, label=''):
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.05])
     plt.xlim([0.0, 1.0])
+
+
+def compute_hdi(arr, credible_interval=0.64):
+    """
+    Given array of (simulations, dimensions) computes Highest Density Intervals
+    Sample dimension should be first dimension
+
+    :param arr: Array of shape (n_samples, n_genes)
+    :param credible_interval:
+    :return:
+    """
+    return az.hpd(arr, credible_interval=credible_interval)
+
+
+def demultiply(arr1, arr2, factor=2):
+    """
+    Suppose you have at disposal
+        arr1 ~ p(h|x_a)
+        arr2 ~ p(h|x_b)
+
+    Then artificially increase the sizes on respective arrays
+    so that you can sample from
+    p(f(h1, h2) | x_a, x_b) under the right assumptions
+
+    :param arr1:
+    :param arr2:
+    :param factor:
+    :return:
+    """
+    assert arr1.shape == arr2.shape
+    n_original = len(arr1)
+    idx_1 = np.random.choice(n_original, size=n_original*factor, replace=True)
+    idx_2 = np.random.choice(n_original, size=n_original*factor, replace=True)
+    return arr1[idx_1], arr2[idx_2]

@@ -6,5 +6,7 @@ __all__ = [
     'IterativeDict',
     'plot_traj',
     'plot_identity',
-    'plot_precision_recall'
+    'plot_precision_recall',
+    'compute_hdi',
+    'demultiply'
 ]
