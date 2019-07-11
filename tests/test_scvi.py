@@ -342,12 +342,18 @@ def test_full_cov():
     dataset = CortexDataset()
     mdl = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches,
               reconstruction_loss='zinb', n_latent=2, full_cov=True)
-    trainer = UnsupervisedTrainer(model=mdl, gene_dataset=dataset, use_cuda=True, train_size=0.7,
-                                  frequency=1, kl=1,
-                                  early_stopping_kwargs={
-                                      'early_stopping_metric': 'll',
-                                      'save_best_state_metric': 'll',
-                                      'patience': 15, 'threshold': 3})
+    trainer = UnsupervisedTrainer(
+        model=mdl,
+        gene_dataset=dataset,
+        use_cuda=True,
+        train_size=0.7,
+        frequency=1,
+        early_stopping_kwargs={
+            'early_stopping_metric': 'elbo',
+            'save_best_state_metric': 'elbo',
+            'patience': 15,
+            'threshold': 3
+        })
     trainer.train(n_epochs=20, lr=1e-3)
     assert not np.isnan(trainer.history['ll_test_set']).any()
 
@@ -386,26 +392,41 @@ def test_logpoisson():
     )
     # res = dataset.compute_bayes_factors(n_sim=30)
     kwargs = {
-        'early_stopping_metric': 'll',
-        'save_best_state_metric': 'll',
+        'early_stopping_metric': 'elbo',
+        'save_best_state_metric': 'elbo',
         'patience': 15,
         'threshold': 3
     }
     VAE = LogNormalPoissonVAE(dataset.nb_genes, dataset.n_batches)
-    trainer = UnsupervisedTrainer(model=VAE, gene_dataset=dataset, use_cuda=True, train_size=0.7,
-                                  frequency=1, kl=1,
-                                  early_stopping_kwargs=kwargs)
+    trainer = UnsupervisedTrainer(
+        model=VAE,
+        gene_dataset=dataset,
+        use_cuda=True,
+        train_size=0.7,
+        frequency=1,
+        n_epochs_kl_warmup=2,
+        early_stopping_kwargs=kwargs
+    )
     trainer.train(n_epochs=5, lr=1e-3)
     train = trainer.train_set.sequential()
     zs, _, _ = train.get_latent()
     assert not np.isnan(zs).any()
 
-    VAE = LogNormalPoissonVAE(dataset.nb_genes, dataset.n_batches,
-                              autoregressive=True,
-                              n_latent=5)
-    trainer = UnsupervisedTrainer(model=VAE, gene_dataset=dataset, use_cuda=True, train_size=0.7,
-                                  frequency=1, kl=1,
-                                  early_stopping_kwargs=kwargs)
+    VAE = LogNormalPoissonVAE(
+        dataset.nb_genes,
+        dataset.n_batches,
+        autoregressive=True,
+        n_latent=5
+    )
+    trainer = UnsupervisedTrainer(
+        model=VAE,
+        gene_dataset=dataset,
+        use_cuda=True,
+        train_size=0.7,
+        frequency=1,
+        n_epochs_kl_warmup=2,
+        early_stopping_kwargs=kwargs
+    )
     torch.autograd.set_detect_anomaly(mode=True)
 
     trainer.train(n_epochs=5, lr=1e-3)
@@ -475,7 +496,7 @@ def test_encoder_only():
         gene_dataset=dataset,
         use_cuda=True,
         train_size=0.7,
-        kl=1,
+        n_epochs_kl_warmup=1,
         ratio_loss=True,
         verbose=False
     )

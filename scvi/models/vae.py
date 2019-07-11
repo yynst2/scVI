@@ -254,7 +254,7 @@ class VAE(NormalEncoderVAE):
         px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
             self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
 
-        log_px_z = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_px_z = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
         log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
         log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
 
@@ -357,7 +357,7 @@ class VAE(NormalEncoderVAE):
         # KL Divergence
         z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
 
-        log_px_zl = -self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        log_px_zl = -self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
         log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
 
         log_pz = self.z_encoder.distrib(z_prior_m, z_prior_v).log_prob(z).sum(dim=-1)

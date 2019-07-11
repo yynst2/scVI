@@ -96,7 +96,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         raise NotImplementedError
 
     @staticmethod
-    def _reconstruction_loss(x, rate):
+    def get_reconstruction_loss(x, rate):
         rl = -torch.distributions.Poisson(rate).log_prob(x)
         assert rl.dim() == rate.dim()  # rl should be (n_batch, n_input)
         # or (n_samples, n_batch, n_input)
@@ -135,7 +135,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
             Normal(local_l_mean, torch.sqrt(local_l_var)),
         ).sum(dim=1)
         kl_divergence = kl_divergence_z
-        reconst_loss = self._reconstruction_loss(x, px_rate)
+        reconst_loss = self.get_reconstruction_loss(x, px_rate)
         return reconst_loss + kl_divergence_l, kl_divergence
 
     def inference(self, x, batch_index=None, y=None, n_samples=1):
@@ -176,7 +176,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
 
         px_rate = self.decoder(z, library, batch_index, y)
         # TODO: Refactor compute_log_ratio
-        log_px_zl = -self._reconstruction_loss(x, px_rate)
+        log_px_zl = -self.get_reconstruction_loss(x, px_rate)
         log_pz = self.log_p_z(z)
         # print("qz_m", qz_m)
         # print("qz_v", qz_v)
@@ -218,7 +218,7 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         # KL Divergence
         # z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
 
-        log_px_zl = -self._reconstruction_loss(x, px_rate)
+        log_px_zl = -self.get_reconstruction_loss(x, px_rate)
         log_pl = (
             Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
         )
