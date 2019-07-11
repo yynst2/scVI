@@ -131,6 +131,76 @@ class Posterior:
         return self.update({"collate_fn": self.gene_dataset.collate_fn})
 
     @torch.no_grad()
+    def get_latents(self, n_samples=1, return_labels=False, return_labels_scales=False, device='gpu'):
+        """
+        Computes all quantities of interest for DE in a sequential order
+
+        WARNING: BATCH EFFECTS NOT TAKEN INTO ACCOUNT AS FOR NOW
+        # TODO: TAKE THEM INTO ACCOUNT (NOT THAT HARD)
+
+        :param n_samples:
+        :param return_labels:
+        :param return_scales:
+        :return:
+        """
+        zs = []
+        labels = []
+        scales = []
+        n_bio_batches = self.gene_dataset.n_batches
+        with torch.no_grad():
+            for tensors in self.sequential():
+                sample_batch, _, _, batch_index, label = tensors
+                (
+                    px_scale,
+                    px_r,
+                    px_rate,
+                    px_dropout,
+                    qz_m,
+                    qz_v,
+                    z,
+                    ql_m,
+                    ql_v,
+                    library,
+                ) = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
+
+                norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
+                scale_batch = []
+                for bio_batch in range(n_bio_batches):
+                    batch_index = 1.0 * torch.ones_like(sample_batch[:, [0]])
+                    scale_batch.append(
+                        self.model.decoder.forward('gene', z, norm_library, batch_index)[0]
+                    )
+                # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
+                scale_batch = torch.cat(scale_batch, dim=0)
+
+                if device == 'cpu':
+                    label = label.cpu()
+                    z = z.cpu()
+                    scale_batch = scale_batch.cpu()
+                # print(label.device, z.device, scale_batch.device)
+                labels.append(label)
+                zs.append(z)
+                scales.append(scale_batch)
+
+        if n_samples > 1:
+            # Then each z element has shape (n_samples, n_batch, n_latent)
+            # Hence we concatenate on dimension 1
+            zs = torch.cat(zs, dim=1)
+            scales = torch.cat(scales, dim=1)
+
+            # zs = zs.transpose(0, 1)
+            # zs = zs.transpose(1, 2)
+            # New shape (n_batch, b)
+        else:
+            zs = torch.cat(zs)
+        labels = torch.cat(labels)
+        if return_labels:
+            return zs, labels
+        if return_labels_scales:
+            return zs, labels, scales
+        return zs
+
+    @torch.no_grad()
     def elbo(self, verbose=False):
         elbo = compute_elbo(self.model, self)
         if verbose:
