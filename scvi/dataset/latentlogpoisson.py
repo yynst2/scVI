@@ -119,6 +119,7 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         learn_prior_scale: bool = False,
         requires_grad: bool = False,
     ):
+        super().__init__()
         """
         Latent Log Poisson Model:
             z ~ Mixture of 2 Gaussians
@@ -224,13 +225,12 @@ class LatentLogPoissonDataset(GeneExpressionDataset):
         labels = np.expand_dims(cell_type, axis=0) if self.n_comps == 2 else None
         gene_names = np.arange(self.n_genes).astype(str)
 
-        super(LatentLogPoissonDataset, self).__init__(
-            *GeneExpressionDataset.get_attributes_from_list(
-                gene_expressions,
-                list_labels=labels
-            ),
-            gene_names=gene_names
+        self.populate_from_per_batch_list(
+            gene_expressions,
+            labels_per_batch=labels,
+            gene_names=gene_names,
         )
+
 
     @config_enumerate(default="sequential")
     def pyro_mdl(self, data: torch.Tensor):

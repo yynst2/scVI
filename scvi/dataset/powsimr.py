@@ -64,6 +64,7 @@ class PowSimSynthetic(GeneExpressionDataset):
         :param mode:
         :param seed:
         """
+        super().__init__()
         np.random.seed(seed)
         dir_path = os.path.dirname(os.path.realpath(__file__))
         real_data_path = os.path.join(dir_path, "kolodziejczk_param.csv")
@@ -71,7 +72,7 @@ class PowSimSynthetic(GeneExpressionDataset):
         if de_lfc is None:
             de_lfc = SignedGamma(dim=len(cluster_to_samples))
 
-        self.n_cells_total = sum(cluster_to_samples)
+        n_cells_total = sum(cluster_to_samples)
         self.n_clusters = len(cluster_to_samples)
         self.cluster_to_samples = cluster_to_samples
 
@@ -86,7 +87,6 @@ class PowSimSynthetic(GeneExpressionDataset):
 
         self.mode = mode
         assert self.mode in ["NB", "ZINB"]
-        self.nb_genes = n_genes
 
         self.geneset = geneset
         assert not self.geneset
@@ -138,18 +138,18 @@ class PowSimSynthetic(GeneExpressionDataset):
 
         self.cst_mu = cst_mu
 
-        sim_data = self.generate_data()
-        assert sim_data.shape == (self.n_cells_total, n_genes)
+        sim_data = self.generate_data(n_cells_total=n_cells_total, n_genes=n_genes)
+        assert sim_data.shape == (n_cells_total, n_genes)
 
         sim_data = np.expand_dims(sim_data, axis=0)
         labels = np.expand_dims(labels, axis=0)
 
-        gene_names = np.arange(self.nb_genes).astype(str)
-        super().__init__(
-            *GeneExpressionDataset.get_attributes_from_list(
-                sim_data, list_labels=labels
-            ),
-            gene_names=gene_names
+        gene_names = np.arange(n_genes).astype(str)
+
+        self.populate_from_per_batch_list(
+            sim_data,
+            labels_per_batch=labels,
+            gene_names=gene_names,
         )
 
         gene_data = {
@@ -157,7 +157,7 @@ class PowSimSynthetic(GeneExpressionDataset):
         }
         self.gene_properties = pd.DataFrame(data=gene_data, index=gene_names)
 
-    def generate_data(self):
+    def generate_data(self, n_cells_total, n_genes):
         if self.batch_lfc is None:
             model_matrix = self.phenotypes
             coeffs = self.lfc
@@ -172,12 +172,12 @@ class PowSimSynthetic(GeneExpressionDataset):
 
         # Generating data based on those parameters
         if self.mode == "NB":
-            new_data = self.generate_nb(model_matrix, coeffs)
+            new_data = self.generate_nb(model_matrix, coeffs, n_cells_total, n_genes)
         elif self.mode == "ZINB":
-            new_data = self.generate_zinb(model_matrix, coeffs)
+            new_data = self.generate_zinb(model_matrix, coeffs, n_cells_total, n_genes)
         return new_data
 
-    def generate_nb(self, model_matrix, coeffs):
+    def generate_nb(self, model_matrix, coeffs, n_cells_total, nb_genes):
         """
 
         DIFFERENCE WITH ORIGINAL IMPLEMENTATION
@@ -189,10 +189,10 @@ class PowSimSynthetic(GeneExpressionDataset):
         """
 
         if self.cst_mu is not None:
-            true_means = self.cst_mu * np.ones(self.nb_genes)
+            true_means = self.cst_mu * np.ones(nb_genes)
         else:
             mu = self.real_data_df["means"]
-            true_means = np.random.choice(a=mu, size=self.nb_genes, replace=True)
+            true_means = np.random.choice(a=mu, size=nb_genes, replace=True)
         log_mu = np.log2(1.0 + true_means)
 
         # NN interpolation
@@ -238,11 +238,11 @@ class PowSimSynthetic(GeneExpressionDataset):
         nb_proba = sizes / (sizes + mu_mat)
         # TODO: Verify no mistakes here
         sim_data = np.random.negative_binomial(
-            n=sizes, p=nb_proba, size=(self.n_cells_total, self.nb_genes)
+            n=sizes, p=nb_proba, size=(n_cells_total, nb_genes)
         )
         return sim_data
 
-    def generate_zinb(self, model_matrix, coeffs):
+    def generate_zinb(self, model_matrix, coeffs, n_cells_total, n_genes):
         raise NotImplementedError
 
     @staticmethod

@@ -398,7 +398,6 @@ def test_encoder_only():
         train_size=0.7,
         n_epochs_kl_warmup=1,
         ratio_loss=True,
-        verbose=False
     )
     trainer.train(
         n_epochs=2,

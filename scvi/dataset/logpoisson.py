@@ -41,6 +41,7 @@ class LogPoissonDataset(GeneExpressionDataset):
         change_means=False,
         cuda_mcmc=False,
     ):
+        super().__init__()
         torch.manual_seed(seed)
         assert len(pi) == 1
         self.probas = torch.tensor([1.0 - pi[0], pi[0]])
@@ -98,11 +99,11 @@ class LogPoissonDataset(GeneExpressionDataset):
         print(
             "Gene expressions bounds: ", gene_expressions.min(), gene_expressions.max()
         )
-        super().__init__(
-            *GeneExpressionDataset.get_attributes_from_list(
-                gene_expressions, list_labels=labels
-            ),
-            gene_names=gene_names
+
+        self.populate_from_per_batch_list(
+            gene_expressions,
+            labels_per_batch=labels,
+            gene_names=gene_names,
         )
 
     def compute_bayes_factors(self, n_sim=10000, on="z"):
