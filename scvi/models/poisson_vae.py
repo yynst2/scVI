@@ -8,6 +8,9 @@ from scvi.models.modules import DecoderPoisson
 from scvi.models.vae import NormalEncoderVAE
 
 
+# TODO: Refactor Log Ratio
+# TODO: BEWARE OF log transformation
+
 class LogNormalPoissonVAE(NormalEncoderVAE):
     """Variational auto-encoder model for LogPoisson latent- Poisson gene expressions.
 
@@ -162,6 +165,40 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         else:
             px_rate = self.decoder(z, library, batch_index, y)
         return px_rate, qz_m, qz_v, z, ql_m, ql_v, library
+
+    def log_ratio(self, x, z, library=None, batch_index=None, y=None):
+        x_ = x
+        if self.log_variational:
+            x_ = torch.log(1 + x_)
+
+        qz_m, qz_v, _ = self.z_encoder(x_, y)
+        ql_m, ql_v, library = self.l_encoder(x_)
+
+        px_rate = self.decoder(z, library, batch_index, y)
+        # TODO: Refactor compute_log_ratio
+        log_px_zl = -self._reconstruction_loss(x, px_rate)
+        log_pz = self.log_p_z(z)
+        # print("qz_m", qz_m)
+        # print("qz_v", qz_v)
+        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z)  # .sum(dim=-1)
+
+        # print('log_px_zl', log_px_zl)
+        # print('log_pz', log_pz)
+        # print('log_qz_x', log_qz_x)
+        if log_pz.dim() == 2:
+            log_pz = log_pz.sum(-1)
+            # raise ValueError
+        if log_qz_x.dim() == 2:
+            log_qz_x = log_qz_x.sum(-1)
+            # raise ValueError
+        assert (
+            log_px_zl.shape
+            == log_pz.shape
+            == log_qz_x.shape
+        ), (log_px_zl.shape, log_pz.shape, log_qz_x.shape)
+        # log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        log_ratio = log_px_zl + log_pz - log_qz_x
+        return log_ratio
 
     def compute_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1):
         """
