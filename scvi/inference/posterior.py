@@ -215,6 +215,21 @@ class Posterior:
         return zs
 
     @torch.no_grad()
+    def get_data(self):
+        """
+
+        :return:
+        """
+        xs, labels = [], []
+        for tensors in self.sequential():
+            sample_batch, _, _, batch_index, label = tensors
+            xs.append(sample_batch.cpu())
+            labels.append(label.cpu())
+        xs = torch.cat(xs)
+        labels = torch.cat(labels)
+        return xs, labels
+
+    @torch.no_grad()
     def elbo(self):
         elbo = compute_elbo(self.model, self)
         logger.debug("ELBO : %.4f" % elbo)

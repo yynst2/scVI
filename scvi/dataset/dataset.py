@@ -1168,6 +1168,21 @@ class GeneExpressionDataset(Dataset):
             np.squeeze(np.asarray(norm_mean2)),
         )
 
+    def saver(self, path: str, indices: np.ndarray = None):
+        """
+
+        :param path: Path of directory where to save files
+        :param indices:
+        :return:
+        """
+        if indices is None:
+            indices = np.arange(len(self.X))
+        np.save(file=os.path.join(path, 'data.npy'), arr=self.X[indices, :].astype(int))
+        np.savetxt(
+            fname=os.path.join(path, 'labels.npy'),
+            X=self.labels[indices, :].squeeze()
+        )
+
 
 def remap_categories(
     original_categories: Union[List[int], np.ndarray],
