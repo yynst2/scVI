@@ -1,15 +1,21 @@
 import collections
-from typing import Iterable
+from typing import Iterable, List
 
 import torch
 from torch import nn as nn
 from torch.distributions import Normal, MultivariateNormal
+from torch.distributions import Normal
+from torch.nn import ModuleList
 
 from scvi.models.utils import one_hot
 
 
 def tril_indices(rows, cols, offset=0):
     return torch.ones(rows, cols, dtype=torch.uint8).tril(offset).nonzero()
+
+
+def reparameterize_gaussian(mu, var):
+    return Normal(mu, var.sqrt()).rsample()
 
 
 class FCLayers(nn.Module):
@@ -23,10 +29,19 @@ class FCLayers(nn.Module):
     :param n_layers: The number of fully-connected hidden layers
     :param n_hidden: The number of nodes per hidden layer
     :param dropout_rate: Dropout rate to apply to each of the hidden layers
+    :param use_batch_norm: Whether to have `BatchNorm` layers or not
     """
 
-    def __init__(self, n_in: int, n_out: int, n_cat_list: Iterable[int] = None,
-                 n_layers: int = 1, n_hidden: int = 128, dropout_rate: float = 0.1, use_batch_norm=True):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        dropout_rate: float = 0.1,
+        use_batch_norm: bool = True,
+    ):
         super().__init__()
         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
 
@@ -48,11 +63,12 @@ class FCLayers(nn.Module):
                 nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None))
              for i, (n_in, n_out) in enumerate(zip(layers_dim[:-1], layers_dim[1:]))]))
 
-    def forward(self, x: torch.Tensor, *cat_list: int):
+    def forward(self, x: torch.Tensor, *cat_list: int, instance_id: int = 0):
         r"""Forward computation on ``x``.
 
         :param x: tensor of values with shape ``(n_in,)``
         :param cat_list: list of category membership(s) for this sample
+        :param instance_id: Use a specific conditional instance normalization (batchnorm)
         :return: tensor of shape ``(n_out,)``
         :rtype: :py:class:`torch.Tensor`
         """
@@ -185,7 +201,7 @@ class Encoder(nn.Module):
             last_term = q_v.view((n_batch, self.n_output, 1)) * l_mat.transpose(-1, -2)
             q_v = torch.bmm(l_mat, last_term)
 
-        latent = self.reparameterize(q_m, q_v)
+        latent = reparameterize_gaussian(q_m, q_v)
         return q_m, q_v, latent
 
     def get_cov(self, x):
@@ -409,3 +425,128 @@ class DecoderPoisson(nn.Module):
         # px_rate = rate
         px_rate = 1e-6 + torch.clamp(px_rate, max=1e5)
         return px_rate
+
+
+class MultiEncoder(nn.Module):
+    def __init__(
+        self,
+        n_heads: int,
+        n_input_list: List[int],
+        n_output: int,
+        n_hidden: int = 128,
+        n_layers_individual: int = 1,
+        n_layers_shared: int = 2,
+        n_cat_list: Iterable[int] = None,
+        dropout_rate: float = 0.1,
+    ):
+        super().__init__()
+
+        self.encoders = ModuleList(
+            [
+                FCLayers(
+                    n_in=n_input_list[i],
+                    n_out=n_hidden,
+                    n_cat_list=n_cat_list,
+                    n_layers=n_layers_individual,
+                    n_hidden=n_hidden,
+                    dropout_rate=dropout_rate,
+                    use_batch_norm=True,
+                )
+                for i in range(n_heads)
+            ]
+        )
+
+        self.encoder_shared = FCLayers(
+            n_in=n_hidden,
+            n_out=n_hidden,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers_shared,
+            n_hidden=n_hidden,
+            dropout_rate=dropout_rate,
+        )
+
+        self.mean_encoder = nn.Linear(n_hidden, n_output)
+        self.var_encoder = nn.Linear(n_hidden, n_output)
+
+    def forward(self, x: torch.Tensor, head_id: int, *cat_list: int):
+        q = self.encoders[head_id](x, *cat_list)
+        q = self.encoder_shared(q, *cat_list)
+
+        q_m = self.mean_encoder(q)
+        q_v = torch.exp(self.var_encoder(q))
+        latent = reparameterize_gaussian(q_m, q_v)
+
+        return q_m, q_v, latent
+
+
+class MultiDecoder(nn.Module):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_hidden_conditioned: int = 32,
+        n_hidden_shared: int = 128,
+        n_layers_conditioned: int = 1,
+        n_layers_shared: int = 1,
+        n_cat_list: Iterable[int] = None,
+        dropout_rate: float = 0.2,
+    ):
+        super().__init__()
+
+        n_out = n_hidden_conditioned if n_layers_shared else n_hidden_shared
+        if n_layers_conditioned:
+            self.px_decoder_conditioned = FCLayers(
+                n_in=n_input,
+                n_out=n_out,
+                n_cat_list=n_cat_list,
+                n_layers=n_layers_conditioned,
+                n_hidden=n_hidden_conditioned,
+                dropout_rate=dropout_rate,
+                use_batch_norm=True,
+            )
+            n_in = n_out
+        else:
+            self.px_decoder_conditioned = None
+            n_in = n_input
+
+        if n_layers_shared:
+            self.px_decoder_final = FCLayers(
+                n_in=n_in,
+                n_out=n_hidden_shared,
+                n_cat_list=[],
+                n_layers=n_layers_shared,
+                n_hidden=n_hidden_shared,
+                dropout_rate=dropout_rate,
+                use_batch_norm=True,
+            )
+            n_in = n_hidden_shared
+        else:
+            self.px_decoder_final = None
+
+        self.px_scale_decoder = nn.Sequential(
+            nn.Linear(n_in, n_output), nn.Softmax(dim=-1)
+        )
+        self.px_r_decoder = nn.Linear(n_in, n_output)
+        self.px_dropout_decoder = nn.Linear(n_in, n_output)
+
+    def forward(
+        self,
+        z: torch.Tensor,
+        dataset_id: int,
+        library: torch.Tensor,
+        dispersion: str,
+        *cat_list: int
+    ):
+
+        px = z
+        if self.px_decoder_conditioned:
+            px = self.px_decoder_conditioned(px, *cat_list, instance_id=dataset_id)
+        if self.px_decoder_final:
+            px = self.px_decoder_final(px, *cat_list)
+
+        px_scale = self.px_scale_decoder(px)
+        px_dropout = self.px_dropout_decoder(px)
+        px_rate = torch.exp(library) * px_scale
+        px_r = self.px_r_decoder(px) if dispersion == "gene-cell" else None
+
+        return px_scale, px_r, px_rate, px_dropout

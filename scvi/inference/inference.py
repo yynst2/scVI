@@ -37,6 +37,7 @@ class UnsupervisedTrainer(Trainer):
         super().__init__(model, gene_dataset, **kwargs)
         self.n_epochs_kl_warmup = n_epochs_kl_warmup
         self.ratio_loss = ratio_loss
+
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
             self.train_set.to_monitor = ['elbo']

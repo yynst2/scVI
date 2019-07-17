@@ -1,8 +1,7 @@
 import numpy as np
 import torch
 
-from scvi.benchmark import all_benchmarks, benchmark_fish_scrna, ldvae_benchmark
-from scvi.dataset import CortexDataset, SyntheticDataset, SmfishDataset
+from scvi.dataset import CortexDataset, SyntheticDataset
 from scvi.dataset import LogPoissonDataset, PowSimSynthetic, LatentLogPoissonDataset
 from scvi.inference import (
     JointSemiSupervisedTrainer,
@@ -12,8 +11,9 @@ from scvi.inference import (
     AdapterTrainer,
 )
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
-from scvi.models import VAE, SCANVI, VAEC, LogNormalPoissonVAE
+from scvi.models import VAE, SCANVI, VAEC, LogNormalPoissonVAE, LDVAE
 from scvi.models.classifier import Classifier
+from scvi.models import IAVAE, EncoderIAF
 from scvi.models.modules import LinearExpLayer
 
 use_cuda = True
@@ -38,16 +38,15 @@ def test_cortex(save_path):
         n_samples=1, show_plot=False, title_plot="imputation", save_path=save_path
     )
     full = trainer_cortex_vae.create_posterior(
-        vae,
-        cortex_dataset,
-        indices=np.arange(len(cortex_dataset))
+        vae, cortex_dataset, indices=np.arange(len(cortex_dataset))
     )
     x_new, x_old = full.generate(n_samples=10)
     assert x_new.shape == (cortex_dataset.nb_cells, cortex_dataset.nb_genes, 10)
     assert x_old.shape == (cortex_dataset.nb_cells, cortex_dataset.nb_genes)
 
-    trainer_cortex_vae.train_set.imputation_benchmark(n_samples=1, show_plot=False,
-                                                      title_plot='imputation', save_path=save_path)
+    trainer_cortex_vae.train_set.imputation_benchmark(
+        n_samples=1, show_plot=False, title_plot="imputation", save_path=save_path
+    )
 
     svaec = SCANVI(
         cortex_dataset.nb_genes, cortex_dataset.n_batches, cortex_dataset.n_labels
@@ -145,13 +144,6 @@ def test_synthetic_2():
     trainer_synthetic_vaec.train(n_epochs=2)
 
 
-def test_fish_rna(save_path):
-    gene_dataset_fish = SmfishDataset(save_path)
-    gene_dataset_seq = CortexDataset(save_path=save_path, genes_to_keep=gene_dataset_fish.gene_names,
-                                     total_genes=gene_dataset_fish.nb_genes + 50)
-    benchmark_fish_scrna(gene_dataset_seq, gene_dataset_fish)
-
-
 def base_benchmark(gene_dataset):
     vae = VAE(gene_dataset.nb_genes, gene_dataset.n_batches, gene_dataset.n_labels)
     trainer = UnsupervisedTrainer(vae, gene_dataset, train_size=0.5, use_cuda=use_cuda)
@@ -159,8 +151,16 @@ def base_benchmark(gene_dataset):
     return trainer
 
 
-def test_all_benchmarks(save_path):
-    all_benchmarks(n_epochs=1, save_path=save_path, show_plot=False)
+def ldvae_benchmark(dataset, n_epochs, use_cuda=True):
+    ldvae = LDVAE(dataset.nb_genes, n_batch=dataset.n_batches)
+    trainer = UnsupervisedTrainer(ldvae, dataset, use_cuda=use_cuda)
+    trainer.train(n_epochs=n_epochs)
+    trainer.test_set.reconstruction_error()
+    trainer.test_set.marginal_ll()
+
+    ldvae.get_loadings()
+
+    return trainer
 
 
 def test_synthetic_3():
@@ -450,3 +450,21 @@ def test_linear_exp_layer():
 
     print('weight : ', a, mdl.linear_layer[0].weight)
     print('bias : ', b, mdl.linear_layer[0].bias)
+
+
+def test_iaf(save_path):
+    enc = EncoderIAF(n_in=5, n_latent=2, n_cat_list=None, n_hidden=12, n_layers=2, t=3).cuda()
+    x = torch.rand(64, 5, device='cuda')
+    z1, _ = enc(x, n_samples=1)
+    assert z1.shape == (64, 2)
+
+    z2, qvals = enc(x, n_samples=3)
+    assert z2.shape == (3, 64, 2)
+    assert qvals.shape == (3, 64)
+
+    dataset = CortexDataset(save_path=save_path)
+    vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    trainer = UnsupervisedTrainer(
+        vae, dataset, train_size=0.5, ratio_loss=True
+    )
+    trainer.train(n_epochs=2)
