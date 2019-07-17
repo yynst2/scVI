@@ -94,7 +94,7 @@ class IAVAE(nn.Module):
             n_hidden=n_hidden,
         )
 
-    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True):
         x_ = x
         if self.log_variational:
             x_ = torch.log(1 + x_)
@@ -120,11 +120,13 @@ class IAVAE(nn.Module):
 
         log_px_zl = -self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
-        elbo = (
+        ratio = (
             log_px_zl + log_pz + log_pl
             - log_qz_x - log_ql_x
-        ).mean(dim=0)
-
+        )
+        if not return_mean:
+            return ratio
+        elbo = ratio.mean(dim=0)
         return -elbo
 
     def get_reconstruction_loss(self, x, px_rate, px_r, px_dropout):
