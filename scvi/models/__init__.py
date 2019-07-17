@@ -4,5 +4,6 @@ from .vae import VAE, LDVAE
 from .vaec import VAEC
 from .jvae import JVAE
 from .iavae import IAVAE
+from .iaf_encoder import EncoderIAF
 
-__all__ = ["SCANVI", "VAEC", "VAE", "LDVAE", "JVAE", "Classifier", "IAVAE"]
+__all__ = ["SCANVI", "VAEC", "VAE", "LDVAE", "JVAE", "Classifier", "IAVAE", "EncoderIAF"]

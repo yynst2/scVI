@@ -1,3 +1,4 @@
+import warnings
 import torch
 import torch.nn as nn
 import torch.distributions as dist
@@ -10,35 +11,6 @@ from .utils import one_hot
 
 
 class IAVAE(nn.Module):
-    r"""Variational auto-encoder model.
-
-    :param n_input: Number of input genes
-    :param n_batch: Number of batches
-    :param n_labels: Number of labels
-    :param n_hidden: Number of nodes per hidden layer
-    :param n_latent: Dimensionality of the latent space
-    :param n_layers: Number of hidden layers used for encoder and decoder NNs
-    :param dropout_rate: Dropout rate for neural networks
-    :param dispersion: One of the following
-
-        * ``'gene'`` - dispersion parameter of NB is constant per gene across cells
-        * ``'gene-batch'`` - dispersion can differ between different batches
-        * ``'gene-label'`` - dispersion can differ between different labels
-        * ``'gene-cell'`` - dispersion can differ for every gene in every cell
-
-    :param log_variational: Log(data+1) prior to encoding for numerical stability. Not normalization.
-    :param reconstruction_loss:  One of
-
-        * ``'nb'`` - Negative binomial distribution
-        * ``'zinb'`` - Zero-inflated negative binomial distribution
-
-    Examples:
-        >>> gene_dataset = CortexDataset()
-        >>> vae = VAE(gene_dataset.nb_genes, n_batch=gene_dataset.n_batches * False,
-        ... n_labels=gene_dataset.n_labels)
-
-    """
-
     def __init__(
         self,
         n_input: int,
@@ -53,7 +25,27 @@ class IAVAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
     ):
+        """
+        EXPERIMENTAL: Posterior functionalities may not be working
+
+        Model does not implement Forward.
+        Training should be performed with ratio_loss method
+
+        :param n_input:
+        :param n_batch:
+        :param n_labels:
+        :param n_hidden:
+        :param n_latent:
+        :param n_layers:
+        :param t: Number of autoregressive steps
+        :param dropout_rate:
+        :param dispersion:
+        :param log_variational:
+        :param reconstruction_loss:
+        """
+
         super().__init__()
+        warnings.warn('EXPERIMENTAL: Posterior functionalities may not be working')
         self.dispersion = dispersion
         self.n_latent = n_latent
         self.log_variational = log_variational
@@ -93,6 +85,41 @@ class IAVAE(nn.Module):
             n_layers=n_layers,
             n_hidden=n_hidden,
         )
+
+    def inference(self, x, batch_index=None, y=None, n_samples=1):
+        """
+
+        :param x:
+        :param batch_index:
+        :param y:
+        :param n_samples:
+        :return:
+        """
+        x_ = x
+        if self.log_variational:
+            x_ = torch.log(1 + x_)
+
+        # Sampling
+        z, _ = self.z_encoder(x_, y, n_samples)
+        ql_m, ql_v, library = self.l_encoder(x_)
+
+        if n_samples > 1:
+            ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
+            ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
+            library = dist.Normal(ql_m, ql_v.sqrt()).sample()
+
+        assert z.shape[0] == library.shape[0], 'Different n_samples'
+        assert z.shape[1] == library.shape[1], 'Different n_batch'
+
+        px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
+        if self.dispersion == "gene-label":
+            px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
+        elif self.dispersion == "gene-batch":
+            px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
+        elif self.dispersion == "gene":
+            px_r = self.px_r
+        px_r = torch.exp(px_r)
+        return px_scale, px_r, px_rate, px_dropout, z, ql_m, ql_v, library
 
     def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True):
         x_ = x
