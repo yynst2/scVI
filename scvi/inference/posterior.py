@@ -171,18 +171,8 @@ class Posterior:
         with torch.no_grad():
             for tensors in self.sequential():
                 sample_batch, _, _, batch_index, label = tensors
-                (
-                    px_scale,
-                    px_r,
-                    px_rate,
-                    px_dropout,
-                    qz_m,
-                    qz_v,
-                    z,
-                    ql_m,
-                    ql_v,
-                    library,
-                ) = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
+                outputs = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
+                z = outputs['z']
 
                 norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
                 scale_batch = []
