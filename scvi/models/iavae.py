@@ -100,7 +100,7 @@ class IAVAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Sampling
-        z, log_qz_x = self.z_encoder(x_, y, n_samples)
+        z, log_qz_x = self.z_encoder(x_, y, n_samples=n_samples)
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
@@ -108,8 +108,8 @@ class IAVAE(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = dist.Normal(ql_m, ql_v.sqrt()).sample()
 
-        assert z.shape[0] == library.shape[0], 'Different n_samples'
-        assert z.shape[1] == library.shape[1], 'Different n_batch'
+        assert z.shape[0] == library.shape[0], (z.shape, library.shape)
+        # assert z.shape[1] == library.shape[1], ('Different n_batch', z.shape, library.shape)
 
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":

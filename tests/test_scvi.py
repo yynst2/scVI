@@ -468,3 +468,9 @@ def test_iaf(save_path):
         vae, dataset, train_size=0.5, ratio_loss=True
     )
     trainer.train(n_epochs=2)
+
+    z, labels, scales = trainer.train_set.get_latents(
+        n_samples=10,
+        return_labels_scales=True,
+        device='cuda'
+    )
