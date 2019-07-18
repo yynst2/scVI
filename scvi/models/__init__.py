@@ -5,7 +5,7 @@ from .poisson_vae import LogNormalPoissonVAE
 from .vaec import VAEC
 from .modules import LinearExpLayer
 from .jvae import JVAE
-from .iavae import IAVAE
+from .iavae import IAVAE, IALogNormalPoissonVAE
 from .iaf_encoder import EncoderIAF
 
 __all__ = ['SCANVI',
@@ -15,6 +15,7 @@ __all__ = ['SCANVI',
            'LogNormalPoissonVAE',
            'Classifier',
            'LinearExpLayer',
-            "IAVAE",
+           "IALogNormalPoissonVAE",
+           "IAVAE",
            "EncoderIAF"
            ]
