@@ -100,7 +100,7 @@ class IAVAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Sampling
-        z, _ = self.z_encoder(x_, y, n_samples)
+        z, log_qz_x = self.z_encoder(x_, y, n_samples)
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
@@ -119,16 +119,30 @@ class IAVAE(nn.Module):
         elif self.dispersion == "gene":
             px_r = self.px_r
         px_r = torch.exp(px_r)
-        return px_scale, px_r, px_rate, px_dropout, z, ql_m, ql_v, library
+        return dict(
+            px_scale=px_scale,
+            px_r=px_r,
+            px_rate=px_rate,
+            px_dropout=px_dropout,
+            z=z,
+            log_qz_x=log_qz_x,
+            ql_m=ql_m,
+            ql_v=ql_v,
+            library=library
+        )
 
     def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True):
-        x_ = x
-        if self.log_variational:
-            x_ = torch.log(1 + x_)
+        outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
+        ql_m = outputs['ql_m']
+        ql_v = outputs['ql_v']
+        library = outputs['library']
+        px_rate = outputs['px_rate']
+        z = outputs['z']
+        log_qz_x = outputs['log_qz_x']
+        px_r = outputs['px_r']
+        px_dropout = outputs['px_dropout']
 
         # variationnal probas computation
-        z, log_qz_x = self.z_encoder(x, batch_index)
-        ql_m, ql_v, library = self.l_encoder(x_)
         log_ql_x = dist.Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
 
         # priors computation
@@ -136,15 +150,6 @@ class IAVAE(nn.Module):
         log_pl = dist.Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
 
         # reconstruction proba computation
-        px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
-        if self.dispersion == "gene-label":
-            px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
-        elif self.dispersion == "gene-batch":
-            px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
-        elif self.dispersion == "gene":
-            px_r = self.px_r
-        px_r = torch.exp(px_r)
-
         log_px_zl = -self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
         ratio = (

@@ -8,9 +8,6 @@ from scvi.models.modules import DecoderPoisson
 from scvi.models.vae import NormalEncoderVAE
 
 
-# TODO: Refactor Log Ratio
-# TODO: BEWARE OF log transformation
-
 class LogNormalPoissonVAE(NormalEncoderVAE):
     """Variational auto-encoder model for LogPoisson latent- Poisson gene expressions.
 
@@ -35,8 +32,8 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         n_layers: int = 1,
         dropout_rate: float = 0.1,
         log_variational: bool = True,
-        full_cov=False,
-        autoregressive=False,
+        full_cov: bool = False,
+        autoregressive: bool = False,
         gt_decoder: nn.Module = None,
         learn_prior_scale: bool = False
     ):
@@ -164,43 +161,26 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
 
         else:
             px_rate = self.decoder(z, library, batch_index, y)
-        return px_rate, qz_m, qz_v, z, ql_m, ql_v, library
+        return dict(
+            px_rate=px_rate,
+            qz_m=qz_m,
+            qz_v=qz_v,
+            z=z,
+            ql_m=ql_m,
+            ql_v=ql_v,
+            library=library
+        )
 
-    def log_ratio(self, x, z, library=None, batch_index=None, y=None):
-        x_ = x
-        if self.log_variational:
-            x_ = torch.log(1 + x_)
-
-        qz_m, qz_v, _ = self.z_encoder(x_, y)
-        ql_m, ql_v, library = self.l_encoder(x_)
-
-        px_rate = self.decoder(z, library, batch_index, y)
-        # TODO: Refactor compute_log_ratio
-        log_px_zl = -self.get_reconstruction_loss(x, px_rate)
-        log_pz = self.log_p_z(z)
-        # print("qz_m", qz_m)
-        # print("qz_v", qz_v)
-        log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z)  # .sum(dim=-1)
-
-        # print('log_px_zl', log_px_zl)
-        # print('log_pz', log_pz)
-        # print('log_qz_x', log_qz_x)
-        if log_pz.dim() == 2:
-            log_pz = log_pz.sum(-1)
-            # raise ValueError
-        if log_qz_x.dim() == 2:
-            log_qz_x = log_qz_x.sum(-1)
-            # raise ValueError
-        assert (
-            log_px_zl.shape
-            == log_pz.shape
-            == log_qz_x.shape
-        ), (log_px_zl.shape, log_pz.shape, log_qz_x.shape)
-        # log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        log_ratio = log_px_zl + log_pz - log_qz_x
-        return log_ratio
-
-    def compute_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1):
+    def ratio_loss(
+        self,
+        x,
+        local_l_mean,
+        local_l_var,
+        batch_index=None,
+        y=None,
+        n_samples=1,
+        return_mean=True
+    ):
         """
         Computes log p(x, latents) / q(latents | x) for each element in x
         :param x:
@@ -209,11 +189,17 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         :param batch_index:
         :param y:
         :param n_samples:
+        :param return_mean:
         :return:
         """
-        (px_rate, qz_m, qz_v, z, ql_m, ql_v, library) = self.inference(
-            x, batch_index, y, n_samples=n_samples
-        )
+        outputs = self.inference(x, batch_index, y, n_samples=n_samples)
+        px_rate = outputs['px_rate']
+        qz_m = outputs['qz_m']
+        qz_v = outputs['qz_v']
+        z = outputs['z']
+        ql_m = outputs['ql_m']
+        ql_v = outputs['ql_v']
+        library = outputs['library']
 
         # KL Divergence
         # z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
@@ -253,22 +239,14 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
         ), (log_px_zl.shape, log_pl.shape, log_pz.shape, log_qz_x.shape, log_ql_x.shape)
         # log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
         log_ratio = log_px_zl + log_pz - log_qz_x
-        return log_ratio
-
-    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
-        """
-        Compute estimate of E_q log(p(x, latents) / q(latents|x)) using Variationnal EM
-
-        :param x:
-        :param local_l_mean:
-        :param local_l_var:
-        :param batch_index:
-        :param y:
-        :return:
-        """
-        log_ratios = self.compute_log_ratio(x, local_l_mean, local_l_var, batch_index=None, y=None)
-        neg_elbo = -log_ratios.mean(dim=0)
-        return neg_elbo
+        # log_ratio = (
+        #     log_px_zl + log_pz + log_pl
+        #     - log_qz_x - log_ql_x
+        # )
+        if not return_mean:
+            return log_ratio
+        elbo = log_ratio.mean(dim=0)
+        return -elbo
 
     @torch.no_grad()
     def marginal_ll(self, posterior, n_samples_mc=100):
@@ -294,5 +272,5 @@ class LogNormalPoissonVAE(NormalEncoderVAE):
             assert log_ratios.shape == (n_samples_mc, n_batches)
             batch_log_lkl = torch.logsumexp(log_ratios, dim=0) - np.log(n_samples_mc)
             log_lkl += torch.sum(batch_log_lkl).item()
-        return log_lkl
-
+        n_samples = len(posterior.indices)
+        return -log_lkl / n_samples

@@ -14,7 +14,7 @@ __all__ = ['SCANVI',
            'LDVAE',
            'LogNormalPoissonVAE',
            'Classifier',
-           'LinearExpLayer'
+           'LinearExpLayer',
             "IAVAE",
            "EncoderIAF"
            ]
