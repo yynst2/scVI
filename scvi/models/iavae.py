@@ -240,7 +240,7 @@ class IALogNormalPoissonVAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Sampling
-        z, log_qz_x = self.z_encoder(x_, y, n_samples)
+        z, log_qz_x = self.z_encoder(x_, y, n_samples=n_samples)
         ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
