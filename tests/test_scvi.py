@@ -11,7 +11,7 @@ from scvi.inference import (
     AdapterTrainer,
 )
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
-from scvi.models import VAE, SCANVI, VAEC, LogNormalPoissonVAE, LDVAE
+from scvi.models import VAE, SCANVI, VAEC, LogNormalPoissonVAE, LDVAE, IALogNormalPoissonVAE
 from scvi.models.classifier import Classifier
 from scvi.models import IAVAE, EncoderIAF
 from scvi.models.modules import LinearExpLayer
@@ -474,3 +474,9 @@ def test_iaf(save_path):
         return_labels_scales=True,
         device='cuda'
     )
+
+    vae = IALogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    trainer = UnsupervisedTrainer(
+        vae, dataset, train_size=0.5, ratio_loss=True
+    )
+    trainer.train(n_epochs=2)

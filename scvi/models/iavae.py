@@ -189,6 +189,7 @@ class IALogNormalPoissonVAE(nn.Module):
         """
 
         """
+        self.trained_decoder = gt_decoder is None
 
         super().__init__()
         warnings.warn('EXPERIMENTAL: Posterior functionalities may not be working')
@@ -247,10 +248,12 @@ class IALogNormalPoissonVAE(nn.Module):
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = dist.Normal(ql_m, ql_v.sqrt()).sample()
 
-        assert z.shape[0] == library.shape[0], 'Different n_samples'
-        assert z.shape[1] == library.shape[1], 'Different n_batch'
+        assert z.shape[0] == library.shape[0]
+        # assert z.shape[1] == library.shape[1], 'Different n_batch'
 
-        px_rate = self.decoder(self.dispersion, z, library, batch_index, y)
+        # px_rate = self.decoder(self.dispersion, z, library, batch_index, y)
+        px_rate = self.decoder(z, library, batch_index, y)
+
         return dict(
             px_rate=px_rate,
             z=z,
