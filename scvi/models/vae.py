@@ -239,7 +239,7 @@ class VAE(NormalEncoderVAE):
         :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[0]
+        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)['px_scale']
 
     def get_log_ratio(self, x, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of log_pz + log_px_z - log_qz_x
@@ -270,7 +270,7 @@ class VAE(NormalEncoderVAE):
         :return: tensor of means of the negative binomial distribution with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[2]
+        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)['px_rate']
 
     def get_reconstruction_loss(self, x, px_rate, px_r, px_dropout):
         # Reconstruction Loss
@@ -317,7 +317,18 @@ class VAE(NormalEncoderVAE):
             px_r = self.px_r
         px_r = torch.exp(px_r)
 
-        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
+        return dict(
+            px_scale=px_scale,
+            px_r=px_r,
+            px_rate=px_rate,
+            px_dropout=px_dropout,
+            qz_m=qz_m,
+            qz_v=qz_v,
+            z=z,
+            ql_m=ql_m,
+            ql_v=ql_v,
+            library=library
+        )
 
     def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
         r""" Returns the reconstruction loss and the Kullback divergences
@@ -333,8 +344,14 @@ class VAE(NormalEncoderVAE):
         :rtype: 2-tuple of :py:class:`torch.FloatTensor`
         """
         # Parameters for z latent distribution
-
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = self.inference(x, batch_index, y)
+        outputs = self.inference(x, batch_index, y)
+        qz_m = outputs['qz_m']
+        qz_v = outputs['qz_v']
+        ql_m = outputs['ql_m']
+        ql_v = outputs['ql_v']
+        px_rate = outputs['px_rate']
+        px_r = outputs['px_r']
+        px_dropout = outputs['px_dropout']
 
         # KL Divergence
         mean, scale = self.get_prior_params(device=qz_m.device)
@@ -351,9 +368,18 @@ class VAE(NormalEncoderVAE):
         return reconst_loss + kl_divergence_l, kl_divergence
 
     def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
-        (
-            px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
-         ) = self.inference(x, batch_index, y)
+        outputs = self.inference(x, batch_index, y)
+
+        px_r = outputs['px_r']
+        px_rate = outputs['px_rate']
+        px_dropout = outputs['px_dropout']
+        qz_m = outputs['qz_m']
+        qz_v = outputs['qz_v']
+        z = outputs['z']
+        ql_m = outputs['ql_m']
+        ql_v = outputs['ql_v']
+        library = outputs['library']
+
         # KL Divergence
         z_prior_m, z_prior_v = self.get_prior_params(device=qz_m.device)
 
