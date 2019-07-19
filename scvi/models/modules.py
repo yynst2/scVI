@@ -389,21 +389,21 @@ class DecoderPoisson(nn.Module):
         n_hidden: int = 128,
     ):
         super().__init__()
-        # self.rate_decoder = FCLayers(
-        #     n_in=n_input,
-        #     n_out=n_output,
-        #     n_cat_list=n_cat_list,
-        #     n_layers=n_layers,
-        #     n_hidden=n_hidden,
-        #     dropout_rate=5e-2,
-        # )
-
-        self.rate_decoder = LinearExpLayer(
+        self.rate_decoder = FCLayers(
             n_in=n_input,
             n_out=n_output,
             n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
             dropout_rate=5e-2,
         )
+
+        # self.rate_decoder = LinearExpLayer(
+        #     n_in=n_input,
+        #     n_out=n_output,
+        #     n_cat_list=n_cat_list,
+        #     dropout_rate=5e-2,
+        # )
 
     def forward(self, z: torch.Tensor, library: torch.Tensor, *cat_list: int):
         r"""The forward computation for a single sample.
@@ -421,8 +421,8 @@ class DecoderPoisson(nn.Module):
 
         # The decoder returns values for the parameters of the ZINB distribution
         rate = self.rate_decoder(z, *cat_list)
-        px_rate = torch.exp(library) * rate  # torch.clamp( , max=12)
-        # px_rate = rate
+        # px_rate = torch.exp(library) * rate  # torch.clamp( , max=12)
+        px_rate = rate.exp()
         px_rate = 1e-6 + torch.clamp(px_rate, max=1e5)
         return px_rate
 
