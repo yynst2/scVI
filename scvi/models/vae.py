@@ -77,6 +77,24 @@ class NormalEncoderVAE(nn.Module):
             z_prior_m, z_prior_v = self.get_prior_params(device=z.device)
             return self.z_encoder.distrib(z_prior_m, z_prior_v).log_prob(z)
 
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index, y, return_mean):
+        pass
+
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+        n_batch = len(x)
+        log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
+        for it in range(k):
+            log_ratios[it, :] = self.ratio_loss(
+                x,
+                local_l_mean,
+                local_l_var,
+                batch_index=batch_index,
+                y=y,
+                return_mean=True
+            )
+        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+        return loss.mean(dim=0)
+
 
     @property
     def encoder_params(self):
@@ -367,7 +385,7 @@ class VAE(NormalEncoderVAE):
 
         return reconst_loss + kl_divergence_l, kl_divergence
 
-    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True):
         outputs = self.inference(x, batch_index, y)
 
         px_r = outputs['px_r']
@@ -395,8 +413,11 @@ class VAE(NormalEncoderVAE):
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
         assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
         log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        neg_elbo = -log_ratio.mean(dim=0)
-        return neg_elbo
+
+        if not return_mean:
+            return log_ratio
+        elbo = log_ratio.mean(dim=0)
+        return -elbo
 
 
 class LDVAE(VAE):

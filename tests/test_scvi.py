@@ -469,9 +469,8 @@ def test_iaf(save_path):
     )
     trainer.train(n_epochs=2)
 
-    z, labels, scales = trainer.train_set.get_latents(
+    z, labels = trainer.train_set.get_latents(
         n_samples=10,
-        return_labels_scales=True,
         device='cuda'
     )
 
@@ -480,3 +479,35 @@ def test_iaf(save_path):
         vae, dataset, train_size=0.5, ratio_loss=True
     )
     trainer.train(n_epochs=2)
+    with torch.no_grad():
+        outputs = vae.inference(
+            x=torch.randint(
+                low=1,
+                high=10,
+                size=(128, dataset.nb_genes),
+                device='cuda',
+                dtype=torch.float
+            ),
+            n_samples=3
+        )
+
+    z, l = trainer.test_set.get_latents(n_samples=5, device='cpu')
+    return
+
+
+def test_iwae(save_path):
+    dataset = CortexDataset(save_path=save_path)
+    vae = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
+    trainer.train(n_epochs=2)
+
+    vae = LogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
+    trainer.train(n_epochs=2)
+
+    # vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True
+    #                               # k_importance_weighted=3
+    #                               )
+    # trainer.train(n_epochs=2)
+

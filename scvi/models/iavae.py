@@ -171,6 +171,21 @@ class IAVAE(nn.Module):
             raise NotImplementedError
         return reconst_loss
 
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+        n_batch = len(x)
+        log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
+        for it in range(k):
+            log_ratios[it, :] = self.ratio_loss(
+                x,
+                local_l_mean,
+                local_l_var,
+                batch_index=batch_index,
+                y=y,
+                return_mean=True
+            )
+        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+        return loss.mean(dim=0)
+
 
 class IALogNormalPoissonVAE(nn.Module):
     def __init__(
@@ -298,3 +313,18 @@ class IALogNormalPoissonVAE(nn.Module):
         assert rl.dim() == rate.dim()  # rl should be (n_batch, n_input)
         # or (n_samples, n_batch, n_input)
         return torch.sum(rl, dim=-1)
+
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+        n_batch = len(x)
+        log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
+        for it in range(k):
+            log_ratios[it, :] = self.ratio_loss(
+                x,
+                local_l_mean,
+                local_l_var,
+                batch_index=batch_index,
+                y=y,
+                return_mean=True
+            )
+        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+        return loss.mean(dim=0)
