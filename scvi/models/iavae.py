@@ -24,6 +24,7 @@ class IAVAE(nn.Module):
         dispersion: str = "gene",
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
+        do_h: bool = False,
     ):
         """
         EXPERIMENTAL: Posterior functionalities may not be working
@@ -72,6 +73,7 @@ class IAVAE(nn.Module):
             t=t,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            do_h=do_h
         )
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(
@@ -210,6 +212,7 @@ class IALogNormalPoissonVAE(nn.Module):
         dropout_rate: float = 5e-2,
         log_variational: bool = True,
         gt_decoder: nn.Module = None,
+        do_h: bool = False,
     ):
         """
 
@@ -245,6 +248,7 @@ class IALogNormalPoissonVAE(nn.Module):
             t=t,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            do_h=do_h
         )
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(
