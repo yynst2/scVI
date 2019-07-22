@@ -52,10 +52,8 @@ class UnsupervisedTrainer(Trainer):
     def loss(self, tensors):
         sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
         if self.ratio_loss and self.k_importance_weighted == 0:
-            logger.info('Ratio Loss Mode')
             loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
         elif self.ratio_loss and self.k_importance_weighted > 0:
-            logger.info('Importance weighting Mode')
             k = self.k_importance_weighted
             loss = self.model.iwelbo(
                 sample_batch,
@@ -67,7 +65,6 @@ class UnsupervisedTrainer(Trainer):
             )
         else:
             assert self.k_importance_weighted == 0
-            logger.info('Regular Mode')
             reconst_loss, kl_divergence = self.model(
                 sample_batch,
                 local_l_mean,
