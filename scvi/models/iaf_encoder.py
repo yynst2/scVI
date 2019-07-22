@@ -1,10 +1,12 @@
 import numpy as np
-
+import logging
 import torch
 from torch import nn as nn
 import torch.distributions as dist
 
 from .modules import FCLayers
+
+logger = logging.getLogger(__name__)
 
 
 class EncoderH(nn.Module):
@@ -78,8 +80,10 @@ class EncoderIAF(nn.Module):
         t,
         dropout_rate=0.05,
         use_batch_norm=True,
+        do_h=True,
     ):
         """
+        Encoder using h representation as described in IAF paper
 
         :param n_in:
         :param n_latent:
@@ -91,6 +95,9 @@ class EncoderIAF(nn.Module):
         :param use_batch_norm:
         """
         super().__init__()
+        self.do_h = do_h
+        msg = '' if do_h else 'Not '
+        logger.info(msg='{}Using Hidden State'.format(msg))
         self.n_latent = n_latent
         self.encoders = torch.nn.ModuleList()
         self.encoders.append(
@@ -100,15 +107,17 @@ class EncoderIAF(nn.Module):
                 n_cat_list=n_cat_list,
                 n_layers=n_layers,
                 n_hidden=n_hidden,
-                do_h=True,
+                do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
             )
         )
+
+        n_in = 2*n_latent if do_h else n_latent
         for _ in range(t - 2):
             self.encoders.append(
                 EncoderH(
-                    n_in=2*n_latent,
+                    n_in=n_in,
                     n_out=n_latent,
                     n_cat_list=None,
                     n_layers=n_layers,
@@ -124,7 +133,7 @@ class EncoderIAF(nn.Module):
             scale=torch.ones(n_latent, device="cuda"),
         )
 
-    def forward(self, x, *cat_list: int, n_samples: int = 1):
+    def forward(self, x, *cat_list: int):
         """
 
         :param x:
@@ -132,23 +141,26 @@ class EncoderIAF(nn.Module):
         :param n_samples:
         :return:
         """
-        mu, sigma, h = self.encoders[0](x, *cat_list)
-        eps = self.dist0.rsample((n_samples, len(x),))
-        assert eps.shape == (n_samples, len(x), self.n_latent)
+        if self.do_h:
+            mu, sigma, h = self.encoders[0](x, *cat_list)
+        else:
+            mu, sigma = self.encoders[0](x, *cat_list)
+            h = None
+
+        # Big issue when x is 3d !!!
+        # Should stay 2d!!
+        eps = self.dist0.rsample((len(x),))
+        assert eps.shape == (len(x), self.n_latent)
 
         z = mu + eps * sigma
         qz_x = sigma.log() + 0.5 * (eps ** 2) + 0.5 * np.log(2.0 * np.pi)
         qz_x = -qz_x.sum(dim=-1)
 
-        h = h.unsqueeze(0)  # shape (1, n_batch, n_latent)
-        h = h.expand(n_samples, -1, -1) # shape (n_samples, n_batch, n_latent) same as z
         # z shape (n_samples, n_batch, n_latent)
         for ar_nn in self.encoders[1:]:
-            mu, sigma = ar_nn(torch.cat([z, h], dim=-1))
+            inp = torch.cat([z, h], dim=-1) if self.do_h else z
+            mu, sigma = ar_nn(inp)
             z = sigma * z + (1.0 - sigma) * mu
             new_term = sigma.log()
             qz_x -= new_term.sum(dim=-1)
-        if n_samples == 1:
-            z = z.squeeze()
-            qz_x = qz_x.squeeze()
         return z, qz_x

@@ -100,13 +100,23 @@ class IAVAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Sampling
-        z, log_qz_x = self.z_encoder(x_, y, n_samples=n_samples)
         ql_m, ql_v, library = self.l_encoder(x_)
-
+        n_batch = len(ql_m)
         if n_samples > 1:
+            # Managing library
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = dist.Normal(ql_m, ql_v.sqrt()).sample()
+
+            # Managing z Latent
+            z = torch.zeros(n_samples, n_batch, self.n_latent, device=ql_m.device, dtype=ql_m.dtype)
+            log_qz_x = torch.zeros(n_samples, n_batch, device=ql_m.device, dtype=ql_m.dtype)
+            for idx in range(n_samples):
+                zi, log_qz_x_i = self.z_encoder(x_, y)
+                z[idx, :] = zi
+                log_qz_x[idx, :] = log_qz_x_i
+        else:
+            z, log_qz_x = self.z_encoder(x_, y)
 
         assert z.shape[0] == library.shape[0], (z.shape, library.shape)
         # assert z.shape[1] == library.shape[1], ('Different n_batch', z.shape, library.shape)
@@ -255,13 +265,23 @@ class IALogNormalPoissonVAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Sampling
-        z, log_qz_x = self.z_encoder(x_, y, n_samples=n_samples)
         ql_m, ql_v, library = self.l_encoder(x_)
-
+        n_batch = len(ql_m)
         if n_samples > 1:
+            # Managing library
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
             library = dist.Normal(ql_m, ql_v.sqrt()).sample()
+
+            # Managing z Latent
+            z = torch.zeros(n_samples, n_batch, self.n_latent, device=ql_m.device, dtype=ql_m.dtype)
+            log_qz_x = torch.zeros(n_samples, n_batch, device=ql_m.device, dtype=ql_m.dtype)
+            for idx in range(n_samples):
+                zi, log_qz_x_i = self.z_encoder(x_, y)
+                z[idx, :] = zi
+                log_qz_x[idx, :] = log_qz_x_i
+        else:
+            z, log_qz_x = self.z_encoder(x_, y)
 
         assert z.shape[0] == library.shape[0]
         # assert z.shape[1] == library.shape[1], 'Different n_batch'

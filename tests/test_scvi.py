@@ -455,12 +455,8 @@ def test_linear_exp_layer():
 def test_iaf(save_path):
     enc = EncoderIAF(n_in=5, n_latent=2, n_cat_list=None, n_hidden=12, n_layers=2, t=3).cuda()
     x = torch.rand(64, 5, device='cuda')
-    z1, _ = enc(x, n_samples=1)
+    z1, _ = enc(x)
     assert z1.shape == (64, 2)
-
-    z2, qvals = enc(x, n_samples=3)
-    assert z2.shape == (3, 64, 2)
-    assert qvals.shape == (3, 64)
 
     dataset = CortexDataset(save_path=save_path)
     vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
