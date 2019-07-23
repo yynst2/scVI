@@ -53,7 +53,7 @@ def compute_reconstruction_error(vae, posterior, **kwargs):
     return log_lkl / n_samples
 
 
-def compute_marginal_log_likelihood(vae, posterior, n_samples_mc=100):
+def compute_marginal_log_likelihood(vae, posterior, n_samples_mc=100, ratio_loss=False):
     """ Computes a biased estimator for log p(x), which is the marginal log likelihood.
 
     Despite its bias, the estimator still converges to the real value
@@ -71,28 +71,39 @@ def compute_marginal_log_likelihood(vae, posterior, n_samples_mc=100):
         for i in range(n_samples_mc):
 
             # Distribution parameters and sampled variables
-            outputs = vae.inference(sample_batch, batch_index, labels)
-            px_r = outputs['px_r']
-            px_rate = outputs['px_rate']
-            px_dropout = outputs['px_dropout']
-            qz_m = outputs['qz_m']
-            qz_v = outputs['qz_v']
-            z = outputs['z']
-            ql_m = outputs['ql_m']
-            ql_v = outputs['ql_v']
-            library = outputs['library']
+            if not ratio_loss:
+                outputs = vae.inference(sample_batch, batch_index, labels)
+                px_r = outputs['px_r']
+                px_rate = outputs['px_rate']
+                px_dropout = outputs['px_dropout']
+                qz_m = outputs['qz_m']
+                qz_v = outputs['qz_v']
+                z = outputs['z']
+                ql_m = outputs['ql_m']
+                ql_v = outputs['ql_v']
+                library = outputs['library']
 
-            # Reconstruction Loss
-            reconst_loss = vae.get_reconstruction_loss(sample_batch, px_rate, px_r, px_dropout)
+                # Reconstruction Loss
+                reconst_loss = vae.get_reconstruction_loss(sample_batch, px_rate, px_r, px_dropout)
 
-            # Log-probabilities
-            p_l = Normal(local_l_mean, local_l_var.sqrt()).log_prob(library).sum(dim=-1)
-            p_z = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-            p_x_zl = - reconst_loss
-            q_z_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-            q_l_x = Normal(ql_m, ql_v.sqrt()).log_prob(library).sum(dim=-1)
+                # Log-probabilities
+                p_l = Normal(local_l_mean, local_l_var.sqrt()).log_prob(library).sum(dim=-1)
+                p_z = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+                p_x_zl = - reconst_loss
+                q_z_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+                q_l_x = Normal(ql_m, ql_v.sqrt()).log_prob(library).sum(dim=-1)
 
-            to_sum[:, i] = p_z + p_l + p_x_zl - q_z_x - q_l_x
+                to_sum[:, i] = p_z + p_l + p_x_zl - q_z_x - q_l_x
+            else:
+                log_ratios = vae.ratio_loss(
+                    x=sample_batch,
+                    local_l_mean=local_l_mean,
+                    local_l_var=local_l_var,
+                    batch_index=batch_index,
+                    y=labels,
+                    return_mean=False
+                )
+                to_sum[:, i] = log_ratios
 
         batch_log_lkl = logsumexp(to_sum, dim=-1) - np.log(n_samples_mc)
         log_lkl += torch.sum(batch_log_lkl).item()

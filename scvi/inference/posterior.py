@@ -244,8 +244,8 @@ class Posterior:
     reconstruction_error.mode = "min"
 
     @torch.no_grad()
-    def marginal_ll(self, n_mc_samples=1000):
-        ll = compute_marginal_log_likelihood(self.model, self, n_mc_samples)
+    def marginal_ll(self, n_mc_samples=1000, ratio_loss=False):
+        ll = compute_marginal_log_likelihood(self.model, self, n_mc_samples, ratio_loss=ratio_loss)
         logger.debug("True LL : %.4f" % ll)
         return ll
 

@@ -164,6 +164,7 @@ class IAVAE(nn.Module):
         # reconstruction proba computation
         log_px_zl = -self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
+        assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
         ratio = (
             log_px_zl + log_pz + log_pl
             - log_qz_x - log_ql_x
