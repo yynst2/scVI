@@ -20,6 +20,7 @@ class EncoderH(nn.Module):
         do_h,
         dropout_rate,
         use_batch_norm,
+        do_sigmoid=True,
     ):
         """
 
@@ -34,6 +35,7 @@ class EncoderH(nn.Module):
         """
         super().__init__()
         self.do_h = do_h
+        self.do_sigmoid = do_sigmoid
 
         self.encoder = FCLayers(
             n_in=n_in,
@@ -48,10 +50,11 @@ class EncoderH(nn.Module):
         #     encoder0 =
         self.mu = nn.Linear(n_hidden, n_out)
         self.sigma = nn.Linear(n_hidden, n_out)
+        self.init_weights(self.sigma)
         if do_h:
             self.h = nn.Linear(n_hidden, n_out)
 
-        self.sigm = nn.Sigmoid()
+        self.activation = nn.Sigmoid()
 
     def forward(self, x, *cat_list: int):
         """
@@ -62,11 +65,20 @@ class EncoderH(nn.Module):
         """
         z = self.encoder(x, *cat_list)
         mu = self.mu(z)
-        sigma = self.sigm(self.sigma(z))
+        sigma = self.sigma(z)
+        if self.do_sigmoid:
+            sigma = self.activation(sigma)
+        else:
+            sigma = nn.ReLU()(sigma)
         if self.do_h:
             h = self.h(z)
             return mu, sigma, h
         return mu, sigma
+
+    @staticmethod
+    def init_weights(m):
+        torch.nn.init.normal_(m.weight, mean=0., std=1e-4)
+        torch.nn.init.constant_(m.bias, val=1.5)
 
 
 class EncoderIAF(nn.Module):
@@ -110,11 +122,12 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
+                do_sigmoid=False
             )
         )
 
         n_in = 2*n_latent if do_h else n_latent
-        for _ in range(t - 2):
+        for _ in range(t - 1):
             self.encoders.append(
                 EncoderH(
                     n_in=n_in,
@@ -125,6 +138,7 @@ class EncoderIAF(nn.Module):
                     do_h=False,
                     dropout_rate=dropout_rate,
                     use_batch_norm=use_batch_norm,
+                    do_sigmoid=True
                 )
             )
 
@@ -138,7 +152,6 @@ class EncoderIAF(nn.Module):
 
         :param x:
         :param cat_list:
-        :param n_samples:
         :return:
         """
         if self.do_h:
