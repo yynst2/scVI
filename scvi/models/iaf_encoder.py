@@ -50,7 +50,10 @@ class EncoderH(nn.Module):
         #     encoder0 =
         self.mu = nn.Linear(n_hidden, n_out)
         self.sigma = nn.Linear(n_hidden, n_out)
-        self.init_weights(self.sigma)
+        if do_sigmoid:
+            self.init_weights(self.sigma, bias_val=1.5)
+        else:
+            self.init_weights(self.sigma, bias_val=0.0)
         if do_h:
             self.h = nn.Linear(n_hidden, n_out)
 
@@ -76,9 +79,9 @@ class EncoderH(nn.Module):
         return mu, sigma
 
     @staticmethod
-    def init_weights(m):
-        torch.nn.init.normal_(m.weight, mean=0., std=1e-4)
-        torch.nn.init.constant_(m.bias, val=1.5)
+    def init_weights(m, bias_val=1.5):
+        torch.nn.init.normal_(m.weight, mean=0., std=1e-8)
+        torch.nn.init.constant_(m.bias, val=bias_val)
 
 
 class EncoderIAF(nn.Module):
@@ -122,7 +125,7 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
-                do_sigmoid=False
+                do_sigmoid=True
             )
         )
 

@@ -90,7 +90,7 @@ class NormalEncoderVAE(nn.Module):
                 local_l_var,
                 batch_index=batch_index,
                 y=y,
-                return_mean=True
+                return_mean=False
             )
         loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
         return loss.mean(dim=0)
