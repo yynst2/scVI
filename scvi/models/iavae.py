@@ -288,6 +288,7 @@ class IALogNormalPoissonVAE(nn.Module):
         else:
             z, log_qz_x = self.z_encoder(x_, y)
 
+        library = torch.clamp(library, max=14)
         assert z.shape[0] == library.shape[0]
         # assert z.shape[1] == library.shape[1], 'Different n_batch'
 
