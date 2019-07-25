@@ -41,7 +41,7 @@ class Trainer:
 
     def __init__(self, model, gene_dataset, use_cuda=True, metrics_to_monitor=None, benchmark=False,
                  frequency=None, weight_decay=1e-6, early_stopping_kwargs=None,
-                 data_loader_kwargs=None, show_progbar=True):
+                 data_loader_kwargs=None, show_progbar=True, batch_size=128):
         # handle mutable defaults
         early_stopping_kwargs = early_stopping_kwargs if early_stopping_kwargs else dict()
         data_loader_kwargs = data_loader_kwargs if data_loader_kwargs else dict()
@@ -51,7 +51,7 @@ class Trainer:
         self._posteriors = OrderedDict()
 
         self.data_loader_kwargs = {
-            "batch_size": 128,
+            "batch_size": batch_size,
             "pin_memory": use_cuda
         }
         self.data_loader_kwargs.update(data_loader_kwargs)
@@ -85,6 +85,7 @@ class Trainer:
         self.show_progbar = show_progbar
 
         self.train_losses = []
+        self.debug_loss = 0
 
     @torch.no_grad()
     def compute_metrics(self):
@@ -147,6 +148,7 @@ class Trainer:
                     loss = self.loss(*tensors_list)
                     optimizer.zero_grad()
                     loss_mean.append(loss.item())
+                    self.debug_loss = loss
                     loss.backward()
                     optimizer.step()
 
