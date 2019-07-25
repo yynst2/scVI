@@ -121,8 +121,7 @@ class IAVAE(nn.Module):
             z, log_qz_x = self.z_encoder(x_, y)
 
         assert z.shape[0] == library.shape[0], (z.shape, library.shape)
-        # assert z.shape[1] == library.shape[1], ('Different n_batch', z.shape, library.shape)
-
+        library = torch.clamp(library, max=14)
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
             px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
