@@ -92,7 +92,10 @@ class NormalEncoderVAE(nn.Module):
                 y=y,
                 return_mean=False
             )
-        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+
+        normalizers, _ = log_ratios.max(dim=0)
+        loss = - (torch.softmax(log_ratios - normalizers, dim=0).detach()
+                  * log_ratios).sum(dim=0)
         return loss.mean(dim=0)
 
 
@@ -326,6 +329,7 @@ class VAE(NormalEncoderVAE):
             z = self.z_encoder.sample(qz_m, qz_v)
             library = self.l_encoder.sample(ql_m, ql_v)
 
+        library = torch.clamp(library, max=14)
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
             px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -412,7 +416,7 @@ class VAE(NormalEncoderVAE):
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
         assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+        log_ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
 
         if not return_mean:
             return log_ratio
