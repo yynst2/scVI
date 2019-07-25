@@ -139,6 +139,7 @@ class PowSimSynthetic(GeneExpressionDataset):
         self.cst_mu = cst_mu
 
         sim_data = self.generate_data(n_cells_total=n_cells_total, n_genes=n_genes)
+        # sim_data[sim_data >= 1000] = 1000
         assert sim_data.shape == (n_cells_total, n_genes)
 
         sim_data = np.expand_dims(sim_data, axis=0)
@@ -193,8 +194,13 @@ class PowSimSynthetic(GeneExpressionDataset):
         else:
             mu = self.real_data_df["means"]
             true_means = np.random.choice(a=mu, size=nb_genes, replace=True)
-        log_mu = np.log2(1.0 + true_means)
+            true_means = 1.0 / 5.0 * true_means
+            true_means[true_means >= 300] = 300
+            print(true_means.min(), true_means.mean(), true_means.max())
 
+        log_mu = np.log2(1.0 + true_means)
+        print(log_mu.min(), log_mu.mean(), log_mu.max())
+        # log_mu = np.minimum(log_mu, 5.0)
         # NN interpolation
         interpolator_mean = interp1d(
             self.real_data_df.x,
