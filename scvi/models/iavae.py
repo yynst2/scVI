@@ -194,7 +194,7 @@ class IAVAE(nn.Module):
                 local_l_var,
                 batch_index=batch_index,
                 y=y,
-                return_mean=True
+                return_mean=False
             )
         loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
         return loss.mean(dim=0)
@@ -351,5 +351,8 @@ class IALogNormalPoissonVAE(nn.Module):
                 y=y,
                 return_mean=False
             )
-        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+        log_sum = torch.logsumexp(log_ratios, dim=0)
+        w_tilde = (log_ratios - log_sum).exp()
+        loss = - (w_tilde.detach() * log_ratios).sum(dim=0)
+        # loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
         return loss.mean(dim=0)
