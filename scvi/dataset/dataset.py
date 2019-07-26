@@ -1291,6 +1291,7 @@ def compute_library_size(
     log_counts = np.log(data.sum(axis=1))
     local_mean = (np.mean(log_counts).reshape(-1, 1)).astype(np.float32)
     local_var = (np.var(log_counts).reshape(-1, 1)).astype(np.float32)
+    logger.info("Local library mean : {}".format(local_mean))
     return local_mean, local_var
 
 
