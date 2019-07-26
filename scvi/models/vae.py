@@ -24,7 +24,7 @@ class NormalEncoderVAE(nn.Module):
         full_cov: bool = False,
         autoregresssive: bool = False,
         log_p_z=None,
-        learn_prior_scale: bool = True,
+        learn_prior_scale: bool = False,
     ):
         """
         Serves as model class for any VAE with Gaussian latent variables for scVI
@@ -80,7 +80,7 @@ class NormalEncoderVAE(nn.Module):
     def ratio_loss(self, x, local_l_mean, local_l_var, batch_index, y, return_mean):
         pass
 
-    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3, single_backward=False):
         n_batch = len(x)
         log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
         for it in range(k):
@@ -94,8 +94,18 @@ class NormalEncoderVAE(nn.Module):
             )
 
         normalizers, _ = log_ratios.max(dim=0)
-        loss = - (torch.softmax(log_ratios - normalizers, dim=0).detach()
-                  * log_ratios).sum(dim=0)
+        w_tilde = torch.softmax(log_ratios - normalizers, dim=0).detach()
+        if not single_backward:
+            loss = - (w_tilde * log_ratios).sum(dim=0)
+        else:
+            selected_k = torch.distributions.Categorical(probs=w_tilde.transpose(-1, -2)).sample()
+            assert len(selected_k) == n_batch
+
+            loss = - log_ratios[selected_k, torch.arange(n_batch)]
+            # selected_k = selected_k.view(1, -1)
+            # mask = torch.zeros_like(log_ratios).scatter(0, selected_k, 1.0).type(torch.ByteTensor)
+            # # loss = - (mask * log_ratios).sum(dim=0)
+            # loss = - log_ratios[mask]
         return loss.mean(dim=0)
 
 
@@ -329,7 +339,7 @@ class VAE(NormalEncoderVAE):
             z = self.z_encoder.sample(qz_m, qz_v)
             library = self.l_encoder.sample(ql_m, ql_v)
 
-        library = torch.clamp(library, max=14)
+        # library = torch.clamp(library, max=14)
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
             px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes

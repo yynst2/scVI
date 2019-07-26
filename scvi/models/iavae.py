@@ -121,7 +121,7 @@ class IAVAE(nn.Module):
             z, log_qz_x = self.z_encoder(x_, y)
 
         assert z.shape[0] == library.shape[0], (z.shape, library.shape)
-        library = torch.clamp(library, max=14)
+        # library = torch.clamp(library, max=13)
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
             px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -183,7 +183,7 @@ class IAVAE(nn.Module):
             raise NotImplementedError
         return reconst_loss
 
-    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3, single_backward=False):
         n_batch = len(x)
         log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
         for it in range(k):
@@ -195,7 +195,15 @@ class IAVAE(nn.Module):
                 y=y,
                 return_mean=False
             )
-        loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+
+        normalizers, _ = log_ratios.max(dim=0)
+        w_tilde = torch.softmax(log_ratios - normalizers, dim=0).detach()
+        if not single_backward:
+            loss = - (w_tilde * log_ratios).sum(dim=0)
+        else:
+            selected_k = torch.distributions.Categorical(probs=w_tilde.transpose(-1, -2)).sample()
+            assert len(selected_k) == n_batch
+            loss = - log_ratios[selected_k, torch.arange(n_batch)]
         return loss.mean(dim=0)
 
 
@@ -287,7 +295,7 @@ class IALogNormalPoissonVAE(nn.Module):
         else:
             z, log_qz_x = self.z_encoder(x_, y)
 
-        library = torch.clamp(library, max=14)
+        # library = torch.clamp(library, max=13)
         assert z.shape[0] == library.shape[0]
         # assert z.shape[1] == library.shape[1], 'Different n_batch'
 
@@ -339,7 +347,7 @@ class IALogNormalPoissonVAE(nn.Module):
         # or (n_samples, n_batch, n_input)
         return torch.sum(rl, dim=-1)
 
-    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3):
+    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, k=3, single_backward=False):
         n_batch = len(x)
         log_ratios = torch.zeros(k, n_batch, device='cuda', dtype=torch.float)
         for it in range(k):
@@ -351,8 +359,13 @@ class IALogNormalPoissonVAE(nn.Module):
                 y=y,
                 return_mean=False
             )
-        log_sum = torch.logsumexp(log_ratios, dim=0)
-        w_tilde = (log_ratios - log_sum).exp()
-        loss = - (w_tilde.detach() * log_ratios).sum(dim=0)
-        # loss = - (torch.softmax(log_ratios, dim=0).detach() * log_ratios).sum(dim=0)
+
+        normalizers, _ = log_ratios.max(dim=0)
+        w_tilde = torch.softmax(log_ratios - normalizers, dim=0).detach()
+        if not single_backward:
+            loss = - (w_tilde * log_ratios).sum(dim=0)
+        else:
+            selected_k = torch.distributions.Categorical(probs=w_tilde.transpose(-1, -2)).sample()
+            assert len(selected_k) == n_batch
+            loss = - log_ratios[selected_k, torch.arange(n_batch)]
         return loss.mean(dim=0)

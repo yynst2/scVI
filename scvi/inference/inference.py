@@ -33,12 +33,13 @@ class UnsupervisedTrainer(Trainer):
     default_metrics_to_monitor = ['elbo']
 
     def __init__(self, model, gene_dataset, train_size=0.8, test_size=None, n_epochs_kl_warmup=400,
-                 ratio_loss: bool = False, k_importance_weighted: int = 0,
+                 ratio_loss: bool = False, k_importance_weighted: int = 0, single_backward=None,
                  **kwargs):
         super().__init__(model, gene_dataset, **kwargs)
         self.n_epochs_kl_warmup = n_epochs_kl_warmup
         self.ratio_loss = ratio_loss
         self.k_importance_weighted = k_importance_weighted
+        self.single_backward = single_backward
 
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
@@ -54,6 +55,8 @@ class UnsupervisedTrainer(Trainer):
         if self.ratio_loss and self.k_importance_weighted == 0:
             loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
         elif self.ratio_loss and self.k_importance_weighted > 0:
+            assert self.single_backward in [True, False], \
+                'Please precise how backward pass is performed'
             k = self.k_importance_weighted
             loss = self.model.iwelbo(
                 sample_batch,
@@ -61,7 +64,8 @@ class UnsupervisedTrainer(Trainer):
                 local_l_var,
                 batch_index=None,
                 y=None,
-                k=k
+                k=k,
+                single_backward=self.single_backward
             )
         else:
             assert self.k_importance_weighted == 0
