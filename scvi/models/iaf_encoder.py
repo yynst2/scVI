@@ -53,7 +53,7 @@ class EncoderH(nn.Module):
         if do_sigmoid:
             self.init_weights(self.sigma, bias_val=1.5)
         else:
-            self.init_weights(self.sigma, bias_val=0.0)
+            self.init_weights(self.sigma, bias_val=0.5)
         if do_h:
             self.h = nn.Linear(n_hidden, n_out)
 
@@ -72,7 +72,8 @@ class EncoderH(nn.Module):
         if self.do_sigmoid:
             sigma = self.activation(sigma)
         else:
-            sigma = nn.ReLU()(sigma)
+            # sigma = nn.ReLU()(sigma)
+            sigma = sigma.exp()
         if self.do_h:
             h = self.h(z)
             return mu, sigma, h
@@ -125,7 +126,7 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
-                do_sigmoid=True
+                do_sigmoid=False
             )
         )
 
