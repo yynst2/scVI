@@ -57,7 +57,13 @@ class NormalEncoderVAE(nn.Module):
         )
         self.n_input = n_input
         # l encoder goes from n_input-dimensional data to 1-d library size
-        self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
+        self.l_encoder = Encoder(
+            n_input,
+            1,
+            n_layers=1,
+            n_hidden=n_hidden,
+            dropout_rate=dropout_rate
+        )
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = None
         self.log_variational = log_variational
@@ -94,7 +100,8 @@ class NormalEncoderVAE(nn.Module):
             )
 
         normalizers, _ = log_ratios.max(dim=0)
-        w_tilde = torch.softmax(log_ratios - normalizers, dim=0).detach()
+        # w_tilde = torch.softmax(log_ratios - normalizers, dim=0).detach()
+        w_tilde = (log_ratios - torch.logsumexp(log_ratios, dim=0)).exp().detach()
         if not single_backward:
             loss = - (w_tilde * log_ratios).sum(dim=0)
         else:
@@ -106,6 +113,9 @@ class NormalEncoderVAE(nn.Module):
             # mask = torch.zeros_like(log_ratios).scatter(0, selected_k, 1.0).type(torch.ByteTensor)
             # # loss = - (mask * log_ratios).sum(dim=0)
             # loss = - log_ratios[mask]
+        # dummy = loss.mean(dim=0)
+        # if torch.isnan(dummy):
+        #     print('TOTOTOT')
         return loss.mean(dim=0)
 
 
@@ -320,7 +330,7 @@ class VAE(NormalEncoderVAE):
         px_scale, _, _, _ = self.decoder('gene', z, library, batch_index)
         return px_scale
 
-    def inference(self, x, batch_index=None, y=None, n_samples=1):
+    def inference(self, x, batch_index=None, y=None, n_samples=1, train_library=True):
         x_ = x
         if self.log_variational:
             x_ = torch.log(1 + x_)
@@ -340,6 +350,11 @@ class VAE(NormalEncoderVAE):
             library = self.l_encoder.sample(ql_m, ql_v)
 
         # library = torch.clamp(library, max=14)
+        # if (library >= 14).any():
+        #     print('TOTOTATA')
+
+        if not train_library:
+            library = 1.0
         px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
         if self.dispersion == "gene-label":
             px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
@@ -399,8 +414,17 @@ class VAE(NormalEncoderVAE):
 
         return reconst_loss + kl_divergence_l, kl_divergence
 
-    def ratio_loss(self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True):
-        outputs = self.inference(x, batch_index, y)
+    def ratio_loss(
+        self,
+        x,
+        local_l_mean,
+        local_l_var,
+        batch_index=None,
+        y=None,
+        return_mean=True,
+        train_library=True
+    ):
+        outputs = self.inference(x, batch_index, y, train_library=train_library)
 
         px_r = outputs['px_r']
         px_rate = outputs['px_rate']
@@ -426,7 +450,13 @@ class VAE(NormalEncoderVAE):
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
         assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
-        log_ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
+        if train_library:
+            log_ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
+        else:
+            log_ratio = (log_px_zl + log_pz) - log_qz_x
+
+        # if torch.isnan(log_ratio).any():
+        #     print('FUFUFUFUF')
 
         if not return_mean:
             return log_ratio
