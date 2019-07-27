@@ -33,6 +33,8 @@ class PowSimSynthetic(GeneExpressionDataset):
         self,
         cluster_to_samples=[20, 100, 30, 25, 500],
         n_genes=10000,
+        n_genes_zi=100,
+        p_dropout=0.4,
         real_data_path=None,
         de_p=0.1,
         de_lfc=None,
@@ -48,6 +50,8 @@ class PowSimSynthetic(GeneExpressionDataset):
         mode="NB",
         seed=42,
     ):
+        # TODO: replace current ZI policy by the one implemented by powsim
+        # In their case I guess it is similar to ZIFA
         """
 
         :param cluster_to_samples:
@@ -108,6 +112,10 @@ class PowSimSynthetic(GeneExpressionDataset):
         self.de_lfc[self.de_genes_idx] = self.unvectorize(
             de_lfc.sample((len(self.de_genes_idx),))
         )
+
+        # ZI (uniform for now)
+        self.zi_genes_idx = np.random.choice(a=n_genes, size=n_genes_zi, replace=False)
+        self.p_dropout = p_dropout
 
         # Batch affected genes
         if n_genes_batch != 0:
@@ -194,8 +202,8 @@ class PowSimSynthetic(GeneExpressionDataset):
         else:
             mu = self.real_data_df["means"]
             true_means = np.random.choice(a=mu, size=nb_genes, replace=True)
-            true_means = 1.0 / 5.0 * true_means
-            true_means[true_means >= 300] = 300
+            true_means = true_means
+            true_means[true_means >= 200] = 200
             print(true_means.min(), true_means.mean(), true_means.max())
 
         log_mu = np.log2(1.0 + true_means)
@@ -248,8 +256,16 @@ class PowSimSynthetic(GeneExpressionDataset):
         )
         return sim_data
 
-    def generate_zinb(self, model_matrix, coeffs, n_cells_total, n_genes):
-        raise NotImplementedError
+    def generate_zinb(self, model_matrix, coeffs, n_cells_total, nb_genes):
+        sim_data = self.generate_nb(model_matrix, coeffs, n_cells_total, nb_genes)
+
+        # Zero inflation
+        zi_probas = np.ones_like(sim_data)
+        zi_probas[:, self.zi_genes_idx] = 1.0 - self.p_dropout
+        draws = np.random.rand(n_cells_total, nb_genes)
+        do_drop = draws >= zi_probas
+        sim_data = do_drop * sim_data
+        return sim_data
 
     @staticmethod
     def _get_one_hot(idx, n_idx_total, size):
