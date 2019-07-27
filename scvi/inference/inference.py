@@ -58,15 +58,18 @@ class UnsupervisedTrainer(Trainer):
             assert self.single_backward in [True, False], \
                 'Please precise how backward pass is performed'
             k = self.k_importance_weighted
-            loss = self.model.iwelbo(
-                sample_batch,
-                local_l_mean,
-                local_l_var,
-                batch_index=None,
-                y=None,
-                k=k,
-                single_backward=self.single_backward
-            )
+            if self.epoch <= 10:
+                loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
+            else:
+                loss = self.model.iwelbo(
+                    sample_batch,
+                    local_l_mean,
+                    local_l_var,
+                    batch_index=batch_index,
+                    y=None,
+                    k=k,
+                    single_backward=self.single_backward
+                )
         else:
             assert self.k_importance_weighted == 0
             reconst_loss, kl_divergence = self.model(
