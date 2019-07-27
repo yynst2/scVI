@@ -269,15 +269,33 @@ def test_full_cov():
 
 
 def test_powsimr():
-    data = PowSimSynthetic()
-    assert data.X.shape == (675, 10000)
+    clusters = [7500, 7500]
+    n_genes = 1000
+    dataset = PowSimSynthetic(cluster_to_samples=clusters, n_genes=n_genes, de_p=0.5)
+    assert dataset.X.shape == (sum(clusters), n_genes)
 
-    lfc_coefs = data.lfc
+    data = dataset.X
+    log_counts = np.log(data.sum(axis=1))
+    local_mean = (np.mean(log_counts).reshape(-1, 1)).astype(np.float32)
+    local_var = (np.var(log_counts).reshape(-1, 1)).astype(np.float32)
+    print(local_mean)
+
+    lfc_coefs = dataset.lfc
     # Assert that all genes that are supposed to be differentially expressed
     # Really are
-    lfc_coefs_de = lfc_coefs[data.de_genes_idx]
+    lfc_coefs_de = lfc_coefs[dataset.de_genes_idx]
     is_genes_de = (lfc_coefs_de != lfc_coefs_de[:, 0].reshape((-1, 1)))[:, 1:].all(axis=1)
     assert is_genes_de.all()
+
+    dataset = PowSimSynthetic(
+        cluster_to_samples=clusters,
+        n_genes=1500,
+        n_genes_zi=750,
+        p_dropout=0.3,
+        de_p=0.5,
+        mode='ZINB'
+    )
+    assert dataset.X.shape == (sum(clusters), 1500)
 
 
 def test_logpoisson():
@@ -486,24 +504,64 @@ def test_iaf(save_path):
             ),
             n_samples=3
         )
+    z, l = trainer.test_set.get_latents(n_samples=5, device='cpu')
+    return
 
+
+def test_iaf2(save_path):
+    dataset = CortexDataset(save_path=save_path)
+    vae = IALogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches, do_h=True).cuda()
+    trainer = UnsupervisedTrainer(
+        vae, dataset, train_size=0.5, ratio_loss=True
+    )
+    trainer.train(n_epochs=1000)
+    print(trainer.train_losses)
     z, l = trainer.test_set.get_latents(n_samples=5, device='cpu')
     return
 
 
 def test_iwae(save_path):
+    import time
     dataset = CortexDataset(save_path=save_path)
+    torch.manual_seed(42)
+
     vae = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
-    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
-    trainer.train(n_epochs=2)
+    start = time.time()
+    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True,
+                                  k_importance_weighted=5, single_backward=True)
+    trainer.train(n_epochs=10)
+    stop1 = time.time() - start
 
-    vae = LogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
-    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
-    trainer.train(n_epochs=2)
+    vae = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    start = time.time()
+    trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True,
+                                  k_importance_weighted=5, single_backward=False)
+    trainer.train(n_epochs=10)
+    stop2 = time.time() - start
 
-    # vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
-    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True
-    #                               # k_importance_weighted=3
-    #                               )
+    print('Time single backward : ', stop1)
+    print('Time all elements : ', stop2)
+    # vae = LogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
     # trainer.train(n_epochs=2)
+
+    # dataset = PowSimSynthetic(cluster_to_samples=[7500, 7500], de_p=0.5, n_genes=1500)
+    # vae = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
+    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True,
+    #                               k_importance_weighted=5, single_backward=False)
+    # trainer.train(n_epochs=40, lr=1e-4)
+    # print(trainer.train_losses)
+
+
+# def test_nans():
+#     dataset = PowSimSynthetic(cluster_to_samples=[7500, 7500], de_p=0.5, n_genes=1500)
+#     vae = VAE(
+#         dataset.nb_genes, n_batch=dataset.n_batches, n_hidden=16, n_layers=1, n_latent=5
+#     )
+#     trainer = UnsupervisedTrainer(
+#         vae, dataset, ratio_loss=True,  # k_importance_weighted=50, single_backward=True
+#     )
+#     trainer.train(n_epochs=40, lr=1e-3)
+#
+#     print(trainer.train_losses)
 
