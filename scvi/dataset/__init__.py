@@ -31,6 +31,7 @@ from scvi.dataset.powsimr import PowSimSynthetic, SignedGamma
 from scvi.dataset.logpoisson import LogPoissonDataset
 from scvi.dataset.latentlogpoisson import LatentLogPoissonDataset
 from scvi.dataset.latentgaussiantoy import LatentGaussianToy
+from scvi.dataset.svensson import Sven1Dataset, Sven2Dataset
 
 __all__ = [
     "AnnDatasetFromAnnData",
@@ -60,10 +61,13 @@ __all__ = [
     "SyntheticRandomDataset",
     "SyntheticDatasetCorr",
     "ZISyntheticDatasetCorr",
-    'SymSimDataset',
-    'PowSimSynthetic',
-    'SignedGamma',
-    'LogPoissonDataset',
-    'LatentLogPoissonDataset',
-    'LatentGaussianToy'
+    "SymSimDataset",
+    "PowSimSynthetic",
+    "SignedGamma",
+    "LogPoissonDataset",
+    "LatentLogPoissonDataset",
+    "LatentGaussianToy",
+    "Sven1Dataset",
+    "Sven2Dataset",
+
 ]
