@@ -20,6 +20,7 @@ class IterativeDict:
     Structure:
     model_name ==> metric_name ==> table [n_trainings, ...]
     """
+
     def __init__(self, model_names):
         self.values = {key: {} for key in model_names}
 
@@ -49,7 +50,9 @@ def plot_traj(history, x=None, **plot_params):
     x = np.arange(n_iter) if x is None else x
     plt.plot(x, theta_mean, **plot_params)
 
-    plt.fill_between(x=x, y1=theta_mean - theta_std, y2=theta_mean + theta_std, alpha=0.25)
+    plt.fill_between(
+        x=x, y1=theta_mean - theta_std, y2=theta_mean + theta_std, alpha=0.25
+    )
 
 
 def plot_identity():
@@ -58,19 +61,18 @@ def plot_identity():
     plt.plot(vals, vals, "--", label="identity")
 
 
-def plot_precision_recall(y_test, y_score, label=''):
+def plot_precision_recall(y_test, y_score, label=""):
     average_precision = average_precision_score(y_test, y_score)
     precision, recall, _ = precision_recall_curve(y_test, y_score)
 
     # In matplotlib < 1.5, plt.fill_between does not have a 'step' argument
-    step_kwargs = {'step': 'post'}
-    legend = '{0} PR curve: AP={1:0.2f}'.format(label, average_precision)
+    step_kwargs = {"step": "post"}
+    legend = "{0} PR curve: AP={1:0.2f}".format(label, average_precision)
 
-    plt.step(recall, precision, color='b', alpha=0.2,
-             where='post', label=legend)
+    plt.step(recall, precision, color="b", alpha=0.2, where="post", label=legend)
     plt.fill_between(recall, precision, alpha=0.2, **step_kwargs)
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
     plt.ylim([0.0, 1.05])
     plt.xlim([0.0, 1.0])
 
@@ -104,6 +106,24 @@ def demultiply(arr1, arr2, factor=2):
     """
     assert arr1.shape == arr2.shape
     n_original = len(arr1)
-    idx_1 = np.random.choice(n_original, size=n_original*factor, replace=True)
-    idx_2 = np.random.choice(n_original, size=n_original*factor, replace=True)
+    idx_1 = np.random.choice(n_original, size=n_original * factor, replace=True)
+    idx_2 = np.random.choice(n_original, size=n_original * factor, replace=True)
     return arr1[idx_1], arr2[idx_2]
+
+
+def predict_de_genes(posterior_probas: np.ndarray, desired_fdr: float):
+    """
+
+    :param posterior_probas: Shape (n_samples, n_genes)
+    :param desired_fdr:
+    :return:
+    """
+    assert posterior_probas.ndim == 1
+    sorted_genes = np.argsort(-posterior_probas)
+    sorted_pgs = posterior_probas[sorted_genes]
+    cumulative_fdr = (1.0 - sorted_pgs).cumsum() / (1.0 + np.arange(len(sorted_pgs)))
+    d = (cumulative_fdr <= desired_fdr).sum() - 1
+    pred_de_genes = sorted_genes[:d]
+    is_pred_de = np.zeros_like(cumulative_fdr).astype(bool)
+    is_pred_de[pred_de_genes] = True
+    return is_pred_de
