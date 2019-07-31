@@ -235,19 +235,38 @@ class Trainer:
         else:
             object.__setattr__(self, name, value)
 
-    def train_test(self, model=None, gene_dataset=None, train_size=0.1, test_size=None, seed=0, type_class=Posterior):
+    def train_test(
+        self,
+        model=None,
+        gene_dataset=None,
+        train_size=0.1,
+        test_size=None,
+        seed=0,
+        test_indices=None,
+        type_class=Posterior
+    ):
         """
         :param train_size: float, int, or None (default is 0.1)
         :param test_size: float, int, or None (default is None)
+        :param model:
+        :param gene_dataset:
+        :param seed:
+        :param test_indices:
+        :param type_class:
         """
         model = self.model if model is None and hasattr(self, "model") else model
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
+
         n = len(gene_dataset)
-        n_train, n_test = _validate_shuffle_split(n, test_size, train_size)
-        np.random.seed(seed=seed)
-        permutation = np.random.permutation(n)
-        indices_test = permutation[:n_test]
-        indices_train = permutation[n_test:(n_test + n_train)]
+        if test_indices is None:
+            n_train, n_test = _validate_shuffle_split(n, test_size, train_size)
+            np.random.seed(seed=seed)
+            permutation = np.random.permutation(n)
+            indices_test = permutation[:n_test]
+            indices_train = permutation[n_test:(n_test + n_train)]
+        else:
+            indices_test = np.array(test_size)
+            indices_train = np.isin(np.arange(n), indices_test)
 
         return (
             self.create_posterior(model, gene_dataset, indices=indices_train, type_class=type_class),

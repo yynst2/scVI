@@ -32,9 +32,19 @@ class UnsupervisedTrainer(Trainer):
     """
     default_metrics_to_monitor = ['elbo']
 
-    def __init__(self, model, gene_dataset, train_size=0.8, test_size=None, n_epochs_kl_warmup=400,
-                 ratio_loss: bool = False, k_importance_weighted: int = 0, single_backward=None,
-                 **kwargs):
+    def __init__(
+        self,
+        model,
+        gene_dataset,
+        train_size=0.8,
+        test_size=None,
+        n_epochs_kl_warmup=400,
+        ratio_loss: bool = False,
+        k_importance_weighted: int = 0,
+        single_backward=None,
+        test_indices=None,
+        **kwargs
+    ):
         super().__init__(model, gene_dataset, **kwargs)
         self.n_epochs_kl_warmup = n_epochs_kl_warmup
         self.ratio_loss = ratio_loss
@@ -42,7 +52,13 @@ class UnsupervisedTrainer(Trainer):
         self.single_backward = single_backward
 
         if type(self) is UnsupervisedTrainer:
-            self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
+            self.train_set, self.test_set = self.train_test(
+                model,
+                gene_dataset,
+                train_size=train_size,
+                test_size=test_size,
+                test_indices=test_indices
+            )
             self.train_set.to_monitor = ['elbo']
             self.test_set.to_monitor = ['elbo']
 
@@ -58,18 +74,15 @@ class UnsupervisedTrainer(Trainer):
             assert self.single_backward in [True, False], \
                 'Please precise how backward pass is performed'
             k = self.k_importance_weighted
-            if self.epoch <= 10:
-                loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
-            else:
-                loss = self.model.iwelbo(
-                    sample_batch,
-                    local_l_mean,
-                    local_l_var,
-                    batch_index=batch_index,
-                    y=None,
-                    k=k,
-                    single_backward=self.single_backward
-                )
+            loss = self.model.iwelbo(
+                sample_batch,
+                local_l_mean,
+                local_l_var,
+                batch_index=batch_index,
+                y=None,
+                k=k,
+                single_backward=self.single_backward
+            )
         else:
             assert self.k_importance_weighted == 0
             reconst_loss, kl_divergence = self.model(
