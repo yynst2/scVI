@@ -266,7 +266,7 @@ class Trainer:
             indices_train = permutation[n_test:(n_test + n_train)]
         else:
             indices_test = np.array(test_indices)
-            all_indices = np.arange(15000)
+            all_indices = np.arange(len(gene_dataset))
             indices_train = ~np.isin(all_indices, indices_test)
             indices_train = all_indices[indices_train]
             assert len(np.intersect1d(indices_train, indices_test)) == 0
