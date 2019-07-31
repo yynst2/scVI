@@ -265,8 +265,11 @@ class Trainer:
             indices_test = permutation[:n_test]
             indices_train = permutation[n_test:(n_test + n_train)]
         else:
-            indices_test = np.array(test_size)
-            indices_train = np.isin(np.arange(n), indices_test)
+            indices_test = np.array(test_indices)
+            all_indices = np.arange(15000)
+            indices_train = ~np.isin(all_indices, indices_test)
+            indices_train = all_indices[indices_train]
+            assert len(np.intersect1d(indices_train, indices_test)) == 0
 
         return (
             self.create_posterior(model, gene_dataset, indices=indices_train, type_class=type_class),
