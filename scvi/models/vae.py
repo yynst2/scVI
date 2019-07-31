@@ -62,7 +62,8 @@ class NormalEncoderVAE(nn.Module):
             1,
             n_layers=1,
             n_hidden=n_hidden,
-            dropout_rate=dropout_rate
+            dropout_rate=dropout_rate,
+            prevent_saturation=True
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = None

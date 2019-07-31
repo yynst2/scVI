@@ -143,11 +143,12 @@ class Encoder(nn.Module):
     def __init__(self, n_input: int, n_output: int,
                  n_cat_list: Iterable[int] = None, n_layers: int = 1,
                  n_hidden: int = 128, dropout_rate: float = 0.1, full_cov=False,
-                 autoregressive=False):
+                 autoregressive=False, prevent_saturation: bool = False,):
         super().__init__()
         assert not (full_cov and autoregressive)
         self.encoder = FCLayers(n_in=n_input, n_out=n_hidden, n_cat_list=n_cat_list, n_layers=n_layers,
                                 n_hidden=n_hidden, dropout_rate=dropout_rate)
+        self.prevent_saturation = prevent_saturation
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.full_cov = full_cov
         self.autoregressive = autoregressive
@@ -188,7 +189,12 @@ class Encoder(nn.Module):
         # Parameters for latent distribution
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
-        q_v = self.get_cov(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
+        q_v = self.var_encoder(q)
+
+        if self.prevent_saturation:
+            q_m = 15.0 * nn.Tanh()(self.mean_encoder(q))
+
+        q_v = self.get_cov(q_v)  # (computational stability safeguard)torch.clamp(, -5, 5)
         if self.autoregressive:
             l_vals = self.ltria(q)
             n_batch = q.size(0)
@@ -216,7 +222,11 @@ class Encoder(nn.Module):
             res = torch.matmul(l_mat, l_mat.transpose(-1, -2))
             return res
         else:
-            return torch.exp(x)
+            if self.prevent_saturation:
+                x = 5 * nn.Sigmoid()(x)
+            else:
+                x = torch.exp(x) + 1e-4
+            return x
 
 
 # Decoder
