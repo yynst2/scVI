@@ -30,7 +30,7 @@ class UnsupervisedTrainer(Trainer):
         >>> infer = VariationalInference(gene_dataset, vae, train_size=0.5)
         >>> infer.train(n_epochs=20, lr=1e-3)
     """
-    default_metrics_to_monitor = ['elbo']
+    # default_metrics_to_monitor = ['elbo']
 
     def __init__(
         self,
@@ -43,6 +43,7 @@ class UnsupervisedTrainer(Trainer):
         k_importance_weighted: int = 0,
         single_backward=None,
         test_indices=None,
+        metrics: list = [],
         **kwargs
     ):
         super().__init__(model, gene_dataset, **kwargs)
@@ -59,8 +60,8 @@ class UnsupervisedTrainer(Trainer):
                 test_size=test_size,
                 test_indices=test_indices
             )
-            self.train_set.to_monitor = ['elbo']
-            self.test_set.to_monitor = ['elbo']
+            self.train_set.to_monitor = metrics
+            self.test_set.to_monitor = metrics
 
     @property
     def posteriors_loop(self):

@@ -247,7 +247,7 @@ class Posterior:
                 batch_index=batch_index,
                 y=labels,
                 return_mean=True,
-                train_library=True
+                # train_library=True
             )
             elbo += elbo_batch.sum().item()
         n_samples = len(self.indices)
