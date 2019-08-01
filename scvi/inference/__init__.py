@@ -8,7 +8,7 @@ from .annotation import (
     ClassifierTrainer,
 )
 from .jvae_trainer import JVAETrainer
-from .autotune import auto_tune_scvi_model, hyperopt_worker, launch_workers
+from .autotune import auto_tune_scvi_model, hyperopt_worker, launch_workers, objective_ratio_loss
 
 __all__ = [
     "Trainer",
@@ -23,4 +23,5 @@ __all__ = [
     "auto_tune_scvi_model",
     "hyperopt_worker",
     "launch_workers",
+    "objective_ratio_loss"
 ]

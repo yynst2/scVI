@@ -975,6 +975,7 @@ def _objective_function(
     train_func_specific_kwargs: dict = None,
     use_batches: bool = False,
     is_best_training: bool = False,
+    ratio_loss: bool = False,
 ) -> Union[Dict[str, Any], Trainer]:
     """Objective function for automatic hyperparameter optimization.
     Train a scVI model and return the best value of the early-stopping metric (e.g, log-likelihood).
@@ -1083,7 +1084,7 @@ def _objective_function(
             best_epoch = len(trainer.history[metric])
 
         # compute true ll
-        loss = trainer.test_set.marginal_ll(n_mc_samples=100)
+        loss = trainer.test_set.marginal_ll(n_mc_samples=100, ratio_loss=ratio_loss)
 
         logger.debug(
             "Training of {n_epochs} epochs finished in {time} with loss = {loss}".format(
@@ -1109,3 +1110,48 @@ def _objective_function(
             "space": space,
             "worker_name": multiprocessing.current_process().name,
         }
+
+
+def objective_ratio_loss(
+    space: dict,
+    gene_dataset: GeneExpressionDataset,
+    model_class: Type[VAE] = VAE,
+    trainer_class: Type[Trainer] = UnsupervisedTrainer,
+    model_specific_kwargs: dict = None,
+    trainer_specific_kwargs: dict = None,
+    train_func_specific_kwargs: dict = None,
+    use_batches: bool = False,
+    is_best_training: bool = False,
+) -> Union[Dict[str, Any], Trainer]:
+    """Objective function for automatic hyperparameter optimization.
+    Train a scVI model and return the best value of the early-stopping metric (e.g, log-likelihood).
+    Convention: fixed parameters (no default) have precedence over tunable parameters (default).
+
+    :param space: dict containing up to three sub-dicts with keys "model_tunable_kwargs",
+    "trainer_tunable_kwargs" or "train_func_tunable_kwargs".
+    Each of those dict contains hyperopt defined parameter spaces (e.g. ``hp.choice(..)``)
+    which will be passed to the corresponding object : model, trainer or train method
+    when performing hyperoptimization.
+    :param gene_dataset: scVI gene dataset
+    :param model_class: scVI model class (e.g ``VAE``, ``VAEC``, ``SCANVI``)
+    :param trainer_class: Trainer class (e.g ``UnsupervisedTrainer``)
+    :param model_specific_kwargs: dict of fixed parameters which will be passed to the model.
+    :param trainer_specific_kwargs: dict of fixed parameters which will be passed to the trainer.
+    :param train_func_specific_kwargs: dict of fixed parameters which will be passed to the train method.
+    :param use_batches: If False, pass n_batch=0 to model else pass gene_dataset.n_batches
+    :param is_best_training: True if training the model with the best hyperparameters
+    :return: best value of the early stopping metric, and best model if is_best_training
+    """
+
+    return _objective_function(
+        space=space,
+        gene_dataset=gene_dataset,
+        model_class=model_class,
+        trainer_class=trainer_class,
+        model_specific_kwargs=model_specific_kwargs,
+        trainer_specific_kwargs=trainer_specific_kwargs,
+        train_func_specific_kwargs=train_func_specific_kwargs,
+        use_batches=use_batches,
+        is_best_training=is_best_training,
+        ratio_loss=True
+    )

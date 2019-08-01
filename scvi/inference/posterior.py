@@ -236,6 +236,25 @@ class Posterior:
     elbo.mode = "min"
 
     @torch.no_grad()
+    def elbo_ratio_loss(self):
+        elbo = 0.0
+        for i_batch, tensors in enumerate(self):
+            sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[:5]  # general fish case
+            elbo_batch = self.model.ratio_loss(
+                sample_batch,
+                local_l_mean,
+                local_l_var,
+                batch_index=None,
+                y=None,
+                return_mean=True,
+                train_library=True
+            )
+            elbo += elbo_batch.sum()
+        n_samples = len(self.indices)
+        return elbo / n_samples
+
+
+    @torch.no_grad()
     def reconstruction_error(self):
         reconstruction_error = compute_reconstruction_error(self.model, self)
         logger.debug("Reconstruction Error : %.4f" % reconstruction_error)
