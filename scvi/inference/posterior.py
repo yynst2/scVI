@@ -249,7 +249,7 @@ class Posterior:
                 return_mean=True,
                 train_library=True
             )
-            elbo += elbo_batch.sum()
+            elbo += elbo_batch.sum().item()
         n_samples = len(self.indices)
         return elbo / n_samples
 
