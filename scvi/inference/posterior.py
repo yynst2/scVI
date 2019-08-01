@@ -244,8 +244,8 @@ class Posterior:
                 sample_batch,
                 local_l_mean,
                 local_l_var,
-                batch_index=None,
-                y=None,
+                batch_index=batch_index,
+                y=labels,
                 return_mean=True,
                 train_library=True
             )
