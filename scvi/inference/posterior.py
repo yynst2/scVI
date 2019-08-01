@@ -253,6 +253,8 @@ class Posterior:
         n_samples = len(self.indices)
         return elbo / n_samples
 
+    elbo_ratio_loss.mode = "min"
+
 
     @torch.no_grad()
     def reconstruction_error(self):
