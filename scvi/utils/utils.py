@@ -127,3 +127,19 @@ def predict_de_genes(posterior_probas: np.ndarray, desired_fdr: float):
     is_pred_de = np.zeros_like(cumulative_fdr).astype(bool)
     is_pred_de[pred_de_genes] = True
     return is_pred_de
+
+
+def save_fig(fig, filename, type="plotly", mode="save"):
+    from chart_studio.plotly import iplot
+
+    def _save_plotly(fig, filename, mode):
+        if mode == "cloud":
+            iplot(fig, filename=filename)
+        else:
+            fig.show()
+            fig.write_image('{}.png'.format(filename))
+
+    if type == "plotly":
+        _save_plotly(fig=fig, filename=filename, mode=mode)
+    else:
+        raise AttributeError
