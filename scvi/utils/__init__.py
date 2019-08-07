@@ -10,5 +10,6 @@ __all__ = [
     "compute_hdi",
     "demultiply",
     "predict_de_genes",
-    "save_fig"
+    "save_fig",
+    "load_or_make"
 ]
