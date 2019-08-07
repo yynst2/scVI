@@ -6,6 +6,9 @@ from sklearn.metrics import average_precision_score
 import matplotlib.pyplot as plt
 import arviz as az
 import pickle
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def make_dir_if_necessary(directory):
