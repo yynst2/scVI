@@ -5,7 +5,6 @@ from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 import matplotlib.pyplot as plt
 import arviz as az
-import pickle
 import logging
 
 logger = logging.getLogger(__name__)
@@ -138,19 +137,3 @@ def save_fig(fig, filename, do_cloud=False):
     if do_cloud:
         iplot(fig, filename=filename)
     fig.write_image('{}.png'.format(filename))
-
-
-def load_or_make(filename):
-    def decorated(func):
-        def wraps(*args, **kwargs):
-            if not os.path.exists(filename):
-                res = func(*args, **kwargs)
-                with open(filename, 'wb') as f:
-                    pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
-            else:
-                logger.info(msg="Loading result from pickle ...")
-                with open(filename, 'rb') as f:
-                    res = pickle.load(f)
-            return res
-        return wraps
-    return decorated
