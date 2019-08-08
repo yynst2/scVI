@@ -13,6 +13,24 @@ def reparameterize_gaussian(mu, var):
     return Normal(mu, var.sqrt()).rsample()
 
 
+def get_one_hot_cat_list(n_cat_list, cat_list):
+    one_hot_cat_list = []  # for generality in this list many indices useless.
+    assert len(n_cat_list) <= len(
+        cat_list
+    ), "nb. categorical args provided doesn't match init. params."
+    for n_cat, cat in zip(n_cat_list, cat_list):
+        assert not (
+            n_cat and cat is None
+        ), "cat not provided while n_cat != 0 in init. params."
+        if n_cat > 1:  # n_cat = 1 will be ignored - no additional information
+            if cat.size(1) != n_cat:
+                one_hot_cat = one_hot(cat, n_cat)
+            else:
+                one_hot_cat = cat  # cat has already been one_hot encoded
+            one_hot_cat_list += [one_hot_cat]
+    return one_hot_cat_list
+
+
 class FCLayers(nn.Module):
     r"""A helper class to build fully-connected layers for a neural network.
 
@@ -36,6 +54,7 @@ class FCLayers(nn.Module):
         n_hidden: int = 128,
         dropout_rate: float = 0.1,
         use_batch_norm: bool = True,
+        with_activation: bool = True,
     ):
         super().__init__()
         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
@@ -60,7 +79,7 @@ class FCLayers(nn.Module):
                             nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
                             if use_batch_norm
                             else None,
-                            nn.ReLU(),
+                            nn.ReLU() if with_activation else None,
                             nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
                         ),
                     )
@@ -80,20 +99,7 @@ class FCLayers(nn.Module):
         :return: tensor of shape ``(n_out,)``
         :rtype: :py:class:`torch.Tensor`
         """
-        one_hot_cat_list = []  # for generality in this list many indices useless.
-        assert len(self.n_cat_list) <= len(
-            cat_list
-        ), "nb. categorical args provided doesn't match init. params."
-        for n_cat, cat in zip(self.n_cat_list, cat_list):
-            assert not (
-                n_cat and cat is None
-            ), "cat not provided while n_cat != 0 in init. params."
-            if n_cat > 1:  # n_cat = 1 will be ignored - no additional information
-                if cat.size(1) != n_cat:
-                    one_hot_cat = one_hot(cat, n_cat)
-                else:
-                    one_hot_cat = cat  # cat has already been one_hot encoded
-                one_hot_cat_list += [one_hot_cat]
+        one_hot_cat_list = get_one_hot_cat_list(self.n_cat_list, cat_list)
         for layers in self.fc_layers:
             for layer in layers:
                 if layer is not None:
@@ -118,6 +124,133 @@ class FCLayers(nn.Module):
         return x
 
 
+class ResNetBlock(nn.Module):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        n_cat_list: Iterable[int] = None,
+        n_hidden: int = 128,
+        dropout_rate: float = 0.1,
+    ):
+        super().__init__()
+        if n_cat_list is not None:
+            # n_cat = 1 will be ignored
+            self.n_cat_list = [n_cat if n_cat > 1 else 0 for n_cat in n_cat_list]
+        else:
+            self.n_cat_list = []
+        self.layer1 = FCLayers(
+            n_in=n_in,
+            n_out=n_hidden,
+            n_cat_list=n_cat_list,
+            n_layers=1,
+            n_hidden=n_hidden,  # Should be useless
+            with_activation=True,
+            dropout_rate=dropout_rate,
+        )
+        self.layer2 = FCLayers(
+            n_in=n_hidden,
+            n_out=n_out,
+            n_cat_list=n_cat_list,
+            n_layers=1,
+            n_hidden=n_hidden,  # Should be useless
+            with_activation=False,
+            dropout_rate=dropout_rate,
+        )
+        if n_in != n_out:
+            if n_cat_list is None:
+                in_features = n_in
+            else:
+                in_features = n_in + sum(self.n_cat_list)
+            self.adjust = nn.Linear(in_features=in_features, out_features=n_out)
+        else:
+            self.adjust = nn.Sequential()
+
+        self.last_bn = nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
+        self.activation = nn.ReLU()
+
+    def forward(self, x: torch.Tensor, *cat_list: int, instance_id: int = 0):
+        one_hot_cat_list = get_one_hot_cat_list(self.n_cat_list, cat_list)
+
+        h = self.layer1(x, *cat_list, instance_id=instance_id)
+        h = self.layer2(h, *cat_list, instance_id=instance_id)
+
+        # Residual connection adjustments if needed
+        if x.dim() == 3:
+            one_hot_cat_list = [
+                o.unsqueeze(0).expand((x.size(0), o.size(0), o.size(1)))
+                for o in one_hot_cat_list
+            ]
+        x = torch.cat((x, *one_hot_cat_list), dim=-1)
+        x_adj = self.adjust(x)
+
+        h = h + x_adj
+
+        # last Batch normalization
+        if h.dim() == 3:
+            h = torch.cat(
+                [(self.last_bn(slice_h)).unsqueeze(0) for slice_h in h], dim=0
+            )
+        else:
+            h = self.last_bn(h)
+
+        # Activation
+        h = self.activation(h)
+        return h
+
+
+class DenseResNet(nn.Module):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        n_cat_list: Iterable[int] = None,
+        n_blocks: int = 1,
+        n_hidden: int = 128,
+        dropout_rate: float = 0.1,
+    ):
+        super().__init__()
+
+        # First block
+        modules = nn.ModuleList()
+        modules.append(
+            ResNetBlock(
+                n_in=n_in,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
+        )
+        # Intermediary blocks
+        for block in range(n_blocks - 2):
+            modules.append(
+                ResNetBlock(
+                    n_in=n_hidden,
+                    n_out=n_hidden,
+                    n_cat_list=n_cat_list,
+                    n_hidden=n_hidden,
+                    dropout_rate=dropout_rate,
+                )
+            )
+        # Last Block
+        modules.append(
+            ResNetBlock(
+                n_in=n_hidden,
+                n_out=n_out,
+                n_cat_list=n_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
+        )
+        self.resnet_layers = modules
+
+    def forward(self, x: torch.Tensor, *cat_list: int, instance_id: int = 0):
+        h = x
+        for module in self.resnet_layers:
+            h = module(h, *cat_list, instance_id=instance_id)
+        return h
+
 # Encoder
 class Encoder(nn.Module):
     r"""Encodes data of ``n_input`` dimensions into a latent space of ``n_output``
@@ -140,18 +273,29 @@ class Encoder(nn.Module):
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,
+        n_blocks: int = 0,
         dropout_rate: float = 0.1,
     ):
         super().__init__()
 
-        self.encoder = FCLayers(
-            n_in=n_input,
-            n_out=n_hidden,
-            n_cat_list=n_cat_list,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-            dropout_rate=dropout_rate,
-        )
+        if n_blocks == 0:
+            self.encoder = FCLayers(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
+        else:
+            self.encoder = DenseResNet(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_blocks=n_blocks,
+                n_cat_list=n_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.var_encoder = nn.Linear(n_hidden, n_output)
 
@@ -197,17 +341,29 @@ class DecoderSCVI(nn.Module):
         n_output: int,
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
+        n_blocks: int = 0,
         n_hidden: int = 128,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
-        self.px_decoder = FCLayers(
-            n_in=n_input,
-            n_out=n_hidden,
-            n_cat_list=n_cat_list,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-            dropout_rate=0,
-        )
+        if n_blocks == 0:
+            self.px_decoder = FCLayers(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=0,
+            )
+        else:
+            self.px_decoder = DenseResNet(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_blocks=n_blocks,
+                n_cat_list=n_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
 
         # mean gamma
         self.px_scale_decoder = nn.Sequential(

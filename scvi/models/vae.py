@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Main module."""
 
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +12,8 @@ from scvi.models.modules import Encoder, DecoderSCVI, LinearDecoderSCVI
 from scvi.models.utils import one_hot
 
 torch.backends.cudnn.benchmark = True
+
+logger = logging.getLogger(__name__)
 
 
 # VAE model
@@ -52,6 +55,8 @@ class VAE(nn.Module):
         n_hidden: int = 128,
         n_latent: int = 10,
         n_layers: int = 1,
+        n_blocks_inference: int = 0,
+        n_blocks_generative: int = 0,
         dropout_rate: float = 0.1,
         dispersion: str = "gene",
         log_variational: bool = True,
@@ -86,6 +91,7 @@ class VAE(nn.Module):
         self.z_encoder = Encoder(
             n_input,
             n_latent,
+            n_blocks=n_blocks_inference,
             n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
@@ -98,6 +104,7 @@ class VAE(nn.Module):
         self.decoder = DecoderSCVI(
             n_latent,
             n_input,
+            n_blocks=n_blocks_generative,
             n_cat_list=[n_batch],
             n_layers=n_layers,
             n_hidden=n_hidden,

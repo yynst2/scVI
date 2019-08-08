@@ -221,3 +221,26 @@ def test_sampling_zl(save_path):
     )
     trainer_cortex_cls.train(n_epochs=2)
     trainer_cortex_cls.test_set.accuracy()
+
+
+def test_resnet(save_path):
+    import torch
+    from scvi.models import ResNetBlock
+    mdl = ResNetBlock(n_in=5, n_out=3, n_cat_list=[2], n_hidden=10)
+    cats = torch.zeros(size=(16, 2))
+    pos = torch.rand(size=(16,)) >= 0.5
+    cats[torch.arange(16).long(), pos.long()] = 1.0
+    inp = torch.randn(size=(16, 5))
+    mdl(inp, cats)
+
+    cortex_dataset = CortexDataset(save_path=save_path)
+    cortex_vae = VAE(
+        cortex_dataset.nb_genes,
+        cortex_dataset.n_batches,
+        n_blocks_generative=1,
+        n_blocks_inference=1,
+    )
+    trainer_cortex_vae = UnsupervisedTrainer(
+        cortex_vae, cortex_dataset, train_size=0.5, use_cuda=use_cuda
+    )
+    trainer_cortex_vae.train(n_epochs=2)
