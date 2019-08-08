@@ -11,4 +11,6 @@ __all__ = [
     "demultiply",
     "predict_de_genes",
     "save_fig",
+    "save_pickle",
+    "load_pickle"
 ]

@@ -6,6 +6,7 @@ from sklearn.metrics import average_precision_score
 import matplotlib.pyplot as plt
 import arviz as az
 import logging
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,18 @@ def predict_de_genes(posterior_probas: np.ndarray, desired_fdr: float):
 
 def save_fig(fig, filename, do_cloud=False):
     from chart_studio.plotly import iplot
+
     if do_cloud:
         iplot(fig, filename=filename)
-    fig.write_image('{}.png'.format(filename))
+    fig.write_image("{}.png".format(filename))
+
+
+def save_pickle(data, filename):
+    with open(filename, "wb") as f:
+        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+
+def load_pickle(filename):
+    with open(filename, "rb") as f:
+        res = pickle.load(f)
+    return res
