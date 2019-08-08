@@ -157,11 +157,12 @@ class ResNetBlock(nn.Module):
             with_activation=False,
             dropout_rate=dropout_rate,
         )
-        if n_in != n_out:
-            if n_cat_list is None:
-                in_features = n_in
-            else:
-                in_features = n_in + sum(self.n_cat_list)
+
+        if n_cat_list is None:
+            in_features = n_in
+        else:
+            in_features = n_in + sum(self.n_cat_list)
+        if in_features != n_out:
             self.adjust = nn.Linear(in_features=in_features, out_features=n_out)
         else:
             self.adjust = nn.Sequential()
