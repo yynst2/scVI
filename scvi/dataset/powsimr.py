@@ -281,7 +281,7 @@ class PowSimSynthetic(GeneExpressionDataset):
 
 
 class PowSimSyntheticDuo(PowSimSynthetic):
-    def __init__():
+    def __init__(self):
         super().__init__(
             cluster_to_samples=[7500, 7500],
             de_p=0.5,
