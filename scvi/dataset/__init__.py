@@ -27,7 +27,7 @@ from scvi.dataset.synthetic import (
 )
 
 from scvi.dataset.diff_expression import SymSimDataset
-from scvi.dataset.powsimr import PowSimSynthetic, SignedGamma
+from scvi.dataset.powsimr import PowSimSynthetic, SignedGamma, PowSimSyntheticDuo
 from scvi.dataset.logpoisson import LogPoissonDataset
 from scvi.dataset.latentlogpoisson import LatentLogPoissonDataset
 from scvi.dataset.latentgaussiantoy import LatentGaussianToy
@@ -69,5 +69,5 @@ __all__ = [
     "LatentGaussianToy",
     "Sven1Dataset",
     "Sven2Dataset",
-
+    "PowSimSyntheticDuo"
 ]

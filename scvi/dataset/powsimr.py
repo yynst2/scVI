@@ -278,3 +278,13 @@ class PowSimSynthetic(GeneExpressionDataset):
         if len(vec.shape) == 1:
             return vec.reshape((-1, 1))
         return vec
+
+
+class PowSimSyntheticDuo(PowSimSynthetic):
+    def __init__():
+        super().__init__(
+            cluster_to_samples=[7500, 7500],
+            de_p=0.5,
+            n_genes=1500,
+            mode="NB"
+        )
