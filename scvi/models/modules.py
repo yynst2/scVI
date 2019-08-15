@@ -196,7 +196,7 @@ class Encoder(nn.Module):
             dropout_rate=dropout_rate,
         )
         self.prevent_saturation = prevent_saturation
-        logger.info("Preventing saturation: ", prevent_saturation)
+        logger.info("Preventing saturation: {}".format(prevent_saturation))
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.full_cov = full_cov
         self.autoregressive = autoregressive
