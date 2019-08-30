@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import arviz as az
 import logging
 import pickle
+from scipy.stats import mannwhitneyu
+from statsmodels.stats.weightstats import ttest_ind
 
 logger = logging.getLogger(__name__)
 
@@ -150,3 +152,18 @@ def load_pickle(filename):
     with open(filename, "rb") as f:
         res = pickle.load(f)
     return res
+
+
+def has_lower_mean(samp_a, samp_b, do_non_parametric=True):
+    def nonparametric(x_a, x_b):
+        stat, pval = mannwhitneyu(x_a, x_b, alternative="less")
+        return pval <= 5e-2
+
+    def parametric(x_a, x_b):
+        stat, pval, _ = ttest_ind(x_a, x_b, alternative="smaller")
+        return pval <= 5e-2
+
+    if do_non_parametric:
+        return nonparametric(samp_a, samp_b)
+    else:
+        return parametric(samp_a, samp_a)
