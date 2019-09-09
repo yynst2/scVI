@@ -166,13 +166,21 @@ class Posterior:
         zs = []
         labels = []
         scales = []
+        log_probas = []
         n_bio_batches = self.gene_dataset.n_batches
         with torch.no_grad():
             for tensors in self.sequential():
-                sample_batch, _, _, batch_index, label = tensors
+                sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
                 outputs = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
                 z = outputs['z']
 
+                log_probas_batch = self.model.ratio_loss(
+                    sample_batch,
+                    local_l_mean,
+                    local_l_var,
+                    return_mean=False,
+                    outputs=outputs
+                )
                 norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
                 scale_batch = []
                 if other is not None:
@@ -194,6 +202,7 @@ class Posterior:
                 labels.append(label)
                 zs.append(z)
                 scales.append(scale_batch)
+                log_probas.append(log_probas_batch)
 
         if n_samples > 1:
             # Then each z element has shape (n_samples, n_batch, n_latent)
@@ -207,10 +216,10 @@ class Posterior:
             # New shape (n_batch, b)
         else:
             zs = torch.cat(zs)
+        log_probas = torch.cat(log_probas, dim=1)
+        # Final log_probas shape (n_samples, n_cells)
         labels = torch.cat(labels)
-        if other is not None:
-            return zs, labels, scales
-        return zs, labels
+        return dict(z=zs, label=labels, scale=scales, log_probas=log_probas)
 
     @torch.no_grad()
     def get_data(self):
