@@ -195,6 +195,7 @@ class Posterior:
                 if device == 'cpu':
                     label = label.cpu()
                     z = z.cpu()
+                    log_probas_batch = log_probas_batch.cpu()
                     if other is not None:
                         scale_batch = scale_batch.cpu()
 
