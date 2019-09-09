@@ -152,7 +152,7 @@ class Posterior:
         return self.update({"collate_fn": self.gene_dataset.collate_fn_builder()})
 
     @torch.no_grad()
-    def get_latents(self, n_samples=1, other=None, device='gpu'):
+    def get_latents(self, n_samples=1, other=None, device='gpu', ignore_library=True):
         """
         Computes all quantities of interest for DE in a sequential order
 
@@ -174,11 +174,15 @@ class Posterior:
                 outputs = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
                 z = outputs['z']
 
+                if ignore_library:
+                    outputs["library"][:] = 4.0
+
                 log_probas_batch = self.model.ratio_loss(
                     sample_batch,
                     local_l_mean,
                     local_l_var,
                     return_mean=False,
+                    train_library=(not ignore_library),
                     outputs=outputs
                 )
                 norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
