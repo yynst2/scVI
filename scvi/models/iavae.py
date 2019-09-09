@@ -156,9 +156,10 @@ class IAVAE(nn.Module):
         )
 
     def ratio_loss(
-        self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True
+        self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True, outputs=None
     ):
-        outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
+        if outputs is None:
+            outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
         ql_m = outputs["ql_m"]
         ql_v = outputs["ql_v"]
         library = outputs["library"]

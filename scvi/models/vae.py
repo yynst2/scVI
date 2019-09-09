@@ -423,9 +423,11 @@ class VAE(NormalEncoderVAE):
         batch_index=None,
         y=None,
         return_mean=True,
-        train_library=True
+        train_library=True,
+        outputs=None
     ):
-        outputs = self.inference(x, batch_index, y, train_library=train_library)
+        if outputs is None:
+            outputs = self.inference(x, batch_index, y, train_library=train_library)
 
         px_r = outputs['px_r']
         px_rate = outputs['px_rate']
@@ -445,9 +447,9 @@ class VAE(NormalEncoderVAE):
 
         log_pz = self.z_encoder.distrib(z_prior_m, z_prior_v).log_prob(z).sum(dim=-1)
         log_qz_x = self.z_encoder.distrib(qz_m, qz_v).log_prob(z).sum(dim=-1)
-        if log_pz.dim() == 2 and log_qz_x.dim() == 2:
-            log_pz = log_pz.sum(dim=1)
-            log_qz_x = log_qz_x.sum(dim=1)
+        # if log_pz.dim() == 2 and log_qz_x.dim() == 2:
+        #     log_pz = log_pz.sum(dim=1)
+        #     log_qz_x = log_qz_x.sum(dim=1)
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
         assert log_px_zl.shape == log_pl.shape == log_pz.shape == log_qz_x.shape == log_ql_x.shape
