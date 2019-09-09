@@ -167,3 +167,28 @@ def has_lower_mean(samp_a, samp_b, do_non_parametric=True):
         return nonparametric(samp_a, samp_b)
     else:
         return parametric(samp_a, samp_a)
+
+
+def softmax(x, axis=None):
+    """
+    Compute the softmax of each element along an axis of X.
+    Parameters
+    ----------
+    x: ND-Array. Probably should be floats.
+    theta (optional): float parameter, used as a multiplier
+        prior to exponentiation. Default = 1.0
+    axis (optional): axis to compute values along. Default is the
+        first non-singleton axis.
+    Returns an array the same size as X. The result will sum to 1
+    along the specified axis.
+    """
+    y = np.atleast_2d(x)
+    if axis is None:
+        axis = next(j[0] for j in enumerate(y.shape) if j[1] > 1)
+    y = y - np.expand_dims(np.max(y, axis=axis), axis)
+    y = np.exp(y)
+    ax_sum = np.expand_dims(np.sum(y, axis=axis), axis)
+    p = y / ax_sum
+    if len(x.shape) == 1:
+        p = p.flatten()
+    return p

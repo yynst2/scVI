@@ -12,6 +12,7 @@ import torch.distributions as distributions
 
 from matplotlib import pyplot as plt
 from scipy.stats import kde, entropy
+from scvi.utils import softmax
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 from sklearn.metrics import adjusted_rand_score as ARI
@@ -23,7 +24,7 @@ from sklearn.utils.linear_assignment_ import linear_assignment
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SequentialSampler, SubsetRandomSampler, RandomSampler
 from scipy.special import betainc
-from torch.distributions import Normal, kl_divergence as kl
+from torch.distributions import Normal
 
 from scvi.dataset import GeneExpressionDataset
 from scvi.models.log_likelihood import compute_elbo, compute_reconstruction_error, compute_marginal_log_likelihood
@@ -1114,31 +1115,6 @@ def entropy_batch_mixing(latent_space, batches, n_neighbors=50, n_pools=50, n_sa
         score += np.mean([entropy(batches[kmatrix[indices].nonzero()[1][kmatrix[indices].nonzero()[0] == i]])
                           for i in range(n_samples_per_pool)])
     return score / float(n_pools)
-
-
-def softmax(x, axis=None):
-    """
-    Compute the softmax of each element along an axis of X.
-    Parameters
-    ----------
-    x: ND-Array. Probably should be floats.
-    theta (optional): float parameter, used as a multiplier
-        prior to exponentiation. Default = 1.0
-    axis (optional): axis to compute values along. Default is the
-        first non-singleton axis.
-    Returns an array the same size as X. The result will sum to 1
-    along the specified axis.
-    """
-    y = np.atleast_2d(x)
-    if axis is None:
-        axis = next(j[0] for j in enumerate(y.shape) if j[1] > 1)
-    y = y - np.expand_dims(np.max(y, axis=axis), axis)
-    y = np.exp(y)
-    ax_sum = np.expand_dims(np.sum(y, axis=axis), axis)
-    p = y / ax_sum
-    if len(x.shape) == 1:
-        p = p.flatten()
-    return p
 
 
 def get_sampling_pair_idx(list_1, list_2, do_sample=True, permutation=False, M_permutation=10000,

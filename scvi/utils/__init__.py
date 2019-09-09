@@ -13,5 +13,6 @@ __all__ = [
     "save_fig",
     "save_pickle",
     "load_pickle",
-    "has_lower_mean"
+    "has_lower_mean",
+    "softmax"
 ]
