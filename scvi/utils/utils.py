@@ -95,7 +95,7 @@ def compute_hdi(arr, credible_interval=0.64):
     return az.hpd(arr, credible_interval=credible_interval)
 
 
-def demultiply(arr1, arr2, factor=2):
+def demultiply(arr1, arr2, factor=2, weights_a=None, weights_b=None):
     """
     Suppose you have at disposal
         arr1 ~ p(h|x_a)
@@ -107,13 +107,15 @@ def demultiply(arr1, arr2, factor=2):
 
     :param arr1:
     :param arr2:
+    :param weights_a:
+    :param weights_b:
     :param factor:
     :return:
     """
     assert arr1.shape == arr2.shape
     n_original = len(arr1)
-    idx_1 = np.random.choice(n_original, size=n_original * factor, replace=True)
-    idx_2 = np.random.choice(n_original, size=n_original * factor, replace=True)
+    idx_1 = np.random.choice(n_original, size=n_original * factor, p=weights_a, replace=True)
+    idx_2 = np.random.choice(n_original, size=n_original * factor, p=weights_b, replace=True)
     return arr1[idx_1], arr2[idx_2]
 
 
