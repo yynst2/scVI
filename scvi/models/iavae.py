@@ -156,7 +156,7 @@ class IAVAE(nn.Module):
         )
 
     def ratio_loss(
-        self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True, outputs=None
+        self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True, outputs=None, train_library=True
     ):
         if outputs is None:
             outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
@@ -192,7 +192,12 @@ class IAVAE(nn.Module):
             == log_qz_x.shape
             == log_ql_x.shape
         )
-        ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
+
+        if train_library:
+            ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
+        else:
+            ratio = (log_px_zl + log_pz) - log_qz_x
+
         if not return_mean:
             return ratio
         elbo = ratio.mean(dim=0)
