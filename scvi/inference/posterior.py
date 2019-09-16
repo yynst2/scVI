@@ -190,7 +190,7 @@ class Posterior:
                 scale_batch = []
                 if other is not None:
                     for bio_batch in range(n_bio_batches):
-                        batch_index = 1.0 * torch.ones_like(sample_batch[:, [0]])
+                        batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
                         scale_batch.append(
                             self.model.decoder.forward('gene', z, norm_library, batch_index)[0]
                         )
