@@ -498,10 +498,15 @@ class DecoderSCVI(nn.Module):
         # The decoder returns values for the parameters of the ZINB distribution
         px = self.px_decoder(z, *cat_list)
 
+        last_input = px
         if self.do_last_skip:
-            last_input = torch.cat([px, z], dim=1)
-        else:
-            last_input = px
+            if z.ndimension() == 3:
+                n_samples, n_batch, n_latent = z.shape
+                n_feat = last_input.shape[-1]
+                last_input = last_input\
+                    .reshape((1, n_batch, n_feat))\
+                    .expand(n_samples, n_batch, n_feat)
+            last_input = torch.cat([last_input, z], dim=1)
         px_scale = self.px_scale_decoder(last_input)
         px_dropout = self.px_dropout_decoder(last_input)
         # Clamp to high value: exp(12) ~ 160000 to avoid nans (computational stability)
