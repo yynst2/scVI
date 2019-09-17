@@ -5,9 +5,12 @@ import torch.distributions as dist
 import torch.nn.functional as F
 
 from .log_likelihood import log_zinb_positive, log_nb_positive
-from .modules import DecoderSCVI, Encoder, DecoderPoisson
+from .modules import DecoderSCVI, Encoder, DecoderPoisson, DenseResNet
 from .iaf_encoder import EncoderIAF
 from .utils import one_hot
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class IAVAE(nn.Module):
@@ -25,6 +28,7 @@ class IAVAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
         do_h: bool = False,
+        n_blocks=0
     ):
         """
         EXPERIMENTAL: Posterior functionalities may not be working
@@ -84,14 +88,27 @@ class IAVAE(nn.Module):
             dropout_rate=dropout_rate,
             prevent_saturation=True,
         )
+
+
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.decoder = DecoderSCVI(
-            n_latent,
-            n_input,
-            n_cat_list=[n_batch],
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-        )
+        if n_blocks == 0:
+            self.decoder = DecoderSCVI(
+                n_latent,
+                n_input,
+                n_cat_list=[n_batch],
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+            )
+        else:
+            logger.info("Using ResNet structure for the Decoder")
+            self.decoder = DenseResNet(
+                n_in=n_latent,
+                n_out=n_input,
+                n_cat_list=[n_batch],
+                n_blocks=n_blocks,
+                n_hidden=n_hidden,
+                dropout_rate=0.1,
+            )
 
     def inference(self, x, batch_index=None, y=None, n_samples=1):
         """
