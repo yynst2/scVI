@@ -435,27 +435,42 @@ class DecoderSCVI(nn.Module):
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,
+        n_blocks: int = 0,
+        do_last_skip: bool = False
     ):
         super().__init__()
-        self.px_decoder = FCLayers(
-            n_in=n_input,
-            n_out=n_hidden,
-            n_cat_list=n_cat_list,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-            dropout_rate=0,
-        )
+        self.do_last_skip = do_last_skip
+        if n_blocks == 0:
+            self.px_decoder = FCLayers(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=0,
+            )
+        else:
+            logger.info("Using ResNet structure for the Decoder")
+            self.px_decoder = DenseResNet(
+                n_in=n_input,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_blocks=n_blocks,
+                n_hidden=n_hidden,
+                dropout_rate=0.1,
+            )
 
+        n_in = n_hidden + n_input if do_last_skip else n_hidden
         # mean gamma
         self.px_scale_decoder = nn.Sequential(
-            nn.Linear(n_hidden, n_output), nn.Softmax(dim=-1)
+            nn.Linear(n_in, n_output), nn.Softmax(dim=-1)
         )
 
         # dispersion: here we only deal with gene-cell dispersion case
-        self.px_r_decoder = nn.Linear(n_hidden, n_output)
+        self.px_r_decoder = nn.Linear(n_in, n_output)
 
         # dropout
-        self.px_dropout_decoder = nn.Linear(n_hidden, n_output)
+        self.px_dropout_decoder = nn.Linear(n_in, n_output)
 
     def forward(
         self, dispersion: str, z: torch.Tensor, library: torch.Tensor, *cat_list: int
@@ -482,11 +497,16 @@ class DecoderSCVI(nn.Module):
 
         # The decoder returns values for the parameters of the ZINB distribution
         px = self.px_decoder(z, *cat_list)
-        px_scale = self.px_scale_decoder(px)
-        px_dropout = self.px_dropout_decoder(px)
+
+        if self.do_last_skip:
+            last_input = torch.cat([px, z], dim=1)
+        else:
+            last_input = px
+        px_scale = self.px_scale_decoder(last_input)
+        px_dropout = self.px_dropout_decoder(last_input)
         # Clamp to high value: exp(12) ~ 160000 to avoid nans (computational stability)
         px_rate = torch.exp(library) * px_scale  # torch.clamp( , max=12)
-        px_r = self.px_r_decoder(px) if dispersion == "gene-cell" else None
+        px_r = self.px_r_decoder(last_input) if dispersion == "gene-cell" else None
         return px_scale, px_r, px_rate, px_dropout
 
 

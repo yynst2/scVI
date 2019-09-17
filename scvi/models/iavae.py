@@ -28,7 +28,8 @@ class IAVAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
         do_h: bool = False,
-        n_blocks=0
+        n_blocks=0,
+        decoder_do_last_skip = False
     ):
         """
         EXPERIMENTAL: Posterior functionalities may not be working
@@ -91,24 +92,15 @@ class IAVAE(nn.Module):
 
 
         # decoder goes from n_latent-dimensional space to n_input-d data
-        if n_blocks == 0:
-            self.decoder = DecoderSCVI(
-                n_latent,
-                n_input,
-                n_cat_list=[n_batch],
-                n_layers=n_layers,
-                n_hidden=n_hidden,
-            )
-        else:
-            logger.info("Using ResNet structure for the Decoder")
-            self.decoder = DenseResNet(
-                n_in=n_latent,
-                n_out=n_input,
-                n_cat_list=[n_batch],
-                n_blocks=n_blocks,
-                n_hidden=n_hidden,
-                dropout_rate=0.1,
-            )
+        self.decoder = DecoderSCVI(
+            n_latent,
+            n_input,
+            n_cat_list=[n_batch],
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            n_blocks=n_blocks,
+            do_last_skip=decoder_do_last_skip
+        )
 
     def inference(self, x, batch_index=None, y=None, n_samples=1):
         """
