@@ -241,6 +241,8 @@ class VAE(NormalEncoderVAE):
                  full_cov: bool = False,
                  autoregresssive: bool = False,
                  log_p_z=None,
+                 n_blocks=0,
+                 decoder_do_last_skip=False
                  ):
         super().__init__(
             n_input=n_input,
@@ -253,7 +255,7 @@ class VAE(NormalEncoderVAE):
             log_p_z=log_p_z,
         )
         self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers,
-                                   n_hidden=n_hidden)
+                                   n_hidden=n_hidden, n_blocks=n_blocks, do_last_skip=decoder_do_last_skip)
         self.dispersion = dispersion
         self.n_latent = n_latent
         self.log_variational = log_variational
