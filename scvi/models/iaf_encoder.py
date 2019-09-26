@@ -4,7 +4,7 @@ import torch
 from torch import nn as nn
 import torch.distributions as dist
 
-from .modules import FCLayers
+from .modules import FCLayers, DenseResNet
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ class EncoderH(nn.Module):
         do_h,
         dropout_rate,
         use_batch_norm,
+        n_blocks=0,
         do_sigmoid=True,
     ):
         """
@@ -36,16 +37,25 @@ class EncoderH(nn.Module):
         super().__init__()
         self.do_h = do_h
         self.do_sigmoid = do_sigmoid
-
-        self.encoder = FCLayers(
-            n_in=n_in,
-            n_out=n_hidden,
-            n_cat_list=n_cat_list,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-            dropout_rate=dropout_rate,
-            use_batch_norm=use_batch_norm,
-        )
+        if n_blocks == 0:
+            self.encoder = FCLayers(
+                n_in=n_in,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+                use_batch_norm=use_batch_norm,
+            )
+        else:
+            self.encoder = DenseResNet(
+                n_in=n_in,
+                n_out=n_hidden,
+                n_cat_list=n_cat_list,
+                n_hidden=n_hidden,
+                n_blocks=n_blocks,
+                dropout_rate=dropout_rate
+            )
         # with torch.no_grad():
         #     encoder0 =
         self.mu = nn.Linear(n_hidden, n_out)
@@ -95,6 +105,7 @@ class EncoderIAF(nn.Module):
         n_layers,
         t,
         dropout_rate=0.05,
+        n_blocks=0,
         use_batch_norm=True,
         do_h=True,
     ):
@@ -114,6 +125,8 @@ class EncoderIAF(nn.Module):
         self.do_h = do_h
         msg = '' if do_h else 'Not '
         logger.info(msg='{}Using Hidden State'.format(msg))
+        if n_blocks > 0:
+            logger.info(msg="Resnet structure used for IAF encoder")
         self.n_latent = n_latent
         self.encoders = torch.nn.ModuleList()
         self.encoders.append(
@@ -126,6 +139,7 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
+                n_blocks=n_blocks,
                 do_sigmoid=False
             )
         )
@@ -142,6 +156,7 @@ class EncoderIAF(nn.Module):
                     do_h=False,
                     dropout_rate=dropout_rate,
                     use_batch_norm=use_batch_norm,
+                    n_blocks=n_blocks,
                     do_sigmoid=True
                 )
             )
@@ -180,4 +195,4 @@ class EncoderIAF(nn.Module):
             z = sigma * z + (1.0 - sigma) * mu
             new_term = sigma.log()
             qz_x -= new_term.sum(dim=-1)
-        return z, qz_x
+        return dict(z=z, qz_x=qz_x, last_inp=inp)

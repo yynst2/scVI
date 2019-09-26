@@ -28,8 +28,10 @@ class IAVAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
         do_h: bool = False,
-        n_blocks=0,
-        decoder_do_last_skip = False
+        n_blocks: int = 0,
+        n_blocks_encoder: int = 0,
+        res_connection_decoder: bool = False,
+        decoder_do_last_skip: bool = False,
     ):
         """
         EXPERIMENTAL: Posterior functionalities may not be working
@@ -59,7 +61,7 @@ class IAVAE(nn.Module):
         # Automatically deactivate if useless
         self.n_batch = n_batch
         self.n_labels = n_labels
-
+        self.res_connection_decoder = res_connection_decoder
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input))
         elif self.dispersion == "gene-batch":
@@ -78,6 +80,7 @@ class IAVAE(nn.Module):
             t=t,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            n_blocks=n_blocks_encoder,
             do_h=do_h,
         )
         # l encoder goes from n_input-dimensional data to 1-d library size
@@ -92,8 +95,12 @@ class IAVAE(nn.Module):
 
 
         # decoder goes from n_latent-dimensional space to n_input-d data
+        n_latent_size = n_latent
+        if res_connection_decoder:
+            size_skip = 2*n_latent if do_h else n_latent
+            n_latent_size = n_latent + size_skip
         self.decoder = DecoderSCVI(
-            n_latent,
+            n_latent_size,
             n_input,
             n_cat_list=[n_batch],
             n_layers=n_layers,
@@ -119,6 +126,7 @@ class IAVAE(nn.Module):
         ql_m, ql_v, library = self.l_encoder(x_)
         n_batch = len(ql_m)
         if n_samples > 1:
+            last_inputs = None
             # Managing library
             ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
             ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
@@ -132,16 +140,25 @@ class IAVAE(nn.Module):
                 n_samples, n_batch, device=ql_m.device, dtype=ql_m.dtype
             )
             for idx in range(n_samples):
-                zi, log_qz_x_i = self.z_encoder(x_, y)
+
+                outputs = self.z_encoder(x_, y)
+                zi, log_qz_x_i = outputs["z"], outputs["qz_x"]
                 z[idx, :] = zi
                 log_qz_x[idx, :] = log_qz_x_i
         else:
-            z, log_qz_x = self.z_encoder(x_, y)
+            outputs = self.z_encoder(x_, y)
+            z, log_qz_x, last_inputs = outputs["z"], outputs["qz_x"], outputs["last_inp"]
 
         assert z.shape[0] == library.shape[0], (z.shape, library.shape)
         # library = torch.clamp(library, max=13)
+
+        decoder_inp = z
+        if self.res_connection_decoder:
+            assert last_inputs is not None
+            decoder_inp = torch.cat([z, last_inputs], dim=-1)
+
         px_scale, px_r, px_rate, px_dropout = self.decoder(
-            self.dispersion, z, library, batch_index, y
+            self.dispersion, decoder_inp, library, batch_index, y
         )
         if self.dispersion == "gene-label":
             px_r = F.linear(

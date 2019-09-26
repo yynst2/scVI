@@ -554,16 +554,22 @@ def test_iwae(save_path):
 
     print("Time single backward : ", stop1)
     print("Time all elements : ", stop2)
-    # vae = LogNormalPoissonVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
-    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, k_importance_weighted=3)
-    # trainer.train(n_epochs=2)
 
-    # dataset = PowSimSynthetic(cluster_to_samples=[7500, 7500], de_p=0.5, n_genes=1500)
-    # vae = VAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches).cuda()
-    # trainer = UnsupervisedTrainer(vae, gene_dataset=dataset, ratio_loss=True,
-    #                               k_importance_weighted=5, single_backward=False)
-    # trainer.train(n_epochs=40, lr=1e-4)
-    # print(trainer.train_losses)
+    vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches, res_connection_decoder=True).cuda()
+    trainer = UnsupervisedTrainer(
+        vae,
+        gene_dataset=dataset,
+        ratio_loss=True,
+    )
+    trainer.train(n_epochs=10)
+
+    vae = IAVAE(n_input=dataset.nb_genes, n_batch=dataset.n_batches, res_connection_decoder=True, do_h=True).cuda()
+    trainer = UnsupervisedTrainer(
+        vae,
+        gene_dataset=dataset,
+        ratio_loss=True,
+    )
+    trainer.train(n_epochs=10)
 
 
 # def test_nans():
