@@ -26,6 +26,7 @@ from scvi.dataset.synthetic import (
     SyntheticDatasetCorr,
     ZISyntheticDatasetCorr,
 )
+from scvi.dataset.spatial import SpatialDataset
 
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "SyntheticRandomDataset",
     "SyntheticDatasetCorr",
     "ZISyntheticDatasetCorr",
+    "SpatialDataset",
 ]
