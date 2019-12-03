@@ -38,7 +38,7 @@ class UnsupervisedTrainer(Trainer):
             self.train_set.to_monitor = ['ll']
             self.test_set.to_monitor = ['ll']
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_psi="ELBO"):
+    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_psi="ELBO", n_samples=1):
         begin = time.time()
         self.model.train()
 
@@ -87,6 +87,7 @@ class UnsupervisedTrainer(Trainer):
                         local_l_var,
                         batch_index,
                         loss_type=wake_psi,
+                        n_samples=n_samples,
                         reparam=reparam,
                     )
                     loss = torch.mean(loss)

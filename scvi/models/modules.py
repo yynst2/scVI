@@ -384,7 +384,7 @@ class EncoderIAF(nn.Module):
             scale=torch.ones(n_latent, device="cuda"),
         )
 
-    def forward(self, x, *cat_list: int, n_samples=1):
+    def forward(self, x, *cat_list: int, n_samples=1, reparam=True):
         """
         :param x:
         :param cat_list:
@@ -398,12 +398,13 @@ class EncoderIAF(nn.Module):
 
         # Big issue when x is 3d !!!
         # Should stay 2d!!
+        sampler = self.dist0.rsample if reparam else self.dist0.sample
         if n_samples == 1:
-            eps = self.dist0.rsample((len(x),))
+            eps = sampler((len(x),))
             assert eps.shape == (len(x), self.n_latent)
         else:
-            eps = self.dist0.rsample((n_samples, len(x),))
-            assert eps.shape == (len(x), self.n_latent)
+            eps = sampler((n_samples, len(x),))
+            assert eps.shape == (n_samples, len(x), self.n_latent)
 
         z = mu + eps * sigma
         qz_x = sigma.log() + 0.5 * (eps ** 2) + 0.5 * np.log(2.0 * np.pi)
@@ -411,7 +412,13 @@ class EncoderIAF(nn.Module):
 
         # z shape (n_samples, n_batch, n_latent)
         for ar_nn in self.encoders[1:]:
-            inp = torch.cat([z, h], dim=-1) if self.do_h else z
+            if self.do_h:
+                if (z.dim() == 3) & (h.dim() == 2):
+                    n_batches, n_hdim = h.shape
+                    h = h.reshape(1, n_batches, n_hdim).expand(n_samples, n_batches, n_hdim)
+                inp = torch.cat([z, h], dim=-1)
+            else:
+                inp = z
             mu, sigma = ar_nn(inp)
             z = sigma * z + (1.0 - sigma) * mu
             new_term = sigma.log()

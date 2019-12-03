@@ -84,7 +84,7 @@ class VAE(nn.Module):
         # latent space representation
         self.do_iaf = iaf_t > 0
         if not self.do_iaf:
-            logging.info("using MF encoder")
+            logger.info("using MF encoder")
             self.z_encoder = Encoder(
                 n_input,
                 n_latent,
@@ -93,7 +93,7 @@ class VAE(nn.Module):
                 dropout_rate=dropout_rate,
             )
         else:
-            logging.info("using IAF encoder")
+            logger.info("using IAF encoder")
             self.z_encoder = EncoderIAF(
                 n_in=n_input,
                 n_latent=n_latent,
@@ -240,7 +240,7 @@ class VAE(nn.Module):
             x_ = torch.log(1 + x_)
 
         # Library sampling
-        library_post = self.l_encoder(x_, n_samples, reparam)
+        library_post = self.l_encoder(x_, n_samples=n_samples, reparam=reparam)
         library_variables = dict(
             ql_m=library_post["q_m"],
             ql_v=library_post["q_v"],
@@ -248,7 +248,7 @@ class VAE(nn.Module):
         )
 
         # Z sampling
-        z_post = self.z_encoder(x_, y, n_samples, reparam)
+        z_post = self.z_encoder(x_, y, n_samples=n_samples, reparam=reparam)
         if not self.do_iaf:
             z_variables = dict(
                 qz_m=z_post["q_m"],
@@ -278,10 +278,9 @@ class VAE(nn.Module):
         elif self.dispersion == "gene":
             px_r = self.px_r
         px_r = torch.exp(px_r)
-        decoder_variables = dict(px_scale=px_scale,
-            px_r=px_r,
-            px_rate=px_rate,
-            px_dropout=px_dropout,)
+        decoder_variables = dict(
+            px_scale=px_scale, px_r=px_r, px_rate=px_rate, px_dropout=px_dropout,
+        )
 
         return {**decoder_variables, **library_variables, **z_variables}
 
@@ -331,6 +330,15 @@ class VAE(nn.Module):
         log_pl = (
             Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
         )
+
+        a1_issue = torch.isnan(log_px_zl).any() or torch.isinf(log_px_zl).any()
+        a2_issue = torch.isnan(log_pl).any() or torch.isinf(log_pl).any()
+        a3_issue = torch.isnan(log_pz).any() or torch.isinf(log_pz).any()
+        a4_issue = torch.isnan(log_qz_x).any() or torch.isinf(log_qz_x).any()
+        a5_issue = torch.isnan(log_ql_x).any() or torch.isinf(log_ql_x).any()
+
+        if a1_issue or a2_issue or a3_issue or a4_issue or a5_issue:
+            print('aie')
 
         return dict(
             log_px_zl=log_px_zl,
@@ -404,7 +412,15 @@ class VAE(nn.Module):
 
     @staticmethod
     def cubo(log_ratio):
+        """
+        Algorithm 1 of
+        https://arxiv.org/pdf/1611.00328.pdf
+
+        :param log_ratio:
+        :return:
+        """
         ws = torch.softmax(2 * log_ratio, dim=0)
+        #  Minus sign because of denominator (numerator p\theta(x,y) cst wrt \phi
         cubo = ws.detach() * (-1) * log_ratio
         return cubo.sum(dim=0)
 
