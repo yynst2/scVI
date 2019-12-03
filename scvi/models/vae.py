@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """Main module."""
 
-import warnings
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal, kl_divergence as kl
 
+logger = logging.getLogger(__name__)
+
 from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive
-from scvi.models.modules import Encoder, DecoderSCVI
+from scvi.models.modules import Encoder, DecoderSCVI, EncoderIAF
 from scvi.models.utils import one_hot
 
 torch.backends.cudnn.benchmark = True
@@ -53,6 +55,7 @@ class VAE(nn.Module):
         n_hidden: int = 128,
         n_latent: int = 10,
         n_layers: int = 1,
+        iaf_t: int = 0,
         dropout_rate: float = 0.1,
         dispersion: str = "gene",
         log_variational: bool = True,
@@ -79,13 +82,29 @@ class VAE(nn.Module):
 
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
-        self.z_encoder = Encoder(
-            n_input,
-            n_latent,
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-            dropout_rate=dropout_rate,
-        )
+        self.do_iaf = iaf_t > 0
+        if not self.do_iaf:
+            logging.info("using MF encoder")
+            self.z_encoder = Encoder(
+                n_input,
+                n_latent,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
+        else:
+            logging.info("using IAF encoder")
+            self.z_encoder = EncoderIAF(
+                n_in=n_input,
+                n_latent=n_latent,
+                n_cat_list=None,
+                n_hidden=n_hidden,
+                n_layers=n_layers,
+                t=iaf_t,
+                dropout_rate=dropout_rate,
+                use_batch_norm=True,
+                do_h=True,
+            )
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(
             n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate
@@ -121,10 +140,11 @@ class VAE(nn.Module):
         """
         if self.log_variational:
             x = torch.log(1 + x)
-        qz_m, qz_v, z = self.z_encoder(x, y)  # y only used in VAEC
+        z_outputs = self.z_encoder(x, y)  # y only used in VAEC
+        latent = z_outputs["latent"]
         if give_mean:
-            z = qz_m
-        return z
+            latent = z_outputs["q_m"]
+        return latent
 
     def sample_from_posterior_l(self, x):
         r""" samples the tensor of library sizes from the posterior
@@ -208,7 +228,7 @@ class VAE(nn.Module):
     def scale_from_z(self, sample_batch, fixed_batch):
         if self.log_variational:
             sample_batch = torch.log(1 + sample_batch)
-        qz_m, qz_v, z = self.z_encoder(sample_batch)
+        z = self.z_encoder(sample_batch)["latent"]
         batch_index = torch.cuda.IntTensor(sample_batch.shape[0], 1).fill_(fixed_batch)
         library = torch.cuda.FloatTensor(sample_batch.shape[0], 1).fill_(4)
         px_scale, _, _, _ = self.decoder("gene", z, library, batch_index)
@@ -219,25 +239,35 @@ class VAE(nn.Module):
         if self.log_variational:
             x_ = torch.log(1 + x_)
 
-        # Sampling
-        qz_m, qz_v, z = self.z_encoder(x_, y)
-        ql_m, ql_v, library = self.l_encoder(x_)
+        # Library sampling
+        library_post = self.l_encoder(x_, n_samples, reparam)
+        library_variables = dict(
+            ql_m=library_post["q_m"],
+            ql_v=library_post["q_v"],
+            library=library_post["latent"],
+        )
 
-        if n_samples > 1:
-            qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
-            qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
-            ql_m = ql_m.unsqueeze(0).expand((n_samples, ql_m.size(0), ql_m.size(1)))
-            ql_v = ql_v.unsqueeze(0).expand((n_samples, ql_v.size(0), ql_v.size(1)))
+        # Z sampling
+        z_post = self.z_encoder(x_, y, n_samples, reparam)
+        if not self.do_iaf:
+            z_variables = dict(
+                qz_m=z_post["q_m"],
+                qz_v=z_post["q_v"],
+                z=z_post["latent"],
+                log_qz_x=None,
+            )
+        else:
+            # IAF does not parametrize the means/covariances of the variational posterior
+            z_variables = dict(
+                qz_m=None,
+                qz_v=None,
+                z=z_post["latent"],
+                log_qz_x=z_post["posterior_density"],
+            )
 
-            if reparam:
-                z = Normal(qz_m, qz_v.sqrt()).rsample()
-                library = Normal(ql_m, ql_v.sqrt()).rsample()
-            else:
-                z = Normal(qz_m, qz_v.sqrt()).sample()
-                library = Normal(ql_m, ql_v.sqrt()).sample()
-
+        # Decoder pass
         px_scale, px_r, px_rate, px_dropout = self.decoder(
-            self.dispersion, z, library, batch_index, y
+            self.dispersion, z_post["latent"], library_post["latent"], batch_index, y
         )
         if self.dispersion == "gene-label":
             px_r = F.linear(
@@ -248,19 +278,12 @@ class VAE(nn.Module):
         elif self.dispersion == "gene":
             px_r = self.px_r
         px_r = torch.exp(px_r)
-
-        return dict(
-            px_scale=px_scale,
+        decoder_variables = dict(px_scale=px_scale,
             px_r=px_r,
             px_rate=px_rate,
-            px_dropout=px_dropout,
-            qz_m=qz_m,
-            qz_v=qz_v,
-            z=z,
-            ql_m=ql_m,
-            ql_v=ql_v,
-            library=library,
-        )
+            px_dropout=px_dropout,)
+
+        return {**decoder_variables, **library_variables, **z_variables}
 
     def from_variables_to_densities(
         self,
@@ -304,11 +327,7 @@ class VAE(nn.Module):
             log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
         if log_ql_x is None:
             log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        log_pz = (
-            Normal(torch.zeros_like(z), torch.ones_like(z))
-            .log_prob(z)
-            .sum(dim=-1)
-        )
+        log_pz = Normal(torch.zeros_like(z), torch.ones_like(z)).log_prob(z).sum(dim=-1)
         log_pl = (
             Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
         )

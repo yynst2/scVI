@@ -143,7 +143,7 @@ class Posterior:
             if not sample:
                 if self.model.log_variational:
                     sample_batch = torch.log(1 + sample_batch)
-                latent += [self.model.z_encoder(sample_batch)[0].cpu()]
+                latent += [self.model.z_encoder(sample_batch)["latent"].cpu()]
             else:
                 latent += [self.model.sample_from_posterior_z(sample_batch).cpu()]
             batch_indices += [batch_index.cpu()]
@@ -265,9 +265,11 @@ class Posterior:
         batch_size = 128  # max(self.data_loader_kwargs['batch_size'] // n_samples, 2)  # Reduce batch_size on GPU
         for tensors in self.update({"batch_size": batch_size}):
             sample_batch, _, _, batch_index, labels = tensors
-            px_dispersion, px_rate = self.model.inference(sample_batch, batch_index=batch_index, y=labels,
-                                                          n_samples=n_samples)[1:3]
-
+            outputs = self.model.inference(
+                sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
+            )
+            px_dispersion = outputs["px_r"]
+            px_rate = outputs["px_rate"]
             p = (px_rate / (px_rate + px_dispersion)).cpu()
             r = px_dispersion.cpu()
             #
@@ -297,8 +299,12 @@ class Posterior:
         dispersion_list = []
         for tensors in self.sequential(1000):
             sample_batch, _, _, batch_index, labels = tensors
-            px_dispersion, px_rate, px_dropout = self.model.inference(sample_batch, batch_index=batch_index, y=labels,
-                                                                      n_samples=1)[1:4]
+            outputs = self.model.inference(
+                sample_batch, batch_index=batch_index, y=labels, n_samples=1
+            )
+            px_dispersion = outputs["px_r"]
+            px_rate = outputs["px_rate"]
+            px_dropout = outputs["px_dropout"]
 
             dispersion_list += [np.repeat(np.array(px_dispersion.cpu())[np.newaxis, :], px_rate.size(0), axis=0)]
             mean_list += [np.array(px_rate.cpu())]
@@ -311,8 +317,8 @@ class Posterior:
         libraries = []
         for tensors in self.sequential(batch_size=128):
             x, local_l_mean, local_l_var, batch_index, y = tensors
-            px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-                self.model.inference(x, batch_index, y)
+            outputs = self.model.inference(x, batch_index, y)
+            library = outputs["library"]
             libraries += [np.array(library.cpu())]
         libraries = np.concatenate(libraries)
         return libraries.ravel()
