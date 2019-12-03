@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Main module."""
 
+import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,10 +45,19 @@ class VAE(nn.Module):
 
     """
 
-    def __init__(self, n_input: int, n_batch: int = 0, n_labels: int = 0,
-                 n_hidden: int = 128, n_latent: int = 10, n_layers: int = 1,
-                 dropout_rate: float = 0.1, dispersion: str = "gene",
-                 log_variational: bool = True, reconstruction_loss: str = "zinb"):
+    def __init__(
+        self,
+        n_input: int,
+        n_batch: int = 0,
+        n_labels: int = 0,
+        n_hidden: int = 128,
+        n_latent: int = 10,
+        n_layers: int = 1,
+        dropout_rate: float = 0.1,
+        dispersion: str = "gene",
+        log_variational: bool = True,
+        reconstruction_loss: str = "zinb",
+    ):
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
@@ -59,7 +69,7 @@ class VAE(nn.Module):
         self.n_latent_layers = 1  # not sure what this is for, no usages?
 
         if self.dispersion == "gene":
-            self.px_r = torch.nn.Parameter(torch.randn(n_input, ))
+            self.px_r = torch.nn.Parameter(torch.randn(n_input,))
         elif self.dispersion == "gene-batch":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, n_batch))
         elif self.dispersion == "gene-label":
@@ -69,12 +79,25 @@ class VAE(nn.Module):
 
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
-        self.z_encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
-                                 dropout_rate=dropout_rate)
+        self.z_encoder = Encoder(
+            n_input,
+            n_latent,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=dropout_rate,
+        )
         # l encoder goes from n_input-dimensional data to 1-d library size
-        self.l_encoder = Encoder(n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate)
+        self.l_encoder = Encoder(
+            n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate
+        )
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.decoder = DecoderSCVI(n_latent, n_input, n_cat_list=[n_batch], n_layers=n_layers, n_hidden=n_hidden)
+        self.decoder = DecoderSCVI(
+            n_latent,
+            n_input,
+            n_cat_list=[n_batch],
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+        )
 
     def get_latents(self, x, y=None):
         r""" returns the result of ``sample_from_posterior_z`` inside a list
@@ -139,11 +162,25 @@ class VAE(nn.Module):
         :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+        (
+            px_scale,
+            px_r,
+            px_rate,
+            px_dropout,
+            qz_m,
+            qz_v,
+            z,
+            ql_m,
+            ql_v,
+            library,
+        ) = self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
 
         log_px_z = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
+        log_pz = (
+            Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v))
+            .log_prob(z)
+            .sum(dim=-1)
+        )
         log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
 
         return log_pz + log_px_z - log_qz_x
@@ -162,9 +199,9 @@ class VAE(nn.Module):
 
     def _reconstruction_loss(self, x, px_rate, px_r, px_dropout):
         # Reconstruction Loss
-        if self.reconstruction_loss == 'zinb':
+        if self.reconstruction_loss == "zinb":
             reconst_loss = -log_zinb_positive(x, px_rate, px_r, px_dropout)
-        elif self.reconstruction_loss == 'nb':
+        elif self.reconstruction_loss == "nb":
             reconst_loss = -log_nb_positive(x, px_rate, px_r)
         return reconst_loss
 
@@ -174,7 +211,7 @@ class VAE(nn.Module):
         qz_m, qz_v, z = self.z_encoder(sample_batch)
         batch_index = torch.cuda.IntTensor(sample_batch.shape[0], 1).fill_(fixed_batch)
         library = torch.cuda.FloatTensor(sample_batch.shape[0], 1).fill_(4)
-        px_scale, _, _, _ = self.decoder('gene', z, library, batch_index)
+        px_scale, _, _, _ = self.decoder("gene", z, library, batch_index)
         return px_scale
 
     def inference(self, x, batch_index=None, y=None, n_samples=1, reparam=True):
@@ -199,65 +236,102 @@ class VAE(nn.Module):
                 z = Normal(qz_m, qz_v.sqrt()).sample()
                 library = Normal(ql_m, ql_v.sqrt()).sample()
 
-        px_scale, px_r, px_rate, px_dropout = self.decoder(self.dispersion, z, library, batch_index, y)
+        px_scale, px_r, px_rate, px_dropout = self.decoder(
+            self.dispersion, z, library, batch_index, y
+        )
         if self.dispersion == "gene-label":
-            px_r = F.linear(one_hot(y, self.n_labels), self.px_r)  # px_r gets transposed - last dimension is nb genes
+            px_r = F.linear(
+                one_hot(y, self.n_labels), self.px_r
+            )  # px_r gets transposed - last dimension is nb genes
         elif self.dispersion == "gene-batch":
             px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
         elif self.dispersion == "gene":
             px_r = self.px_r
         px_r = torch.exp(px_r)
 
-        return px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library
+        return dict(
+            px_scale=px_scale,
+            px_r=px_r,
+            px_rate=px_rate,
+            px_dropout=px_dropout,
+            qz_m=qz_m,
+            qz_v=qz_v,
+            z=z,
+            ql_m=ql_m,
+            ql_v=ql_v,
+            library=library,
+        )
 
-    def iwelbo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
-        # Parameters for z latent distribution
+    def from_variables_to_densities(
+        self,
+        x,
+        local_l_mean,
+        local_l_var,
+        px_r,
+        px_rate,
+        px_dropout,
+        z,
+        library,
+        px_scale=None,
+        qz_m=None,
+        qz_v=None,
+        ql_m=None,
+        ql_v=None,
+        log_qz_x=None,
+        log_ql_x=None,
+    ):
+        """
+        Unifies VAE outputs to construct loss
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
-
+        :param x:
+        :param local_l_mean:
+        :param local_l_var:
+        :param px_r:
+        :param px_rate:
+        :param px_dropout:
+        :param qz_m:
+        :param qz_v:
+        :param z:
+        :param ql_m:
+        :param ql_v:
+        :param library:
+        :param log_qz_x:
+        :param log_ql_x:
+        :return:
+        """
         log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
-        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        loss = - (torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
-        return loss
+        if log_qz_x is None:
+            log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
+        if log_ql_x is None:
+            log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        log_pz = (
+            Normal(torch.zeros_like(z), torch.ones_like(z))
+            .log_prob(z)
+            .sum(dim=-1)
+        )
+        log_pl = (
+            Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
+        )
 
-    def cubo(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
-        # Parameters for z latent distribution
+        return dict(
+            log_px_zl=log_px_zl,
+            log_pl=log_pl,
+            log_pz=log_pz,
+            log_qz_x=log_qz_x,
+            log_ql_x=log_ql_x,
+        )
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
-
-        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
-        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        ws = torch.softmax(2 * log_ratio, dim=0)
-        cubo = ws.detach() * (- 1) * log_ratio
-        return cubo.sum(dim=0)
-
-    def kl(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=5):
-        # Parameters for z latent distribution
-
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-            self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=False)
-
-        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
-        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        ws = torch.softmax(log_ratio, dim=0)
-        rev_kl = ws.detach() * (-1) * (log_qz_x + log_ql_x)
-        return rev_kl.sum(dim=0)
-
-    def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def forward(
+        self,
+        x,
+        local_l_mean,
+        local_l_var,
+        batch_index=None,
+        loss_type="ELBO",
+        y=None,
+        n_samples=1,
+        reparam=True,
+    ):
         r""" Returns the reconstruction loss and the Kullback divergences
 
         :param x: tensor of values with shape (batch_size, n_input)
@@ -267,21 +341,56 @@ class VAE(nn.Module):
          with shape (batch_size, 1)
         :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
         :param y: tensor of cell-types labels with shape (batch_size, n_labels)
+        :param loss_type:
+        :param n_samples:
+        :param reparam:
         :return: the reconstruction loss and the Kullback divergences
         :rtype: 2-tuple of :py:class:`torch.FloatTensor`
         """
         # Parameters for z latent distribution
 
-        px_scale, px_r, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-            self.inference(x, batch_index=batch_index, y=y, n_samples=5)
+        variables = self.inference(
+            x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=reparam
+        )
+        op = self.from_variables_to_densities(
+            x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
+        )
+        log_ratio = (
+            op["log_px_zl"]
+            + op["log_pz"]
+            + op["log_pl"]
+            - op["log_qz_x"]
+            - op["log_ql_x"]
+        )
 
-        log_px_zl = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pl = Normal(local_l_mean, torch.sqrt(local_l_var)).log_prob(library).sum(dim=-1)
-        log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-        log_qz_x = Normal(qz_m, torch.sqrt(qz_v)).log_prob(z).sum(dim=-1)
-        log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        log_ratio = log_px_zl + log_pz + log_pl - log_qz_x - log_ql_x
-        neg_elbo = -log_ratio.mean(dim=0)
-        return neg_elbo
+        if loss_type == "ELBO":
+            loss = -log_ratio.mean(dim=0)
+        elif loss_type == "KL":
+            loss = self.forward_kl(
+                log_ratio=log_ratio, log_qz_x=op["log_qz_x"], log_ql_x=op["log_ql_x"]
+            )
+        elif loss_type == "CUBO":
+            loss = self.cubo(log_ratio=log_ratio)
+        elif loss_type == "iwelbo":
+            assert n_samples >= 2
+            loss = self.iwelbo(log_ratio)
+        else:
+            raise ValueError("loss {} not recognized".format(loss_type))
 
+        return loss
 
+    @staticmethod
+    def iwelbo(log_ratio):
+        return -(torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
+
+    @staticmethod
+    def cubo(log_ratio):
+        ws = torch.softmax(2 * log_ratio, dim=0)
+        cubo = ws.detach() * (-1) * log_ratio
+        return cubo.sum(dim=0)
+
+    @staticmethod
+    def forward_kl(log_ratio, log_qz_x, log_ql_x):
+        ws = torch.softmax(log_ratio, dim=0)
+        rev_kl = ws.detach() * (-1) * (log_qz_x + log_ql_x)
+        return rev_kl.sum(dim=0)

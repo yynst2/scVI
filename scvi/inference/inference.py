@@ -65,19 +65,30 @@ class UnsupervisedTrainer(Trainer):
                     sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors_list[0]
 
                     # wake theta update
-                    elbo = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
+                    elbo = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type="ELBO",
+                    )
                     loss = torch.mean(elbo)
                     optimizer_gen.zero_grad()
                     loss.backward()
                     optimizer_gen.step()
 
                     # wake theta update
-                    if wake_psi == "ELBO":
-                        loss = self.model(sample_batch, local_l_mean, local_l_var, batch_index)
-                    if wake_psi == "CUBO":
-                        loss = self.model.cubo(sample_batch, local_l_mean, local_l_var, batch_index)
+                    reparam = True
                     if wake_psi == "KL":
-                        loss = self.model.kl(sample_batch, local_l_mean, local_l_var, batch_index)
+                        reparam = False
+                    loss = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type=wake_psi,
+                        reparam=reparam,
+                    )
                     loss = torch.mean(loss)
                     optimizer_var.zero_grad()
                     loss.backward()
