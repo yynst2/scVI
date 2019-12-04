@@ -180,7 +180,7 @@ class VAE(nn.Module):
             "px_scale"
         ]
 
-    def get_log_ratio(self, x, batch_index=None, y=None, n_samples=1):
+    def get_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of log_pz + log_px_z - log_qz_x
 
         :param x: tensor of values with shape ``(batch_size, n_input)``
