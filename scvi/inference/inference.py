@@ -38,6 +38,47 @@ class UnsupervisedTrainer(Trainer):
             self.train_set.to_monitor = ['ll']
             self.test_set.to_monitor = ['ll']
 
+    def train_aevb(self, n_epochs=20, lr=1e-3, eps=0.01, params=None):
+        begin = time.time()
+        self.model.train()
+
+        if params is None:
+            params = filter(lambda p: p.requires_grad, self.model.parameters())
+
+        optimizer = self.optimizer = torch.optim.Adam(
+            params,
+            lr=lr,
+            eps=eps,
+        )
+
+        self.compute_metrics_time = 0
+        self.n_epochs = n_epochs
+        self.compute_metrics()
+
+        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+            for self.epoch in pbar:
+                self.on_epoch_begin()
+                pbar.update(1)
+
+                for tensors_list in self.data_loaders_loop():
+                    sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors_list[0]
+                    elbo = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type="ELBO",
+                    )
+                    optimizer.zero_grad()
+                    elbo.backward()
+                    optimizer.step()
+
+                if not self.on_epoch_end():
+                    break
+
+        self.model.eval()
+        self.training_time += (time.time() - begin) - self.compute_metrics_time
+
     def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_psi="ELBO", n_samples=1):
         begin = time.time()
         self.model.train()
@@ -47,7 +88,8 @@ class UnsupervisedTrainer(Trainer):
 
         params_var = filter(lambda p: p.requires_grad, list(self.model.l_encoder.parameters())
                             + list(self.model.z_encoder.parameters()))
-        optimizer_var = torch.optim.Adam(params_var, lr=lr, eps=eps)
+        optimizer_var_wake = torch.optim.Adam(params_var, lr=lr, eps=eps)
+        # optimizer_var_sleep = torch.optim.Adam(params_var, lr=lr, eps=eps)
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
@@ -71,13 +113,14 @@ class UnsupervisedTrainer(Trainer):
                         local_l_var,
                         batch_index,
                         loss_type="ELBO",
+                        n_samples=n_samples,
                     )
                     loss = torch.mean(elbo)
                     optimizer_gen.zero_grad()
                     loss.backward()
                     optimizer_gen.step()
 
-                    # wake theta update
+                    # wake phi update
                     reparam = True
                     if wake_psi == "KL":
                         reparam = False
@@ -91,9 +134,17 @@ class UnsupervisedTrainer(Trainer):
                         reparam=reparam,
                     )
                     loss = torch.mean(loss)
-                    optimizer_var.zero_grad()
+                    optimizer_var_wake.zero_grad()
                     loss.backward()
-                    optimizer_var.step()
+                    optimizer_var_wake.step()
+
+                    # # Sleep phi update
+                    # synthetic_obs = self.model.generate_new_obs(
+                    #     sample_batch,
+                    #     batch_index=batch_index,
+                    # )
+                    #
+                    # loss = self.mod
 
                 if not self.on_epoch_end():
                     break
