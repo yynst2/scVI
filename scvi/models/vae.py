@@ -5,7 +5,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Normal, kl_divergence as kl
+from torch.distributions import Normal, Poisson, Gamma
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ class VAE(nn.Module):
         dispersion: str = "gene",
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
+        prevent_library_saturation: bool = False,
     ):
         super().__init__()
         self.dispersion = dispersion
@@ -107,7 +108,12 @@ class VAE(nn.Module):
             )
         # l encoder goes from n_input-dimensional data to 1-d library size
         self.l_encoder = Encoder(
-            n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate
+            n_input,
+            1,
+            n_layers=1,
+            n_hidden=n_hidden,
+            dropout_rate=dropout_rate,
+            prevent_saturation=prevent_library_saturation,
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = DecoderSCVI(
@@ -170,7 +176,9 @@ class VAE(nn.Module):
         :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[0]
+        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[
+            "px_scale"
+        ]
 
     def get_log_ratio(self, x, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of log_pz + log_px_z - log_qz_x
@@ -182,28 +190,19 @@ class VAE(nn.Module):
         :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        (
-            px_scale,
-            px_r,
-            px_rate,
-            px_dropout,
-            qz_m,
-            qz_v,
-            z,
-            ql_m,
-            ql_v,
-            library,
-        ) = self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
-
-        log_px_z = self._reconstruction_loss(x, px_rate, px_r, px_dropout)
-        log_pz = (
-            Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v))
-            .log_prob(z)
-            .sum(dim=-1)
+        variables = self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
+        op = self.from_variables_to_densities(
+            x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
         )
-        log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+        log_ratio = (
+            op["log_px_zl"]
+            + op["log_pz"]
+            + op["log_pl"]
+            - op["log_qz_x"]
+            - op["log_ql_x"]
+        )
 
-        return log_pz + log_px_z - log_qz_x
+        return op["log_pz"] + op["log_px_z"] - op["log_qz_x"]
 
     def get_sample_rate(self, x, batch_index=None, y=None, n_samples=1):
         r"""Returns the tensor of means of the negative binomial distribution
@@ -215,7 +214,9 @@ class VAE(nn.Module):
         :return: tensor of means of the negative binomial distribution with shape ``(batch_size, n_input)``
         :rtype: :py:class:`torch.Tensor`
         """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[2]
+        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[
+            "px_rate"
+        ]
 
     def _reconstruction_loss(self, x, px_rate, px_r, px_dropout):
         # Reconstruction Loss
@@ -338,7 +339,7 @@ class VAE(nn.Module):
         a5_issue = torch.isnan(log_ql_x).any() or torch.isinf(log_ql_x).any()
 
         if a1_issue or a2_issue or a3_issue or a4_issue or a5_issue:
-            print('aie')
+            print("aie")
 
         return dict(
             log_px_zl=log_px_zl,
@@ -347,6 +348,57 @@ class VAE(nn.Module):
             log_qz_x=log_qz_x,
             log_ql_x=log_ql_x,
         )
+
+    @torch.no_grad()
+    def generate_joint(
+        self, x, local_l_mean, local_l_var, batch_index, y=None, zero_inflated=True,
+    ):
+        """
+        :param x: used only for shape match
+        """
+        n_batches, _ = x.shape
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        z_mean = torch.zeros(n_batches, self.n_latent, device=device)
+        z_std = torch.zeros(n_batches, self.n_latent, device=device)
+        z_prior_dist = Normal(z_mean, z_std)
+        z_sim = z_prior_dist.sample()
+
+        l_prior_dist = Normal(local_l_mean, torch.sqrt(local_l_var))
+        l_sim = l_prior_dist.sample()
+
+        # Decoder pass
+        px_scale, px_r, px_rate, px_dropout = self.decoder(
+            self.dispersion, z_sim, l_sim, batch_index, y
+        )
+
+        if self.dispersion == "gene-label":
+            px_r = F.linear(
+                one_hot(y, self.n_labels), self.px_r
+            )  # px_r gets transposed - last dimension is nb genes
+        elif self.dispersion == "gene-batch":
+            px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
+        elif self.dispersion == "gene":
+            px_r = self.px_r
+        px_r = torch.exp(px_r)
+
+        # Data generation
+        p = px_rate / (px_rate + px_r)
+        r = px_r
+        # Important remark: Gamma is parametrized by the rate = 1/scale!
+        l_train = Gamma(concentration=r, rate=(1 - p) / p).sample()
+
+        # Clamping as distributions objects can have buggy behaviors when
+        # their parameters are too high
+        l_train = torch.clamp(l_train, max=1e8)
+        gene_expressions = Poisson(
+            l_train
+        ).sample()  # Shape : (n_samples, n_cells_batch, n_genes)
+        if zero_inflated:
+            p_zero = (1.0 + torch.exp(-px_dropout)).pow(-1)
+            random_prob = torch.rand_like(p_zero)
+            gene_expressions[random_prob <= p_zero] = 0
+
+        return gene_expressions, z_sim, l_sim
 
     def forward(
         self,

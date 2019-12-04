@@ -26,8 +26,16 @@ class FCLayers(nn.Module):
     :param dropout_rate: Dropout rate to apply to each of the hidden layers
     """
 
-    def __init__(self, n_in: int, n_out: int, n_cat_list: Iterable[int] = None,
-                 n_layers: int = 1, n_hidden: int = 128, dropout_rate: float = 0.1, use_batch_norm=True):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        dropout_rate: float = 0.1,
+        use_batch_norm=True,
+    ):
         super().__init__()
         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
 
@@ -37,13 +45,26 @@ class FCLayers(nn.Module):
         else:
             self.n_cat_list = []
 
-        self.fc_layers = nn.Sequential(collections.OrderedDict(
-            [('Layer {}'.format(i), nn.Sequential(
-                nn.Linear(n_in + sum(self.n_cat_list), n_out),
-                nn.BatchNorm1d(n_out, momentum=.01, eps=0.001) if use_batch_norm else None,
-                nn.ReLU(),
-                nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None))
-             for i, (n_in, n_out) in enumerate(zip(layers_dim[:-1], layers_dim[1:]))]))
+        self.fc_layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    (
+                        "Layer {}".format(i),
+                        nn.Sequential(
+                            nn.Linear(n_in + sum(self.n_cat_list), n_out),
+                            nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
+                            if use_batch_norm
+                            else None,
+                            nn.ReLU(),
+                            nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
+                        ),
+                    )
+                    for i, (n_in, n_out) in enumerate(
+                        zip(layers_dim[:-1], layers_dim[1:])
+                    )
+                ]
+            )
+        )
 
     def forward(self, x: torch.Tensor, *cat_list: int):
         r"""Forward computation on ``x``.
@@ -54,9 +75,13 @@ class FCLayers(nn.Module):
         :rtype: :py:class:`torch.Tensor`
         """
         one_hot_cat_list = []  # for generality in this list many indices useless.
-        assert len(self.n_cat_list) <= len(cat_list), "nb. categorical args provided doesn't match init. params."
+        assert len(self.n_cat_list) <= len(
+            cat_list
+        ), "nb. categorical args provided doesn't match init. params."
         for n_cat, cat in zip(self.n_cat_list, cat_list):
-            assert not (n_cat and cat is None), "cat not provided while n_cat != 0 in init. params."
+            assert not (
+                n_cat and cat is None
+            ), "cat not provided while n_cat != 0 in init. params."
             if n_cat > 1:  # n_cat = 1 will be ignored - no additional information
                 if cat.size(1) != n_cat:
                     one_hot_cat = one_hot(cat, n_cat)
@@ -68,14 +93,20 @@ class FCLayers(nn.Module):
                 if layer is not None:
                     if isinstance(layer, nn.BatchNorm1d):
                         if x.dim() == 3:
-                            x = torch.cat([(layer(slice_x)).unsqueeze(0) for slice_x in x], dim=0)
+                            x = torch.cat(
+                                [(layer(slice_x)).unsqueeze(0) for slice_x in x], dim=0
+                            )
                         else:
                             x = layer(x)
                     else:
                         if isinstance(layer, nn.Linear):
                             if x.dim() == 3:
-                                one_hot_cat_list = [o.unsqueeze(0).expand((x.size(0), o.size(0), o.size(1)))
-                                                    for o in one_hot_cat_list]
+                                one_hot_cat_list = [
+                                    o.unsqueeze(0).expand(
+                                        (x.size(0), o.size(0), o.size(1))
+                                    )
+                                    for o in one_hot_cat_list
+                                ]
                             x = torch.cat((x, *one_hot_cat_list), dim=-1)
                         x = layer(x)
         return x
@@ -96,13 +127,27 @@ class Encoder(nn.Module):
     :dropout_rate: Dropout rate to apply to each of the hidden layers
     """
 
-    def __init__(self, n_input: int, n_output: int,
-                 n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128, dropout_rate: float = 0.1):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        dropout_rate: float = 0.1,
+        prevent_saturation: bool = False,
+    ):
         super().__init__()
+        self.prevent_saturation = prevent_saturation
 
-        self.encoder = FCLayers(n_in=n_input, n_out=n_hidden, n_cat_list=n_cat_list, n_layers=n_layers,
-                                n_hidden=n_hidden, dropout_rate=dropout_rate)
+        self.encoder = FCLayers(
+            n_in=n_input,
+            n_out=n_hidden,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=dropout_rate,
+        )
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.var_encoder = nn.Linear(n_hidden, n_output)
 
@@ -129,7 +174,15 @@ class Encoder(nn.Module):
         # Parameters for latent distribution
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
-        q_v = torch.exp(self.var_encoder(q))  # (computational stability safeguard)torch.clamp(, -5, 5)
+        q_v = self.var_encoder(q)
+
+        if self.prevent_saturation:
+            q_m = 14.0 * nn.Tanh()(q_m)
+            q_v = 5.0 * nn.Sigmoid()(q_v)
+        else:
+            q_v = torch.exp(
+                self.var_encoder(q)
+            )  # (computational stability safeguard)torch.clamp(, -5, 5)
         if n_samples > 1:
             q_m = q_m.unsqueeze(0).expand((n_samples, q_m.size(0), q_m.size(1)))
             q_v = q_v.unsqueeze(0).expand((n_samples, q_v.size(0), q_v.size(1)))
@@ -152,16 +205,28 @@ class DecoderSCVI(nn.Module):
     :param dropout_rate: Dropout rate to apply to each of the hidden layers
     """
 
-    def __init__(self, n_input: int, n_output: int,
-                 n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+    ):
         super().__init__()
-        self.px_decoder = FCLayers(n_in=n_input, n_out=n_hidden,
-                                   n_cat_list=n_cat_list, n_layers=n_layers,
-                                   n_hidden=n_hidden, dropout_rate=0)
+        self.px_decoder = FCLayers(
+            n_in=n_input,
+            n_out=n_hidden,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=0,
+        )
 
         # mean gamma
-        self.px_scale_decoder = nn.Sequential(nn.Linear(n_hidden, n_output), nn.Softmax(dim=-1))
+        self.px_scale_decoder = nn.Sequential(
+            nn.Linear(n_hidden, n_output), nn.Softmax(dim=-1)
+        )
 
         # dispersion: here we only deal with gene-cell dispersion case
         self.px_r_decoder = nn.Linear(n_hidden, n_output)
@@ -169,8 +234,9 @@ class DecoderSCVI(nn.Module):
         # dropout
         self.px_dropout_decoder = nn.Linear(n_hidden, n_output)
 
-    def forward(self, dispersion: str, z: torch.Tensor, library: torch.Tensor,
-                *cat_list: int):
+    def forward(
+        self, dispersion: str, z: torch.Tensor, library: torch.Tensor, *cat_list: int
+    ):
         r"""The forward computation for a single sample.
 
          #. Decodes the data from the latent space using the decoder network
@@ -217,12 +283,23 @@ class Decoder(nn.Module):
     :param dropout_rate: Dropout rate to apply to each of the hidden layers
     """
 
-    def __init__(self, n_input: int, n_output: int, n_cat_list: Iterable[int] = None, n_layers: int = 1,
-                 n_hidden: int = 128):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+    ):
         super().__init__()
-        self.decoder = FCLayers(n_in=n_input, n_out=n_hidden,
-                                n_cat_list=n_cat_list, n_layers=n_layers,
-                                n_hidden=n_hidden, dropout_rate=0)
+        self.decoder = FCLayers(
+            n_in=n_input,
+            n_out=n_hidden,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=0,
+        )
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)
         self.var_decoder = nn.Linear(n_hidden, n_output)
@@ -315,7 +392,7 @@ class EncoderH(nn.Module):
 
     @staticmethod
     def init_weights(m, bias_val=1.5):
-        torch.nn.init.normal_(m.weight, mean=0., std=1e-8)
+        torch.nn.init.normal_(m.weight, mean=0.0, std=1e-8)
         torch.nn.init.constant_(m.bias, val=bias_val)
 
 
@@ -345,8 +422,8 @@ class EncoderIAF(nn.Module):
         """
         super().__init__()
         self.do_h = do_h
-        msg = '' if do_h else 'Not '
-        logger.info(msg='{}Using Hidden State'.format(msg))
+        msg = "" if do_h else "Not "
+        logger.info(msg="{}Using Hidden State".format(msg))
         self.n_latent = n_latent
         self.encoders = torch.nn.ModuleList()
         self.encoders.append(
@@ -359,11 +436,11 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
-                do_sigmoid=False
+                do_sigmoid=False,
             )
         )
 
-        n_in = 2*n_latent if do_h else n_latent
+        n_in = 2 * n_latent if do_h else n_latent
         for _ in range(t - 1):
             self.encoders.append(
                 EncoderH(
@@ -375,7 +452,7 @@ class EncoderIAF(nn.Module):
                     do_h=False,
                     dropout_rate=dropout_rate,
                     use_batch_norm=use_batch_norm,
-                    do_sigmoid=True
+                    do_sigmoid=True,
                 )
             )
 
@@ -415,7 +492,9 @@ class EncoderIAF(nn.Module):
             if self.do_h:
                 if (z.dim() == 3) & (h.dim() == 2):
                     n_batches, n_hdim = h.shape
-                    h = h.reshape(1, n_batches, n_hdim).expand(n_samples, n_batches, n_hdim)
+                    h = h.reshape(1, n_batches, n_hdim).expand(
+                        n_samples, n_batches, n_hdim
+                    )
                 inp = torch.cat([z, h], dim=-1)
             else:
                 inp = z
