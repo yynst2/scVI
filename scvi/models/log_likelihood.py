@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import logsumexp
+from tqdm.auto import tqdm
 from torch.distributions import Normal
 
 
@@ -25,33 +26,39 @@ def compute_log_likelihood(vae, posterior, **kwargs):
 
 def compute_marginal_log_likelihood(vae, posterior, n_samples_mc=100):
     """ Computes a biased estimator for log p(x), which is the marginal log likelihood.
-        Despite its bias, the estimator still converges to the real value
-        of log p(x) when n_samples_mc (for Monte Carlo) goes to infinity
-        (a fairly high value like 100 should be enough)
-        Due to the Monte Carlo sampling, this method is not as computationally efficient
-        as computing only the reconstruction loss
+    Despite its bias, the estimator still converges to the real value
+    of log p(x) when n_samples_mc (for Monte Carlo) goes to infinity
+    (a fairly high value like 100 should be enough)
+    Due to the Monte Carlo sampling, this method is not as computationally efficient
+    as computing only the reconstruction loss
     """
-    # Uses MC sampling to compute a tighter lower bound
+    # Uses MC sampling to compute a tighter lower bound on log p(x)
     log_lkl = 0
-    for i_batch, tensors in enumerate(posterior):
+    for i_batch, tensors in enumerate(tqdm(posterior)):
         sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors
-        x = torch.log(1 + sample_batch)
-        to_sum = torch.zeros(sample_batch.size()[0], n_samples_mc)
-        for i in range(n_samples_mc):
-            qz_m, qz_v, z = vae.z_encoder(x, labels)
-            reconst_loss, kl_divergence = vae(sample_batch, local_l_mean,
-                                              local_l_var,
-                                              batch_index=batch_index,
-                                              y=labels)
-            p_z = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-            p_x_z = - reconst_loss
-            q_z_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
-            to_sum[:, i] = p_z + p_x_z - q_z_x
-        batch_log_lkl = logsumexp(to_sum, dim=-1) - np.log(n_samples_mc)
+        outputs = vae.inference(sample_batch, batch_index, labels, n_samples=n_samples_mc)
+        op = vae.from_variables_to_densities(
+            x=sample_batch,
+            local_l_mean=local_l_mean,
+            local_l_var=local_l_var,
+            **outputs
+        )
+
+        p_x_zl = op["log_px_zl"]
+        p_z = op["log_pz"]
+        p_l = op["log_pl"]
+        q_z_x = op["log_qz_x"]
+        q_l_x = op["log_ql_x"]
+
+        to_sum = p_z + p_l + p_x_zl - q_z_x - q_l_x
+        assert to_sum.shape[0] == n_samples_mc
+
+        batch_log_lkl = logsumexp(to_sum, dim=0) - np.log(n_samples_mc)
         log_lkl += torch.sum(batch_log_lkl).item()
+
     n_samples = len(posterior.indices)
     # The minus sign is there because we actually look at the negative log likelihood
-    return - log_lkl / n_samples
+    return -log_lkl / n_samples
 
 
 def log_zinb_positive(x, mu, theta, pi, eps=1e-8):

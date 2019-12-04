@@ -114,7 +114,7 @@ class Posterior:
         return self.update({'batch_size': batch_size, 'sampler': SequentialSubsetSampler(indices=self.indices)})
 
     def corrupted(self):
-        return self.update({'collate_fn': self.gene_dataset.collate_fn_corrupted})
+        return self.update({"collate_fn": self.gene_dataset.collate_fn_corrupted})
 
     def uncorrupted(self):
         return self.update({'collate_fn': self.gene_dataset.collate_fn})
@@ -127,6 +127,7 @@ class Posterior:
 
     ll.mode = 'min'
 
+    @torch.no_grad()
     def marginal_ll(self, verbose=False, n_mc_samples=1000):
         ll = compute_marginal_log_likelihood(self.model, self, n_mc_samples)
         if verbose:
@@ -148,7 +149,28 @@ class Posterior:
                 latent += [self.model.sample_from_posterior_z(sample_batch).cpu()]
             batch_indices += [batch_index.cpu()]
             labels += [label.cpu()]
-        return np.array(torch.cat(latent)), np.array(torch.cat(batch_indices)), np.array(torch.cat(labels)).ravel()
+        return (
+            np.array(torch.cat(latent)),
+            np.array(torch.cat(batch_indices)),
+            np.array(torch.cat(labels)).ravel(),
+        )
+
+    @torch.no_grad()
+    def get_posterior(self, keys, n_samples):
+        res = {key: [] for key in keys}
+        for tensors in self:
+            sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
+            variables = self.model.inference(
+                sample_batch, batch_index=batch_index, n_samples=n_samples
+            )
+            all_variables = {
+                **variables,
+                **dict(x=sample_batch, batch_index=batch_index, label=label)
+            }
+            for key in keys:
+                res[key] += [all_variables[key].cpu()]
+        res = {key: torch.cat(vals) for (key, vals) in res.items()}
+        return res
 
     @torch.no_grad()
     def entropy_batch_mixing(self, verbose=False, **kwargs):
