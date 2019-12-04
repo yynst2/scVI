@@ -380,11 +380,14 @@ class EncoderH(nn.Module):
         z = self.encoder(x, *cat_list)
         mu = self.mu(z)
         sigma = self.sigma(z)
+        sigma = torch.clamp(sigma, min=-50.)
         if self.do_sigmoid:
             sigma = self.activation(sigma)
         else:
             # sigma = nn.ReLU()(sigma)
             sigma = sigma.exp()
+        if (sigma.min() == 0).item():
+            print("tada")
         if self.do_h:
             h = self.h(z)
             return mu, sigma, h
@@ -488,18 +491,24 @@ class EncoderIAF(nn.Module):
         qz_x = -qz_x.sum(dim=-1)
 
         # z shape (n_samples, n_batch, n_latent)
+        if (z.dim() == 3) & (h.dim() == 2):
+            n_batches, n_hdim = h.shape
+            h_it = h.reshape(1, n_batches, n_hdim).expand(
+                n_samples, n_batches, n_hdim
+            )
+        else:
+            h_it = h
+
         for ar_nn in self.encoders[1:]:
             if self.do_h:
-                if (z.dim() == 3) & (h.dim() == 2):
-                    n_batches, n_hdim = h.shape
-                    h = h.reshape(1, n_batches, n_hdim).expand(
-                        n_samples, n_batches, n_hdim
-                    )
-                inp = torch.cat([z, h], dim=-1)
+                inp = torch.cat([z, h_it], dim=-1)
             else:
                 inp = z
-            mu, sigma = ar_nn(inp)
-            z = sigma * z + (1.0 - sigma) * mu
-            new_term = sigma.log()
+            mu_it, sigma_it = ar_nn(inp)
+            z = sigma_it * z + (1.0 - sigma_it) * mu_it
+            new_term = sigma_it.log()
             qz_x -= new_term.sum(dim=-1)
+
+        if torch.isnan(qz_x).any() or torch.isinf(qz_x).any():
+            print("ouille")
         return dict(latent=z, posterior_density=qz_x, last_inp=inp)
