@@ -469,6 +469,7 @@ class VAE(nn.Module):
         """
         Algorithm 1 of
               nan,
+        With reparameterized gradient!!!
         https://arxiv.org/pdf/1611.00328.pdf
 
         :param log_ratio:
@@ -476,6 +477,7 @@ class VAE(nn.Module):
         """
         ws = torch.softmax(2 * log_ratio, dim=0)  # Corresponds to squaring
         #  Minus sign because of denominator (numerator p\theta(x,y) cst wrt \phi
+
         cubo = ws.detach() * (-1) * log_ratio
         return cubo.sum(dim=0)
 

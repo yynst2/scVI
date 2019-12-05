@@ -79,7 +79,7 @@ class UnsupervisedTrainer(Trainer):
         self.model.eval()
         self.training_time += (time.time() - begin) - self.compute_metrics_time
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_psi="ELBO", n_samples=1):
+    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_theta="ELBO", wake_psi="ELBO", n_samples=1):
         begin = time.time()
         self.model.train()
 
@@ -112,7 +112,7 @@ class UnsupervisedTrainer(Trainer):
                         local_l_mean,
                         local_l_var,
                         batch_index,
-                        loss_type="ELBO",
+                        loss_type=wake_theta,
                         n_samples=n_samples,
                     )
                     loss = torch.mean(elbo)
