@@ -231,12 +231,9 @@ class CVAE(nn.Module):
         px_rate = outputs["px_rate"]
         px_r = outputs["px_r"]
         px_dropout = outputs["px_dropout"]
-        kl_divergence_z = kl(
-            Normal(qz_m, torch.sqrt(qz_v)),
-            Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)),
-        ).sum(dim=1)
+
+        kl_divergence_z = 0.5 * torch.sum(qz_m ** 2 + qz_v - torch.log(qz_v) - 1, dim=1)
         reconst_loss = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
-        elbo_iid = reconst_loss + kl_divergence_z
 
         # second get the correlated part
         qz1_m = outputs["qz1_m"]
@@ -250,10 +247,10 @@ class CVAE(nn.Module):
             * torch.sum(
                 (qz1_m ** 2 + qz2_m ** 2 - 2 * qz1_m * qz2_m * self.tau + qz1_v + qz2_v)
                 / (1 - self.tau ** 2)
-                - (qz1_m ** 2 + qz1_v + (qz2_m ** 2) + qz2_v)
-                + torch.log(1 - torch.ones(1) * self.tau ** 2),
+                - (qz1_m ** 2 + qz2_m ** 2 + qz1_v + qz2_v)
+                + torch.log(1 - torch.ones_like(qz_m[0, 0]) * self.tau ** 2),
                 1,
             )
         )
 
-        return elbo_iid, 0.0, kl_correlation
+        return reconst_loss, kl_divergence_z, kl_correlation

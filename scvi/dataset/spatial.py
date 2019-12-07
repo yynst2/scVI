@@ -17,6 +17,7 @@ class SpatialDataset(GeneExpressionDataset):
     def __init__(self):
         super().__init__()
         self.coords = None
+        self.laplacian = None
 
     def populate_from_spatial_data(
         self,
@@ -96,9 +97,13 @@ class SpatialDataset(GeneExpressionDataset):
         graph_adjacency = kd_tree.kneighbors_graph(
             self.coords, n_neighbors=k_neighbors + 1
         ).toarray()
-        graph_adjacency = graph_adjacency - np.eye(graph_adjacency.shape[0])
-        laplacian = np.diag(graph_adjacency.sum(axis=0)) - graph_adjacency
-        inv_laplacian = np.linalg.pinv(laplacian)
+        # symmetrize the graph
+        graph_adjacency += graph_adjacency.T
+        graph_adjacency = (graph_adjacency > 0).astype(np.double) - np.eye(
+            graph_adjacency.shape[0]
+        )
+        self.laplacian = np.diag(graph_adjacency.sum(axis=0)) - graph_adjacency
+        inv_laplacian = np.linalg.pinv(self.laplacian)
         edge_weights = np.zeros((edge_indices.shape[0], k_neighbors))
         for i in range(edge_indices.shape[0]):
             for k in range(k_neighbors):

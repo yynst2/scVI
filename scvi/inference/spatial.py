@@ -52,6 +52,24 @@ class SpatialPosterior(Posterior):
         return np.mean(np.array(torch.cat(elbo)))
 
     @torch.no_grad()
+    def total_elbo(self):
+        """
+        computes the whole loss
+        """
+        elbo = []
+        for tensors in self:
+            (
+                sample_batch,
+                edge_indices,
+                neighbor_scrna,
+                edge_weights,
+                _,
+                labels,
+            ) = tensors
+            elbo += [self.model.elbo(sample_batch).cpu()]
+        return np.mean(np.array(torch.cat(elbo)))
+
+    @torch.no_grad()
     def get_latent(self, sample=False):
         latent = []
         for tensors in self:
@@ -154,21 +172,26 @@ class SpatialUnsupervisedTrainer(Trainer):
         edge_weight = edge_weight[T:]
 
         # get a random neighbor for each cell in minibatch
-        k_neighbors = neighbor_scrna.shape[1]
         uniform = torch.distributions.one_hot_categorical.OneHotCategorical(
-            torch.ones(k_neighbors)
+            torch.ones_like(neighbor_scrna[0, :, 0])
         )
         one_hot = uniform.sample((neighbor_scrna.shape[0],))
 
         # now select only that random neighbor
         x2 = torch.sum(neighbor_scrna * one_hot.unsqueeze(2), 1)
         w = torch.sum(edge_weight * one_hot, 1)
-
+        # print(w)
         # finally get the loss
-        iid_elbo, _, corr_elbo = self.model(x, x1, x2, w)
-
-        loss = self.n_samples * torch.mean(iid_elbo) + self.n_edges * torch.mean(
-            corr_elbo
+        reconstruction_loss, kl_z, graph_corr = self.model(x, x1, x2, w)
+        loss = torch.mean(
+            reconstruction_loss + kl_z
+        ) + self.n_edges / self.n_samples * torch.mean(graph_corr)
+        print(
+            loss.item(),
+            (
+                torch.mean(kl_z)
+                + self.n_edges / self.n_samples * torch.mean(graph_corr)
+            ).item(),
         )
         return loss
 
