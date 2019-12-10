@@ -186,12 +186,16 @@ class SpatialUnsupervisedTrainer(Trainer):
         loss = torch.mean(
             reconstruction_loss + kl_z
         ) + self.n_edges / self.n_samples * torch.mean(graph_corr)
+
+        item_loss = loss.item()
+        item_recon = torch.mean(reconstruction_loss).item()
+        item_kl_z = torch.mean(kl_z).item()
+        item_kl_p = torch.mean(graph_corr).item()
+        item_kl = item_kl_z + self.n_edges / self.n_samples * item_kl_p
         print(
-            loss.item(),
-            (
-                torch.mean(kl_z)
-                + self.n_edges / self.n_samples * torch.mean(graph_corr)
-            ).item(),
+            " LOSS: {0}, RECONS: {1}, KL: {2}, KL_Z: {3}, KL_P: {4}".format(
+                item_loss, item_recon, item_kl, item_kl_z, item_kl_p
+            )
         )
         return loss
 

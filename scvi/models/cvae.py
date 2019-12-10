@@ -246,9 +246,9 @@ class CVAE(nn.Module):
             * w
             * torch.sum(
                 (qz1_m ** 2 + qz2_m ** 2 - 2 * qz1_m * qz2_m * self.tau + qz1_v + qz2_v)
-                / (1 - self.tau ** 2)
+                / (1.0 - self.tau ** 2)
                 - (qz1_m ** 2 + qz2_m ** 2 + qz1_v + qz2_v)
-                + torch.log(1 - torch.ones_like(qz_m[0, 0]) * self.tau ** 2),
+                + torch.log(1.0 - torch.ones_like(qz_m[0, 0]) * self.tau ** 2),
                 1,
             )
         )
