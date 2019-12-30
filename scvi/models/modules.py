@@ -135,6 +135,7 @@ class Encoder(nn.Module):
         n_layers: int = 1,
         n_hidden: int = 128,
         dropout_rate: float = 0.1,
+        use_batch_norm: bool = True,
         prevent_saturation: bool = False,
     ):
         super().__init__()
@@ -146,6 +147,7 @@ class Encoder(nn.Module):
             n_cat_list=n_cat_list,
             n_layers=n_layers,
             n_hidden=n_hidden,
+            use_batch_norm=use_batch_norm,
             dropout_rate=dropout_rate,
         )
         self.mean_encoder = nn.Linear(n_hidden, n_output)
@@ -158,7 +160,7 @@ class Encoder(nn.Module):
             latent = Normal(mu, var.sqrt()).sample()
         return latent
 
-    def forward(self, x: torch.Tensor, *cat_list: int, n_samples=1, reparam=True):
+    def forward(self, x: torch.Tensor, *cat_list: int, n_samples=1, reparam=True, squeeze=True):
         r"""The forward computation for a single sample.
 
          #. Encodes the data into latent space using the encoder network
@@ -183,7 +185,7 @@ class Encoder(nn.Module):
             q_v = torch.exp(
                 self.var_encoder(q)
             )  # (computational stability safeguard)torch.clamp(, -5, 5)
-        if n_samples > 1:
+        if (n_samples > 1) or (not squeeze):
             q_m = q_m.unsqueeze(0).expand((n_samples, q_m.size(0), q_m.size(1)))
             q_v = q_v.unsqueeze(0).expand((n_samples, q_v.size(0), q_v.size(1)))
         latent = self.reparameterize(q_m, q_v, reparam=reparam)
@@ -290,6 +292,7 @@ class Decoder(nn.Module):
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,
+        use_batch_norm: bool = True,
     ):
         super().__init__()
         self.decoder = FCLayers(
@@ -299,6 +302,7 @@ class Decoder(nn.Module):
             n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=0,
+            use_batch_norm=use_batch_norm,
         )
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)

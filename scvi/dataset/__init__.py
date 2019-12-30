@@ -12,6 +12,7 @@ from .csv import CsvDataset, BreastCancerDataset, MouseOBDataset
 from .seqfish import SeqfishDataset
 from .smfish import SmfishDataset
 from .gaussian_dataset import GaussianDataset, SyntheticGaussianDataset, SyntheticMixtureGaussianDataset
+from .mnist import MnistDataset
 
 __all__ = ['SyntheticDataset',
            'SyntheticRandomDataset',
@@ -35,4 +36,7 @@ __all__ = ['SyntheticDataset',
            'SmfishDataset',
            'BreastCancerDataset',
            'MouseOBDataset',
-           'PurifiedPBMCDataset']
+           'PurifiedPBMCDataset',
+           'MnistDataset',
+]
+
