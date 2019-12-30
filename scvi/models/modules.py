@@ -176,7 +176,7 @@ class Encoder(nn.Module):
         # Parameters for latent distribution
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
-        q_v = self.var_encoder(q)
+        q_v = 1e-16 + self.var_encoder(q)
 
         if self.prevent_saturation:
             q_m = 14.0 * nn.Tanh()(q_m)
@@ -323,8 +323,38 @@ class Decoder(nn.Module):
         # Parameters for latent distribution
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
-        p_v = torch.exp(self.var_decoder(p))
-        return p_m, p_v
+        p_v = self.var_decoder(p)
+
+        # p_m = 14.0 * nn.Tanh()(p_m)
+        p_v = 5.0 * nn.Sigmoid()(p_v)
+        return p_m, p_v.exp()
+
+
+class BernoulliDecoder(nn.Module):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        n_cat_list: Iterable[int] = None,
+        n_layers: int = 1,
+        n_hidden: int = 128,
+        use_batch_norm: bool = True,
+    ):
+        super().__init__()
+        self.loc = FCLayers(
+            n_in=n_input,
+            n_out=n_output,
+            n_cat_list=n_cat_list,
+            n_layers=n_layers,
+            n_hidden=n_hidden,
+            dropout_rate=0,
+            use_batch_norm=use_batch_norm,
+        )
+
+    def forward(self, x, *cat_list: int):
+        means = self.loc(x, *cat_list)
+        means = nn.Sigmoid()(means)
+        return means
 
 
 class EncoderH(nn.Module):

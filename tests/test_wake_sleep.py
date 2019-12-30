@@ -76,10 +76,12 @@ def test_mnist():
     n_labels = 5
     n_input = 20
     n_batch = 100
+    device = "cuda"
     mdl = SemiSupervisedVAE(n_input=n_input, n_labels=n_labels)
+    mdl = mdl.cuda()
 
-    x = torch.rand(n_batch, n_input)
-    labels = torch.randint(high=n_labels - 1, size=(n_batch,))
+    x = torch.rand(n_batch, n_input, device=device)
+    labels = torch.randint(high=n_labels - 1, size=(n_batch,), device=device)
     variables = mdl.inference(x, y=None, n_samples=1, reparam=True)
 
     n_samples = 2
@@ -88,7 +90,7 @@ def test_mnist():
         (variables["log_qc_z1"].shape == (n_samples, n_batch))
         & (variables["log_qz2_z1"].shape == (n_samples, n_batch))
         & (variables["log_pz2"].shape == (n_samples, n_batch))
-        & (variables["log_pc"].shape == (n_batch,)) # for consistency
+        & (variables["log_pc"].shape == (n_batch,))  # for consistency
         & (variables["log_pz1_z2"].shape == (n_samples, n_batch))
         & (variables["log_px_z"].shape == (n_samples, n_batch))
     )
@@ -97,16 +99,18 @@ def test_mnist():
     n_input = 28 * 28
     n_labels = 10
     dataset = MnistDataset(
-        labelled_fraction=0.5,
+        labelled_fraction=0.05,
         labelled_proportions=[0.1] * 10,
         root="/home/pierre/scVI/tests/mnist",
         download=True,
         do_1d=True,
+        test_size=0.
     )
 
-    mdl = SemiSupervisedVAE(n_input=n_input, n_labels=n_labels)
-    trainer = MnistTrainer(dataset=dataset, model=mdl)
-    trainer.train(n_epochs=2, n_samples=2, overall_loss="ELBO")
+    mdl = SemiSupervisedVAE(n_input=n_input, n_labels=n_labels, n_latent=50, n_hidden=500)
+    mdl = mdl.cuda()
+    trainer = MnistTrainer(dataset=dataset, model=mdl, use_cuda=True)
+    trainer.train(n_epochs=15, lr=1e-4, n_samples=1, overall_loss="ELBO")
 
     trainer.inference(trainer.test_loader, n_samples=2)
 

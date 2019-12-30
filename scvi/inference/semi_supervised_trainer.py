@@ -16,21 +16,35 @@ logger = logging.getLogger(__name__)
 
 class MnistTrainer:
     def __init__(
-        self, dataset: MnistDataset, model: SemiSupervisedVAE, batch_size: int = 128
+        self,
+        dataset: MnistDataset,
+        model: SemiSupervisedVAE,
+        batch_size: int = 128,
+        use_cuda=True,
     ):
         self.dataset = dataset
         self.model = model
         self.train_loader = DataLoader(
-            self.dataset.train_dataset, batch_size=batch_size, shuffle=True
+            self.dataset.train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=use_cuda,
         )
         self.train_annotated_loader = DataLoader(
-            self.dataset.train_dataset_labelled, batch_size=batch_size, shuffle=True
+            self.dataset.train_dataset_labelled,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=use_cuda,
         )
         self.test_loader = DataLoader(
-            self.dataset.test_dataset, batch_size=batch_size, shuffle=False
+            self.dataset.test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            pin_memory=use_cuda,
         )
         self.cross_entropy_fn = CrossEntropyLoss()
 
+        self.iterate = 0
         self.metrics = dict(train_wake=[], train_sleep=[], train_loss=[])
 
     def train(
@@ -42,7 +56,9 @@ class MnistTrainer:
         wake_psi: str = "ELBO",
         n_samples: int = 1,
         classification_ratio: float = 50.0,
+        update_mode: str = "all",
     ):
+        assert update_mode in ["all", "alternate"]
         optim = None
         optim_gen = None
         optim_var_wake = None
@@ -81,6 +97,7 @@ class MnistTrainer:
                         n_samples=n_samples,
                         reparam=True,
                         classification_ratio=classification_ratio,
+                        mode=update_mode,
                     )
                     optim.zero_grad()
                     loss.backward()
@@ -116,6 +133,8 @@ class MnistTrainer:
 
                     self.metrics["train_loss"].append(loss.item())
 
+                self.iterate += 1
+
     def loss(
         self,
         tensor_all,
@@ -124,28 +143,49 @@ class MnistTrainer:
         n_samples=5,
         reparam=True,
         classification_ratio=50.0,
+        mode="all"
     ):
         x_u, _ = tensor_all
         x_s, y_s = tensor_superv
 
+        x_u = x_u.cuda()
+        x_s = x_s.cuda()
+        y_s = y_s.cuda()
+
+        labelled_fraction = self.dataset.labelled_fraction
+        s_every = int(1 / labelled_fraction)
         l_u = self.model.forward(
             x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
         )
         l_s = self.model.forward(
             x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
         )
+
+        if mode == "all":
+            l_s = labelled_fraction * l_s
+            j = l_u.mean() + l_s.mean()
+        elif mode == "alternate":
+            if self.iterate % s_every == 0:
+                j = l_s.mean()
+            else:
+                j = l_u.mean()
+        else:
+            raise ValueError("Mode {} not recognized".format(mode))
+
         y_pred = self.model.classify(x_s)
         l_class = self.cross_entropy_fn(y_pred, target=y_s)
-        loss = l_u.mean() + l_s.mean() + classification_ratio * l_class
+        loss = j + classification_ratio * l_class
         return loss
 
     @torch.no_grad()
-    def inference(self, data_loader, n_samples: int = 10):
+    def inference(self, data_loader, keys=None, n_samples: int = 10):
         all_res = dict()
         for tensor_all in data_loader:
             x, y = tensor_all
             res = self.model.inference(x, n_samples=n_samples)
             res["y"] = y
+            if keys is not None:
+                res = res[keys]
             all_res = dic_update(all_res, res)
         all_res = dic_concat(all_res)
         return all_res
@@ -157,9 +197,9 @@ def dic_update(dic: dict, new_dic: dict):
     """
     for key, li in new_dic.items():
         if key in dic:
-            dic[key].append(li)
+            dic[key].append(li.cpu())
         else:
-            dic[key] = [li]
+            dic[key] = [li.cpu()]
     return dic
 
 

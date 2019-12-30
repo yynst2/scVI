@@ -4,10 +4,10 @@ import logging
 import numpy as np
 import torch
 from torch import nn
-from torch.distributions import Normal, Categorical, kl_divergence as kl
+from torch.distributions import Normal, Categorical, kl_divergence as kl, Bernoulli
 
 from scvi.models.classifier import Classifier, GumbelClassifier
-from scvi.models.modules import Decoder, Encoder, EncoderIAF
+from scvi.models.modules import Decoder, Encoder, EncoderIAF, BernoulliDecoder
 from scvi.models.utils import broadcast_labels
 from scvi.models.vae import VAE
 
@@ -73,12 +73,14 @@ class SemiSupervisedVAE(nn.Module):
             use_batch_norm=False,
         )
 
-        self.x_decoder = Decoder(
+        self.x_decoder = BernoulliDecoder(
             n_input=n_latent, n_output=n_input, n_layers=n_layers, n_hidden=n_hidden,
         )
 
         y_prior_probs = (
-            y_prior if y_prior is not None else (1 / n_labels) * torch.ones(1, n_labels)
+            y_prior
+            if y_prior is not None
+            else (1 / n_labels) * torch.ones(1, n_labels, device="cuda")
         )
 
         self.y_prior = Categorical(probs=y_prior_probs)
@@ -121,16 +123,19 @@ class SemiSupervisedVAE(nn.Module):
         n_batch = len(x)
         n_cat = self.n_labels
 
+        x = x.cuda()
         if y is None:
             # deal with the case that the latent factorization is not the same in M1 and M2
             ys = (
-                torch.eye(n_cat)
+                torch.eye(n_cat, device=x.device)
                 .view(n_cat, 1, 1, n_cat)
                 .expand(n_cat, n_samples, n_batch, n_cat)
             )
             inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
         else:
+            y = y.cuda()
             ys = torch.FloatTensor(n_batch, n_cat)
+            ys = ys.cuda()
             ys.zero_()
             ys.scatter_(1, y.view(-1, 1), 1)
             ys = ys.view(1, n_batch, n_cat).expand(n_samples, n_batch, n_cat)
@@ -184,13 +189,14 @@ class SemiSupervisedVAE(nn.Module):
 
         log_pz2 = Normal(torch.zeros_like(z2), torch.ones_like(z2)).log_prob(z2).sum(-1)
 
-        px_z_m, px_z_v = self.x_decoder(z1)
-        log_px_z = Normal(px_z_m, px_z_v.sqrt()).log_prob(x).sum(-1)
+        px_z_loc = self.x_decoder(z1)
+        log_px_z = Bernoulli(px_z_loc).log_prob(x).sum(-1)
 
         generative_density = log_pz2 + log_pc + log_pz1_z2 + log_px_z
-        variational_density = log_qz1_x + log_qc_z1 + log_qz2_z1
+        variational_density = log_qz1_x + log_qz1_x + log_qz2_z1
         log_ratio = generative_density - variational_density
 
+        checker = log_ratio.min().item(), log_ratio.max().item()
         variables = dict(
             z1=z1,
             ys=ys,
@@ -201,8 +207,7 @@ class SemiSupervisedVAE(nn.Module):
             qz2_z1_v=qz2_z1_v,
             pz1_z2m=pz1_z2m,
             pz1_z2_v=pz1_z2_v,
-            px_z_m=px_z_m,
-            px_z_v=px_z_v,
+            px_z_m=px_z_loc,
             log_qz1_x=log_qz1_x,
             qc_z1=qc_z1,
             log_qc_z1=log_qc_z1,
@@ -226,12 +231,16 @@ class SemiSupervisedVAE(nn.Module):
 
         n_categories, n_is, n_batch
         """
+        x = x.cuda()
         is_labelled = False if y is None else True
+        if is_labelled:
+            y = y.cuda()
 
         vars = self.inference(x=x, y=y, n_samples=n_samples, reparam=reparam)
 
         log_ratio = vars["generative_density"] - vars["log_qz1_x"] - vars["log_qz2_z1"]
         if not is_labelled:
+            # Unlabelled case: c latent variable
             log_ratio -= vars["log_qc_z1"]
 
         everything_ok = log_ratio.ndim == 2 if is_labelled else log_ratio.ndim == 3
@@ -255,8 +264,8 @@ class SemiSupervisedVAE(nn.Module):
         # else:
         #     raise ValueError("loss {} not recognized".format(loss_type))
 
-        if torch.isnan(loss).any():
-            print("toto")
+        if torch.isnan(loss).any() or not torch.isfinite(loss).any():
+            print("NaN loss")
 
         return loss
 

@@ -26,6 +26,7 @@ class MnistDataset(MNIST):
         assert len(labelled_proportions) == 10
         labelled_proportions = np.array(labelled_proportions)
         assert abs(labelled_proportions.sum() - 1.0) <= 1e-16
+        self.labelled_fraction = labelled_fraction
         label_proportions = labelled_fraction * labelled_proportions
         x = self.data.float()
         y = self.targets
@@ -40,13 +41,18 @@ class MnistDataset(MNIST):
             y[np.isin(y, non_labelled)] = int(non_labelled[0])
 
         if do_preprocess:
-            x = x - x.mean(0)
+            x = x / (1.0 * x.max())
         if do_1d:
             n_examples = len(x)
             x = x.view(n_examples, -1)
 
-        ind_train, ind_test = train_test_split(np.arange(len(x)), test_size=test_size)
-
+        if test_size > 0.0:
+            ind_train, ind_test = train_test_split(
+                np.arange(len(x)), test_size=test_size
+            )
+        else:
+            ind_train = np.arange(len(x))
+            ind_test = []
         x_train = x[ind_train]
         y_train = y[ind_train]
         x_test = x[ind_test]
