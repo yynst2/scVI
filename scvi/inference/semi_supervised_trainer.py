@@ -187,6 +187,8 @@ class MnistTrainer:
         all_res = dict()
         for tensor_all in data_loader:
             x, y = tensor_all
+            x = x.to("cuda")
+            y = y.to("cuda")
             res = self.model.inference(x, n_samples=n_samples)
             res["y"] = y
             if keys is not None:
