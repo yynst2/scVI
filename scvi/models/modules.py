@@ -182,7 +182,7 @@ class Encoder(nn.Module):
             q_m = 14.0 * nn.Tanh()(q_m)
             q_v = 5.0 * nn.Sigmoid()(q_v)
         else:
-            q_v = torch.exp(
+            q_v = 1e-16 + torch.exp(
                 self.var_encoder(q)
             )  # (computational stability safeguard)torch.clamp(, -5, 5)
         if (n_samples > 1) or (not squeeze):
@@ -325,8 +325,7 @@ class Decoder(nn.Module):
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
 
-        # p_m = 14.0 * nn.Tanh()(p_m)
-        p_v = 5.0 * nn.Sigmoid()(p_v)
+        p_v = 16.0 * nn.Tanh()(p_v)
         return p_m, p_v.exp()
 
 

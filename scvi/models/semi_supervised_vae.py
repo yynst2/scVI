@@ -29,6 +29,7 @@ class SemiSupervisedVAE(nn.Module):
         dropout_rate: float = 0.1,
         y_prior=None,
         classifier_parameters: dict = dict(),
+        prevent_saturation: bool = False,
         iaf_t=0,
     ):
         # TODO: change architecture so that it match something existing
@@ -53,6 +54,7 @@ class SemiSupervisedVAE(nn.Module):
             n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            prevent_saturation=prevent_saturation,
         )
 
         # q(z_2 \mid z_1, c)
@@ -63,6 +65,7 @@ class SemiSupervisedVAE(nn.Module):
             n_hidden=n_hidden,
             use_batch_norm=False,
             dropout_rate=dropout_rate,
+            prevent_saturation=prevent_saturation,
         )
 
         self.decoder_z1_z2 = Decoder(
@@ -123,7 +126,6 @@ class SemiSupervisedVAE(nn.Module):
         n_batch = len(x)
         n_cat = self.n_labels
 
-        x = x.cuda()
         if y is None:
             # deal with the case that the latent factorization is not the same in M1 and M2
             ys = (
@@ -133,9 +135,7 @@ class SemiSupervisedVAE(nn.Module):
             )
             inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
         else:
-            y = y.cuda()
-            ys = torch.FloatTensor(n_batch, n_cat)
-            ys = ys.cuda()
+            ys = torch.cuda.FloatTensor(n_batch, n_cat)
             ys.zero_()
             ys.scatter_(1, y.view(-1, 1), 1)
             ys = ys.view(1, n_batch, n_cat).expand(n_samples, n_batch, n_cat)
@@ -193,10 +193,9 @@ class SemiSupervisedVAE(nn.Module):
         log_px_z = Bernoulli(px_z_loc).log_prob(x).sum(-1)
 
         generative_density = log_pz2 + log_pc + log_pz1_z2 + log_px_z
-        variational_density = log_qz1_x + log_qz1_x + log_qz2_z1
+        variational_density = log_qz1_x + log_qz2_z1
         log_ratio = generative_density - variational_density
 
-        checker = log_ratio.min().item(), log_ratio.max().item()
         variables = dict(
             z1=z1,
             ys=ys,
@@ -231,10 +230,7 @@ class SemiSupervisedVAE(nn.Module):
 
         n_categories, n_is, n_batch
         """
-        x = x.cuda()
         is_labelled = False if y is None else True
-        if is_labelled:
-            y = y.cuda()
 
         vars = self.inference(x=x, y=y, n_samples=n_samples, reparam=reparam)
 
@@ -246,33 +242,33 @@ class SemiSupervisedVAE(nn.Module):
         everything_ok = log_ratio.ndim == 2 if is_labelled else log_ratio.ndim == 3
         assert everything_ok
 
-        if not is_labelled:
-            if loss_type == "ELBO":
-                categorical_weights = vars["qc_z1"]
-                loss = (categorical_weights * log_ratio).sum(0)
-                loss = -loss.mean()
+        # UNLABELLED CASE
+        if loss_type == "ELBO":
+            loss = self.elbo(log_ratio, is_labelled, **vars)
+        elif loss_type == "CUBO":
+            loss = self.cubo(log_ratio, is_labelled, **vars)
         else:
-            if loss_type == "ELBO":
-                loss = -log_ratio.mean()
-            # elif loss_type == "KL":
-            #     loss = self.forward_kl(log_ratio=log_ratio, is_labelled=is_labelled, **vars)
-            # elif loss_type == "CUBO":
-            #     loss = self.cubo(log_ratio=log_ratio, is_labelled=is_labelled, **vars)
-            # elif loss_type == "IWELBO":
-            #     assert n_samples >= 2
-            #     loss = self.iwelbo(log_ratio)
-        # else:
-        #     raise ValueError("loss {} not recognized".format(loss_type))
-
+            raise ValueError("Mode {} not recognized".format(loss_type))
         if torch.isnan(loss).any() or not torch.isfinite(loss).any():
             print("NaN loss")
 
         return loss
 
     @staticmethod
-    def forward_kl(log_ratio, is_labelled, **kwargs):
+    def elbo(log_ratios, is_labelled, **kwargs):
         if is_labelled:
-            ws = torch.softmax(log_ratio, dim=0)
+            loss = -log_ratios.mean()
+        else:
+            categorical_weights = kwargs["qc_z1"]
+            loss = (categorical_weights * log_ratios).sum(0)
+            loss = -loss.mean()
+        return loss
+
+    @staticmethod
+    def forward_kl(log_ratios, is_labelled, **kwargs):
+        #TODO Triple check
+        if is_labelled:
+            ws = torch.softmax(log_ratios, dim=0)
             rev_kl = ws.detach() * (-1) * kwargs["sum_log_q"]
             return rev_kl.sum(dim=0)
         else:
@@ -280,7 +276,7 @@ class SemiSupervisedVAE(nn.Module):
             log_z1z2_xc = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
             # Shape (n_cat, n_is, n_batch)
             importance_weights = torch.softmax(log_pz1z2x_c - log_z1z2_xc, dim=1)
-            rev_kl = (importance_weights.detach() * log_ratio).sum(dim=1)
+            rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
             categorical_weights = kwargs["pc"].detach()
             assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
             categorical_weights = categorical_weights[:, 0]
@@ -288,16 +284,18 @@ class SemiSupervisedVAE(nn.Module):
             return rev_kl
 
     @staticmethod
-    def cubo(log_ratio, is_labelled, **kwargs):
+    def cubo(log_ratios, is_labelled, **kwargs):
         if is_labelled:
-            ws = torch.softmax(2 * log_ratio, dim=0)  # Corresponds to squaring
-            cubo = ws.detach() * (-1) * log_ratio
-            return cubo.sum(dim=0)
+            ws = torch.softmax(2 * log_ratios, dim=0)  # Corresponds to squaring
+            cubo_loss = ws.detach() * (-1) * log_ratios
+            return cubo_loss.mean(dim=0)
         else:
             # Prefer to deal this case separately to avoid mistakes
-            assert log_ratio.dim() == 3
+            assert log_ratios.dim() == 3
             log_qc_z1 = kwargs["log_qc_z1"]
-            log_ratio += 0.5 * log_qc_z1
-            ws = torch.softmax(2 * log_ratio, dim=1)
-            cubo = ws.detach() * (-1) * log_ratio
-            return cubo.sum(dim=(0, 1))
+            log_ratios += 0.5 * log_qc_z1
+            ws = torch.softmax(2 * log_ratios, dim=1)
+            cubo_loss = ws.detach() * (-1) * log_ratios
+            cubo_loss = cubo_loss.mean(dim=1)  # samples
+            cubo_loss = cubo_loss.sum(dim=1)  # cats
+            return cubo_loss

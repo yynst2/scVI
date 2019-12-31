@@ -45,7 +45,9 @@ class MnistTrainer:
         self.cross_entropy_fn = CrossEntropyLoss()
 
         self.iterate = 0
-        self.metrics = dict(train_wake=[], train_sleep=[], train_loss=[])
+        self.metrics = dict(
+            train_theta_wake=[], train_phi_wake=[], train_phi_sleep=[], train_loss=[]
+        )
 
     def train(
         self,
@@ -103,7 +105,8 @@ class MnistTrainer:
                     loss.backward()
                     optim.step()
 
-                    self.metrics["train_loss"].append(loss.item())
+                    if self.iterate % 100 == 0:
+                        self.metrics["train_loss"].append(loss.item())
                 else:
                     # Wake theta
                     theta_loss = self.loss(
@@ -117,6 +120,8 @@ class MnistTrainer:
                     optim_gen.zero_grad()
                     theta_loss.backward()
                     optim_gen.step()
+                    if self.iterate % 100 == 0:
+                        self.metrics["train_theta_wake"].append(theta_loss.item())
 
                     # Wake phi
                     psi_loss = self.loss(
@@ -130,8 +135,8 @@ class MnistTrainer:
                     optim_var_wake.zero_grad()
                     psi_loss.backward()
                     optim_var_wake.step()
-
-                    self.metrics["train_loss"].append(loss.item())
+                    if self.iterate % 100 == 0:
+                        self.metrics["train_phi_wake"].append(psi_loss.item())
 
                 self.iterate += 1
 
@@ -143,14 +148,14 @@ class MnistTrainer:
         n_samples=5,
         reparam=True,
         classification_ratio=50.0,
-        mode="all"
+        mode="all",
     ):
         x_u, _ = tensor_all
         x_s, y_s = tensor_superv
 
-        x_u = x_u.cuda()
-        x_s = x_s.cuda()
-        y_s = y_s.cuda()
+        x_u = x_u.to("cuda")
+        x_s = x_s.to("cuda")
+        y_s = y_s.to("cuda")
 
         labelled_fraction = self.dataset.labelled_fraction
         s_every = int(1 / labelled_fraction)
@@ -185,7 +190,7 @@ class MnistTrainer:
             res = self.model.inference(x, n_samples=n_samples)
             res["y"] = y
             if keys is not None:
-                res = res[keys]
+                res = {key: val for (key, val) in res.items() if key in keys}
             all_res = dic_update(all_res, res)
         all_res = dic_concat(all_res)
         return all_res
