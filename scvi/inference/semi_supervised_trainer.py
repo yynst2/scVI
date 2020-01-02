@@ -197,7 +197,8 @@ class MnistTrainer:
             if keys is not None:
                 res = {key: val for (key, val) in res.items() if key in keys}
             all_res = dic_update(all_res, res)
-        all_res = dic_concat(all_res)
+        batch_size = data_loader.batch_size
+        all_res = dic_concat(all_res, batch_size=batch_size)
         return all_res
 
 
