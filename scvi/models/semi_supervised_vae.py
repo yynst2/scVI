@@ -32,6 +32,7 @@ class SemiSupervisedVAE(nn.Module):
         classifier_parameters: dict = dict(),
         prevent_saturation: bool = False,
         iaf_t=0,
+        do_batch_norm=False,
     ):
         # TODO: change architecture so that it match something existing
         super().__init__()
@@ -54,6 +55,7 @@ class SemiSupervisedVAE(nn.Module):
             n_output=n_latent,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            do_batch_norm=do_batch_norm,
         )
 
         # q(z_2 \mid z_1, c)
@@ -62,6 +64,7 @@ class SemiSupervisedVAE(nn.Module):
             n_output=n_latent,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
+            do_batch_norm=do_batch_norm,
         )
 
         self.decoder_z1_z2 = DecoderA(
