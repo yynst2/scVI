@@ -12,25 +12,25 @@ class FCLayersA(nn.Module):
     ):
         super().__init__()
         self.to_hidden = nn.Linear(in_features=n_input, out_features=500)
-        # self.batch_norm = nn.BatchNorm1d(num_features=500)
+        self.batch_norm = nn.BatchNorm1d(num_features=500)
         self.to_out = nn.Linear(in_features=500, out_features=n_output)
         self.dropout = nn.Dropout(p=dropout_rate)
         self.activation = nn.SELU()
 
     def forward(self, x):
         res = self.to_hidden(x)
-        # if res.ndim == 4:
-        #     n1, n2, n3, n4 = res.shape
-        #     res = self.batch_norm(res.view(n1*n2*n3, n4))
-        #     res = res.view(n1, n2, n3, n4)
-        # elif res.ndim == 3:
-        #     n1, n2, n3 = res.shape
-        #     res = self.batch_norm(res.view(n1*n2, n3))
-        #     res = res.view(n1, n2, n3)
-        # elif res.ndim == 2:
-        #     res = self.batch_norm(res)
-        # else:
-        #     raise ValueError("{} ndim not handled.".format(res.ndim))
+        if res.ndim == 4:
+            n1, n2, n3, n4 = res.shape
+            res = self.batch_norm(res.view(n1*n2*n3, n4))
+            res = res.view(n1, n2, n3, n4)
+        elif res.ndim == 3:
+            n1, n2, n3 = res.shape
+            res = self.batch_norm(res.view(n1*n2, n3))
+            res = res.view(n1, n2, n3)
+        elif res.ndim == 2:
+            res = self.batch_norm(res)
+        else:
+            raise ValueError("{} ndim not handled.".format(res.ndim))
         res = self.activation(res)
         res = self.dropout(res)
         res = self.to_out(res)

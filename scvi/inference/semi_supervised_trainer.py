@@ -186,8 +186,12 @@ class MnistTrainer:
         return loss
 
     @torch.no_grad()
-    def inference(self, data_loader, keys=None, n_samples: int = 10):
+    def inference(self, data_loader, keys=None, n_samples: int = 10, eval_mode=True):
         all_res = dict()
+        if eval_mode:
+            self.model = self.model.eval()
+        else:
+            self.model = self.model.train()
         for tensor_all in data_loader:
             x, y = tensor_all
             x = x.to("cuda")
