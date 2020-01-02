@@ -94,9 +94,10 @@ class SemiSupervisedVAE(nn.Module):
         self.all_params = filter(lambda p: p.requires_grad, list(self.parameters()))
 
     def classify(self, x, n_samples=1):
-        n_cat = self.n_labels
-        n_batch = len(x)
-        inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
+        # n_cat = self.n_labels
+        # n_batch = len(x)
+        # inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
+        inp = x
         q_z1 = self.encoder_z1(inp, n_samples=n_samples)
         z = q_z1["latent"]
 
