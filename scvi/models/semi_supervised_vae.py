@@ -8,6 +8,7 @@ from torch.distributions import Normal, Categorical, kl_divergence as kl, Bernou
 
 from scvi.models.classifier import Classifier, GumbelClassifier
 from scvi.models.modules import Decoder, Encoder, EncoderIAF, BernoulliDecoder
+from scvi.models.regular_modules import EncoderA, DecoderA
 from scvi.models.utils import broadcast_labels
 from scvi.models.vae import VAE
 
@@ -47,33 +48,26 @@ class SemiSupervisedVAE(nn.Module):
             n_latent, n_labels=n_labels, use_batch_norm=False, **cls_parameters
         )
 
-        self.encoder_z1 = Encoder(
+        self.encoder_z1 = EncoderA(
             n_input=n_input + n_labels,
             # n_input=n_input,
             n_output=n_latent,
-            n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
-            prevent_saturation=prevent_saturation,
         )
 
         # q(z_2 \mid z_1, c)
-        self.encoder_z2_z1 = Encoder(
+        self.encoder_z2_z1 = EncoderA(
             n_input=n_latent + n_labels,
             n_output=n_latent,
-            n_layers=n_layers,
             n_hidden=n_hidden,
-            use_batch_norm=False,
             dropout_rate=dropout_rate,
-            prevent_saturation=prevent_saturation,
         )
 
-        self.decoder_z1_z2 = Decoder(
+        self.decoder_z1_z2 = DecoderA(
             n_input=n_latent + n_labels,
             n_output=n_latent,
-            n_layers=n_layers,
             n_hidden=n_hidden,
-            use_batch_norm=False,
         )
 
         self.x_decoder = BernoulliDecoder(
