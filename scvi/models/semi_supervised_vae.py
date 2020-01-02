@@ -297,5 +297,5 @@ class SemiSupervisedVAE(nn.Module):
             ws = torch.softmax(2 * log_ratios, dim=1)
             cubo_loss = ws.detach() * (-1) * log_ratios
             cubo_loss = cubo_loss.mean(dim=1)  # samples
-            cubo_loss = cubo_loss.sum(dim=1)  # cats
+            cubo_loss = cubo_loss.sum(dim=0)  # cats
             return cubo_loss

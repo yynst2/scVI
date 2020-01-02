@@ -46,7 +46,7 @@ class MnistTrainer:
 
         self.iterate = 0
         self.metrics = dict(
-            train_theta_wake=[], train_phi_wake=[], train_phi_sleep=[], train_loss=[]
+            train_theta_wake=[], train_phi_wake=[], train_phi_sleep=[], train_loss=[], classification_loss=[],
         )
 
     def train(
@@ -180,6 +180,9 @@ class MnistTrainer:
         y_pred = self.model.classify(x_s)
         l_class = self.cross_entropy_fn(y_pred, target=y_s)
         loss = j + classification_ratio * l_class
+
+        if self.iterate % 100 == 0:
+            self.metrics["classification_loss"].append(l_class.item())
         return loss
 
     @torch.no_grad()
