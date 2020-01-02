@@ -57,10 +57,24 @@ class MnistTrainer:
         wake_theta: str = "ELBO",
         wake_psi: str = "ELBO",
         n_samples: int = 1,
+        n_samples_phi: int = None,
+        n_samples_theta: int = None,
         classification_ratio: float = 50.0,
         update_mode: str = "all",
     ):
         assert update_mode in ["all", "alternate"]
+        assert (n_samples_phi is None) == (n_samples_theta is None)
+
+        if n_samples is not None:
+            n_samples_theta = n_samples
+            n_samples_phi = n_samples
+        logger.info(
+            "Using {n_samples_theta} and {n_samples_phi} samples for theta wake / phi wake".format(
+                n_samples_theta=n_samples_theta,
+                n_samples_phi=n_samples_phi,
+            )
+        )
+
         optim = None
         optim_gen = None
         optim_var_wake = None
@@ -113,7 +127,7 @@ class MnistTrainer:
                         tensor_all,
                         tensor_superv,
                         loss_type=wake_theta,
-                        n_samples=n_samples,
+                        n_samples=n_samples_theta,
                         reparam=True,
                         classification_ratio=classification_ratio,
                     )
@@ -128,7 +142,7 @@ class MnistTrainer:
                         tensor_all,
                         tensor_superv,
                         loss_type=wake_psi,
-                        n_samples=n_samples,
+                        n_samples=n_samples_phi,
                         reparam=True,
                         classification_ratio=classification_ratio,
                     )
