@@ -8,7 +8,7 @@ from torch.distributions import Normal, Categorical, kl_divergence as kl, Bernou
 
 from scvi.models.classifier import Classifier, GumbelClassifier
 from scvi.models.modules import Decoder, Encoder, EncoderIAF, BernoulliDecoder
-from scvi.models.regular_modules import EncoderA, DecoderA
+from scvi.models.regular_modules import EncoderA, DecoderA, ClassifierA, BernoulliDecoderA
 from scvi.models.utils import broadcast_labels
 from scvi.models.vae import VAE
 
@@ -39,14 +39,8 @@ class SemiSupervisedVAE(nn.Module):
 
         self.n_labels = n_labels
         # Classifier takes n_latent as input
-        cls_parameters = {
-            "n_layers": n_layers,
-            "n_hidden": n_hidden,
-            "dropout_rate": dropout_rate,
-        }
-        cls_parameters.update(classifier_parameters)
-        self.classifier = Classifier(
-            n_latent, n_labels=n_labels, use_batch_norm=False, **cls_parameters
+        self.classifier = ClassifierA(
+            n_latent, n_output=n_labels, do_batch_norm=do_batch_norm, dropout_rate=dropout_rate
         )
 
         self.encoder_z1 = EncoderA(
@@ -73,8 +67,8 @@ class SemiSupervisedVAE(nn.Module):
             n_hidden=n_hidden,
         )
 
-        self.x_decoder = BernoulliDecoder(
-            n_input=n_latent, n_output=n_input, n_layers=n_layers, n_hidden=n_hidden,
+        self.x_decoder = BernoulliDecoderA(
+            n_input=n_latent, n_output=n_input, do_batch_norm=do_batch_norm,
         )
 
         y_prior_probs = (

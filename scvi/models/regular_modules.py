@@ -115,3 +115,51 @@ class DecoderA(nn.Module):
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
         return p_m, 1e-16 + p_v.exp()
+
+
+class ClassifierA(nn.Module):
+    def __init__(
+        self,
+        n_input,
+        n_output,
+        dropout_rate=0.,
+        do_batch_norm=True,
+    ):
+        super().__init__()
+        self.classifier = nn.Sequential(
+            FCLayersA(
+                n_input,
+                n_output,
+                dropout_rate=dropout_rate,
+                do_batch_norm=do_batch_norm,
+            ),
+            nn.Softmax(dim=-1),
+        )
+
+    def forward(self, x):
+        probas = self.classifier(x)
+        probas = probas + 1e-16
+        probas = probas / probas.sum(-1, keepdim=True)
+        return probas
+
+
+class BernoulliDecoderA(nn.Module):
+    def __init__(
+        self,
+        n_input: int,
+        n_output: int,
+        dropout_rate: float = 0.0,
+        do_batch_norm: bool = True,
+    ):
+        super().__init__()
+        self.loc = FCLayersA(
+            n_input,
+            n_output,
+            dropout_rate=dropout_rate,
+            do_batch_norm=do_batch_norm,
+        )
+
+    def forward(self, x):
+        means = self.loc(x)
+        means = nn.Sigmoid()(means)
+        return means
