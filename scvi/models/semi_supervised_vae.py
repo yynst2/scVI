@@ -44,8 +44,8 @@ class SemiSupervisedVAE(nn.Module):
         )
 
         self.encoder_z1 = EncoderA(
-            n_input=n_input + n_labels,
-            # n_input=n_input,
+            # n_input=n_input + n_labels,
+            n_input=n_input,
             n_output=n_latent,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
@@ -124,13 +124,14 @@ class SemiSupervisedVAE(nn.Module):
                 .view(n_cat, 1, 1, n_cat)
                 .expand(n_cat, n_samples, n_batch, n_cat)
             )
-            inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
+            # inp = torch.cat((x, torch.zeros(n_batch, n_cat, device=x.device)), dim=-1)
         else:
             ys = torch.cuda.FloatTensor(n_batch, n_cat)
             ys.zero_()
             ys.scatter_(1, y.view(-1, 1), 1)
             ys = ys.view(1, n_batch, n_cat).expand(n_samples, n_batch, n_cat)
-            inp = torch.cat((x, ys[0, :]), dim=-1)
+            # inp = torch.cat((x, ys[0, :]), dim=-1)
+        inp = x
         q_z1 = self.encoder_z1(inp, n_samples=n_samples, reparam=reparam, squeeze=False)
         # if not self.do_iaf:
         qz1_m = q_z1["q_m"]
@@ -253,6 +254,17 @@ class SemiSupervisedVAE(nn.Module):
             categorical_weights = kwargs["qc_z1"]
             loss = (categorical_weights * log_ratios).sum(0)
             loss = -loss.mean()
+        return loss
+
+    @staticmethod
+    def iwelbo(log_ratios, is_labelled, **kwargs):
+        if is_labelled:
+            # (n_samples, n_batch)
+            ws = torch.softmax(log_ratios, dim=0)
+            loss = -(ws.detach() * log_ratios).sum(dim=0)
+        else:
+            # loss =
+            raise NotImplementedError
         return loss
 
     @staticmethod
