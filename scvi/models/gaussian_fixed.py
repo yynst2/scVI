@@ -5,10 +5,13 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from torch.distributions import Normal, kl_divergence as kl
+from torch.distributions import Normal, kl_divergence as kl, MultivariateNormal
 from scipy.linalg import sqrtm
 from scvi.models.modules import Encoder, Decoder
+from scvi.models.regular_modules import LinearEncoder
 from scvi.models.utils import one_hot
+
+from typing import Union
 
 torch.backends.cudnn.benchmark = True
 
@@ -28,12 +31,17 @@ class LinearGaussian(nn.Module):
     def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, gamma, n_input: int, learn_var: bool = False,
                  n_hidden: int = 128,
                  n_latent: int = 10,
-                 n_layers: int = 1, dropout_rate: float = 0.1):
+                 n_layers: int = 1, dropout_rate: float = 0.1, linear_encoder: bool = False):
         super().__init__()
 
         self.n_latent = n_latent
-        self.encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
+        self.linear_encoder = linear_encoder
+        if not linear_encoder:
+            self.encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
                                dropout_rate=dropout_rate)
+        else:
+            self.encoder = LinearEncoder(n_input, n_latent)
+
         self.A = torch.from_numpy(np.array(A_param, dtype=np.float32)).cuda()
 
         self.log_det_pxz = torch.tensor(pxz_log_det, requires_grad=False, dtype=torch.float).cuda()
@@ -69,23 +77,34 @@ class LinearGaussian(nn.Module):
         :return: tensor of shape ``(batch_size, n_latent)``
         :rtype: :py:class:`torch.Tensor`
         """
-        qz_m, qz_v, z = self.encoder(x, None)  # y only used in VAEC
+        qz_vars = self.encoder(x, None)  # y only used in VAEC
+        qz_m = qz_vars["q_m"]
+        z = qz_vars["latent"]
         if give_mean:
             z = qz_m
         return z
 
     def inference(self, x, n_samples=1, reparam: bool = True):
         # Sampling
-        qz_m, qz_v, z = self.encoder(x, None)
+        if not self.linear_encoder:
+            qz_vars = self.encoder(x, None)
+            qz_m = qz_vars["q_m"]
+            qz_v = qz_vars["q_v"]
+            z = qz_vars["latent"]
 
-        if n_samples > 1:
-            qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
-            qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
+            if n_samples > 1:
+                qz_m = qz_m.unsqueeze(0).expand((n_samples, qz_m.size(0), qz_m.size(1)))
+                qz_v = qz_v.unsqueeze(0).expand((n_samples, qz_v.size(0), qz_v.size(1)))
 
-            if reparam:
-                z = Normal(qz_m, qz_v.sqrt()).rsample()
-            else:
-                z = Normal(qz_m, qz_v.sqrt()).sample()
+                if reparam:
+                    z = Normal(qz_m, qz_v.sqrt()).rsample()
+                else:
+                    z = Normal(qz_m, qz_v.sqrt()).sample()
+        else:
+            qz_vars = self.encoder(x, n_samples=n_samples, reparam=reparam)
+            qz_m = qz_vars["q_m"]
+            qz_v = qz_vars["q_v"]
+            z = qz_vars["latent"]
 
         px_mean = torch.matmul(z, torch.transpose(self.A, 0, 1))
         return px_mean, torch.exp(self.px_log_diag_var), qz_m, qz_v, z
@@ -94,15 +113,21 @@ class LinearGaussian(nn.Module):
         if self.learn_var:
             log_px_z = Normal(px_mean, torch.sqrt(px_var)).\
                 log_prob(x.repeat(px_mean.shape[0], 1, 1)).sum(dim=-1).view((px_mean.shape[0], -1))
-            log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(dim=-1)
-            log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_m)).log_prob(z).sum(dim=-1)
+            if not self.linear_encoder:
+                log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            else:
+                log_qz_given_x = MultivariateNormal(qz_m, qz_v).log_prob(z)  # No need to sum over latent dim
             log_pxz = log_px_z + log_pz
 
         else:
             zx = torch.cat([z, x.repeat(px_mean.shape[0], 1, 1)], dim=-1)
             reshape_dim = x.shape[-1] + z.shape[-1]
 
-            log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            if not self.linear_encoder:
+                log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
+            else:
+                log_qz_given_x = MultivariateNormal(qz_m, qz_v).log_prob(z)
             log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
                                            self.log_det_pxz, self.inv_sqrt_pxz
                                            ).view((px_mean.shape[0], -1))
@@ -181,7 +206,9 @@ class LinearGaussian(nn.Module):
     def sleep_kl(self, x, z):
         x = x.detach()
         z = z.detach()
-        qz_m, qz_v, _ = self.encoder(x, None)
+        vars = self.encoder(x, None)
+        qz_m = vars["q_m"]
+        qz_v = vars["q_v"]
         log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
         return -log_qz_x
 
@@ -220,7 +247,7 @@ class LinearGaussian(nn.Module):
         return -0.5 * log_lik
 
     @torch.no_grad()
-    def prob_event(self, x, n_samples_mc):
+    def prob_event(self, x, n_samples_mc, nu: Union[float, list, np.ndarray] = 0.):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
 
         # compute for importance sampling
@@ -228,8 +255,25 @@ class LinearGaussian(nn.Module):
         ratio = torch.exp(log_ratio - torch.max(log_ratio, dim=0)[0])
 
         # get SNIPS estimator
-        res = torch.sum(ratio * (z[:, :, 0] <= 0).float(), dim=0) / torch.sum(ratio, dim=0)
+        if hasattr(nu, "__len__"):
+            res = []
+            for nu_item in nu:
+                res_item = (
+                    torch.sum(ratio * (z[:, :, 0] <= nu_item).float(), dim=0)
+                    / torch.sum(ratio, dim=0)
+                )
+                res.append(res_item.view(-1, 1))
+            res = torch.cat(res, dim=-1)
+        else:
+            res = torch.sum(ratio * (z[:, :, 0] <= nu).float(), dim=0) / torch.sum(ratio, dim=0)
 
         # get ESS
         ess = torch.sum(ratio, dim=0) ** 2 / torch.sum(ratio ** 2, dim=0)
-        return qz_m.mean(dim=0), qz_v.mean(dim=0), res, ess
+
+        if not self.linear_encoder:
+            mean_to_return = qz_m.mean(dim=0)
+            variance_to_return = qz_v.mean(dim=0)
+        else:
+            mean_to_return = qz_m
+            variance_to_return = qz_v
+        return mean_to_return, variance_to_return, res, ess

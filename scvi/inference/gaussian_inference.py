@@ -191,7 +191,7 @@ class GaussianPosterior(Posterior):
         return ave_var / n_samples
 
     @torch.no_grad()
-    def prob_eval(self, n_samples_mc):
+    def prob_eval(self, n_samples_mc, nu=0.):
         # Iterate once over the posterior and get the marginal variance
         prob = []
         qz_m = []
@@ -199,10 +199,30 @@ class GaussianPosterior(Posterior):
         ess = []
         for i_batch, tensors in enumerate(self):
             data_tensor = torch.stack(tensors, 0)
-            x, y, z, t = self.model.prob_event(data_tensor, n_samples_mc)
+            x, y, z, t = self.model.prob_event(data_tensor, n_samples_mc, nu=nu)
             qz_m += [x.cpu()]
             qz_v += [y.cpu()]
             prob += [z.cpu()]
             ess += [t.cpu()]
-        return np.array(torch.cat(qz_m)), np.array(torch.cat(qz_v)), \
+
+        if not self.model.linear_encoder:
+            qz_v_return = np.array(torch.cat(qz_v))
+        else:
+            qz_v_return = qz_v[0]  # Constant cov structure
+
+        return np.array(torch.cat(qz_m)), qz_v_return, \
                np.array(torch.cat(prob)), np.array(torch.cat(ess))
+
+    def log_ratios(self, n_samples_mc):
+        all_log_ratios = []
+        for i_batch, tensors in enumerate(self):
+            data_tensor = torch.stack(tensors, 0)
+            px_mean, px_var, qz_m, qz_v, z = self.model.inference(
+                data_tensor,
+                n_samples=n_samples_mc,
+                reparam=True
+            )
+            log_ratios = self.model.log_ratio(data_tensor, px_mean, px_var, qz_m, qz_v, z)
+            all_log_ratios.append(log_ratios.cpu())
+            # Shapes (n_samples, n_batch)
+        return torch.cat(all_log_ratios, dim=-1)
