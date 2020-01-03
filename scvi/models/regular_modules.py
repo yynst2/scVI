@@ -1,6 +1,12 @@
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Normal
+from torch.distributions import Normal, MultivariateNormal
+from scipy.stats import genpareto
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FCLayersA(nn.Module):
@@ -70,6 +76,51 @@ class EncoderA(nn.Module):
         variational_dist = Normal(loc=q_m, scale=q_v.sqrt())
 
         if n_samples == 1 and squeeze:
+            sample_shape = []
+        else:
+            sample_shape = (n_samples,)
+        if reparam:
+            latent = variational_dist.rsample(sample_shape=sample_shape)
+        else:
+            latent = variational_dist.sample(sample_shape=sample_shape)
+        return dict(q_m=q_m, q_v=q_v, latent=latent)
+
+
+class LinearEncoder(nn.Module):
+    def __init__(
+        self,
+        n_input,
+        n_output,
+    ):
+        super().__init__()
+        self.mean_encoder = nn.Linear(n_input, n_output)
+        self.n_output = n_output
+
+        self.var_vals = nn.Parameter(0.1 * torch.rand(n_output, n_output), requires_grad=True)
+
+    @property
+    def l_mat_encoder(self):
+        l_mat = torch.tril(self.var_vals)
+        range_vals = np.arange(self.n_output)
+        l_mat[range_vals, range_vals] = l_mat[range_vals, range_vals].exp()
+        return l_mat
+
+    @property
+    def var_encoder(self):
+        l_mat = self.l_mat_encoder
+        return l_mat.matmul(l_mat.T)
+
+    def forward(self, x, n_samples, reparam=True, squeeze=True):
+        q_m = self.mean_encoder(x)
+        l_mat = self.var_encoder
+        q_v = l_mat.matmul(l_mat.T)
+
+        variational_dist = MultivariateNormal(
+            loc=q_m,
+            scale_tril=l_mat
+        )
+
+        if squeeze and n_samples == 1:
             sample_shape = []
         else:
             sample_shape = (n_samples,)
@@ -163,3 +214,30 @@ class BernoulliDecoderA(nn.Module):
         means = self.loc(x)
         means = nn.Sigmoid()(means)
         return means
+
+
+class PSIS:
+    def __init__(self, num_samples):
+        self.num_samples = num_samples
+        self.m_largest_samples = int(min(num_samples/5.0, 3*np.sqrt(num_samples)))
+        self.shape = []
+        self.loc = []
+        self.scale = []
+
+    def fit(self, log_ratios: np.ndarray):
+        if log_ratios.ndim == 1:
+            log_ratios = log_ratios[None, :]
+
+        for log_ratio_ex in log_ratios:
+            m_biggest = np.argsort(-log_ratio_ex)[:self.m_largest_samples]
+            m_best_log_ratios = log_ratio_ex[m_biggest]
+
+            res = genpareto.fit(m_best_log_ratios)
+            if len(res) == 2:
+                # self.loc, self.scale = res
+                pass
+            elif len(res) == 3:
+                # self.shape, self.loc, self.scale = res
+                self.shape.append(res[0])
+            else:
+                raise ValueError("Unknown data results")
