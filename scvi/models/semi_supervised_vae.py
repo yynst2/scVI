@@ -239,7 +239,7 @@ class SemiSupervisedVAE(nn.Module):
             loss = self.elbo(log_ratio, is_labelled, **vars)
         elif loss_type == "CUBO":
             loss = self.cubo(log_ratio, is_labelled, **vars)
-        elif loss_type == "KL":
+        elif loss_type == "REVKL":
             loss = self.forward_kl(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "IWELBO":
             loss = None
@@ -261,12 +261,18 @@ class SemiSupervisedVAE(nn.Module):
         return loss
 
     @staticmethod
-    def iwelbo(log_ratios, is_labelled, **kwargs):
+    def iwelbo(log_ratios, is_labelled, evaluate=False, **kwargs):
         if is_labelled:
             # (n_samples, n_batch)
             ws = torch.softmax(log_ratios, dim=0)
             loss = -(ws.detach() * log_ratios).sum(dim=0)
         else:
+            if evaluate:
+                q_c = kwargs["log_qc_z1"]
+                n_samples = log_ratios.shape[1]
+                res = q_c * (torch.logsumexp(log_ratios, dim=1) - np.log(n_samples))
+                res = res.mean(1)
+                return res.sum(0)
             # loss =
             raise NotImplementedError
         return loss
@@ -285,19 +291,28 @@ class SemiSupervisedVAE(nn.Module):
             importance_weights = torch.softmax(log_pz1z2x_c - log_z1z2_xc, dim=1)
             rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
             categorical_weights = kwargs["pc"].detach()
-            assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
-            categorical_weights = categorical_weights[:, 0]
+            print(categorical_weights.shape)
+            # assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
+            categorical_weights = categorical_weights.mean(1)
             rev_kl = (categorical_weights * rev_kl).sum(1)
             return rev_kl
 
     @staticmethod
-    def cubo(log_ratios, is_labelled, **kwargs):
+    def cubo(log_ratios, is_labelled, evaluate=False, **kwargs):
         if is_labelled:
+            assert not evaluate
             ws = torch.softmax(2 * log_ratios, dim=0)  # Corresponds to squaring
             cubo_loss = ws.detach() * (-1) * log_ratios
             return cubo_loss.mean(dim=0)
         else:
             # Prefer to deal this case separately to avoid mistakes
+            if evaluate:
+                w_sq = (2.*log_ratios).exp()
+                q_c = kwargs["log_qc_z1"]
+                res = q_c * w_sq
+                res = res.mean(1)
+                return res.sum(0)
+
             assert log_ratios.dim() == 3
             log_qc_z1 = kwargs["log_qc_z1"]
             log_ratios += 0.5 * log_qc_z1

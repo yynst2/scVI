@@ -232,12 +232,14 @@ class MnistTrainer:
                 filtered_res["CUBO"] = self.model.cubo(
                     log_ratios=log_ratios,
                     is_labelled=is_labelled,
+                    evaluate=True,
                     **res,
                 )
             if "IWELBO" in keys:
                 filtered_res["IWELBO"] = self.model.cubo(
                     log_ratios=log_ratios,
                     is_labelled=is_labelled,
+                    evaluate=True,
                     **res,
                 )
             if "log_ratios":
