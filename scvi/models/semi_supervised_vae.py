@@ -235,11 +235,14 @@ class SemiSupervisedVAE(nn.Module):
         everything_ok = log_ratio.ndim == 2 if is_labelled else log_ratio.ndim == 3
         assert everything_ok
 
-        # UNLABELLED CASE
         if loss_type == "ELBO":
             loss = self.elbo(log_ratio, is_labelled, **vars)
         elif loss_type == "CUBO":
             loss = self.cubo(log_ratio, is_labelled, **vars)
+        elif loss_type == "KL":
+            loss = self.forward_kl(log_ratio, is_labelled=is_labelled, **vars)
+        elif loss_type == "IWELBO":
+            loss = None
         else:
             raise ValueError("Mode {} not recognized".format(loss_type))
         if torch.isnan(loss).any() or not torch.isfinite(loss).any():

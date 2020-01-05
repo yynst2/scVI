@@ -53,7 +53,7 @@ class MnistTrainer:
         self,
         n_epochs,
         lr=1e-3,
-        overall_loss: bool = None,
+        overall_loss: str = None,
         wake_theta: str = "ELBO",
         wake_psi: str = "ELBO",
         n_samples: int = 1,
@@ -200,7 +200,7 @@ class MnistTrainer:
         return loss
 
     @torch.no_grad()
-    def inference(self, data_loader, keys=None, n_samples: int = 10, eval_mode=True):
+    def inference(self, data_loader, keys=None, n_samples: int = 10, eval_mode=True) -> dict:
         all_res = dict()
         if eval_mode:
             self.model = self.model.eval()
@@ -213,8 +213,41 @@ class MnistTrainer:
             res = self.model.inference(x, n_samples=n_samples)
             res["y"] = y
             if keys is not None:
-                res = {key: val for (key, val) in res.items() if key in keys}
-            all_res = dic_update(all_res, res)
+                filtered_res = {key: val for (key, val) in res.items() if key in keys}
+            else:
+                filtered_res = res
+
+            is_labelled = False
+            log_ratios = (
+                res["log_pz2"]
+                + res["log_pc"]
+                + res["log_pz1_z2"]
+                + res["log_px_z"]
+                - res["log_qz1_x"]
+                - res["log_qz2_z1"]
+                - res["log_qc_z1"]
+            )
+
+            if "CUBO" in keys:
+                filtered_res["CUBO"] = self.model.cubo(
+                    log_ratios=log_ratios,
+                    is_labelled=is_labelled,
+                    **res,
+                )
+            if "IWELBO" in keys:
+                filtered_res["IWELBO"] = self.model.cubo(
+                    log_ratios=log_ratios,
+                    is_labelled=is_labelled,
+                    **res,
+                )
+            if "log_ratios":
+                n_labels, n_samples, n_batch = log_ratios.shape
+                log_ratios = log_ratios.view(-1, n_batch)
+                samp = np.random.choice(n_labels*n_samples, size=n_samples)
+                log_ratios = log_ratios[samp, :]
+                filtered_res["log_ratios"] = log_ratios
+
+            all_res = dic_update(all_res, filtered_res)
         batch_size = data_loader.batch_size
         all_res = dic_concat(all_res, batch_size=batch_size)
         return all_res
