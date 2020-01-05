@@ -3,7 +3,7 @@ import logging
 
 from scvi.dataset import CortexDataset, MnistDataset
 from scvi.inference import MnistTrainer
-from scvi.models import VAE, SemiSupervisedVAE
+from scvi.models import VAE, SemiSupervisedVAE, PSIS
 from scvi.inference import UnsupervisedTrainer
 
 logging.basicConfig(level=logging.DEBUG)
@@ -97,27 +97,51 @@ def test_mnist():
     assert everything_ok
     ##
     n_input = 28 * 28
-    n_labels = 10
+    n_labels = 9
     dataset = MnistDataset(
         labelled_fraction=0.05,
         labelled_proportions=[0.1] * 10,
         root="/home/pierre/scVI/tests/mnist",
         download=True,
         do_1d=True,
-        test_size=0.
+        test_size=0.0,
     )
 
-    mdl = SemiSupervisedVAE(n_input=n_input, n_labels=n_labels, n_latent=50, n_hidden=500)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    mdl = SemiSupervisedVAE(
+        n_input=n_input, n_labels=n_labels, n_latent=50, n_hidden=500, prevent_saturation=False,
+    )
     mdl = mdl.cuda()
     trainer = MnistTrainer(dataset=dataset, model=mdl, use_cuda=True)
-    trainer.train(n_epochs=15, lr=1e-4, n_samples=1, overall_loss="ELBO")
+    # trainer.train(n_epochs=2, lr=1e-4, n_samples=1, overall_loss="ELBO")
+
+    trainer.train(
+        n_epochs=5,
+        lr=1e-4,
+        n_samples=5,
+        overall_loss=None,
+        wake_theta="ELBO",
+        wake_psi="CUBO",
+    )
+
+    trainer.train(
+        n_epochs=5,
+        lr=1e-4,
+        n_samples,
+        overall_loss=,
+        wake_theta=,
+        wake_psi=""
+    )
 
     trainer.inference(trainer.test_loader, n_samples=2)
 
-    dataset = MnistDataset(
-        labelled_fraction=0.1,
-        labelled_proportions=[0.2] * 5 + [0.0] * 5,
-        root="/home/pierre/scVI/tests/mnist",
-        download=True,
-        do_1d=True,
-    )
+
+def test_psis():
+    a = torch.rand(150,)
+
+    from scipy.stats import genpareto
+    genpareto.fit(data=a.numpy())
+
+    psis = PSIS(num_samples=150, lr=1e-3, n_iter=100)
+    psis.fit(a)

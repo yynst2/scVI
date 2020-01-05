@@ -270,6 +270,7 @@ class VAE(nn.Module):
         px_scale, px_r, px_rate, px_dropout = self.decoder(
             self.dispersion, z_post["latent"], library_post["latent"], batch_index, y
         )
+
         if self.dispersion == "gene-label":
             px_r = F.linear(
                 one_hot(y, self.n_labels), self.px_r
@@ -446,11 +447,11 @@ class VAE(nn.Module):
             loss = -log_ratio.mean(dim=0)
         elif loss_type == "KL":
             loss = self.forward_kl(
-                log_ratio=log_ratio, log_qz_x=op["log_qz_x"], log_ql_x=op["log_ql_x"]
+                log_ratio=log_ratio, sum_log_q=op["log_qz_x"]+op["log_ql_x"]
             )
         elif loss_type == "CUBO":
             loss = self.cubo(
-                log_ratio=log_ratio, log_qz_x=op["log_qz_x"], log_ql_x=op["log_ql_x"]
+                log_ratio=log_ratio
             )
         elif loss_type == "IWELBO":
             assert n_samples >= 2
@@ -465,7 +466,7 @@ class VAE(nn.Module):
         return -(torch.softmax(log_ratio, dim=0).detach() * log_ratio).sum(dim=0)
 
     @staticmethod
-    def cubo(log_ratio, log_qz_x, log_ql_x):
+    def cubo(log_ratio):
         """
         Algorithm 1 of
               nan,
@@ -476,13 +477,11 @@ class VAE(nn.Module):
         :return:
         """
         ws = torch.softmax(2 * log_ratio, dim=0)  # Corresponds to squaring
-        #  Minus sign because of denominator (numerator p\theta(x,y) cst wrt \phi
-
         cubo = ws.detach() * (-1) * log_ratio
         return cubo.sum(dim=0)
 
     @staticmethod
-    def forward_kl(log_ratio, log_qz_x, log_ql_x):
+    def forward_kl(log_ratio, sum_log_q):
         ws = torch.softmax(log_ratio, dim=0)
-        rev_kl = ws.detach() * (-1) * (log_qz_x + log_ql_x)
+        rev_kl = ws.detach() * (-1) * sum_log_q
         return rev_kl.sum(dim=0)
