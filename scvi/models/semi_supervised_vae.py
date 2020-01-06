@@ -316,7 +316,7 @@ class SemiSupervisedVAE(nn.Module):
                 q_c = kwargs["log_qc_z1"].exp()
                 n_samples_mc = log_ratios.shape[1]
                 res = q_c * (
-                    torch.logsumexp(2 * log_ratio, dim=1) - np.log(n_samples_mc)
+                    torch.logsumexp(2 * log_ratios, dim=1) - np.log(n_samples_mc)
                 )
                 res = res.mean(1)
                 return res.sum(0)
