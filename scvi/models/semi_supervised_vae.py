@@ -8,7 +8,12 @@ from torch.distributions import Normal, Categorical, kl_divergence as kl, Bernou
 
 from scvi.models.classifier import Classifier, GumbelClassifier
 from scvi.models.modules import Decoder, Encoder, EncoderIAF, BernoulliDecoder
-from scvi.models.regular_modules import EncoderA, DecoderA, ClassifierA, BernoulliDecoderA
+from scvi.models.regular_modules import (
+    EncoderA,
+    DecoderA,
+    ClassifierA,
+    BernoulliDecoderA,
+)
 from scvi.models.utils import broadcast_labels
 from scvi.models.vae import VAE
 
@@ -40,7 +45,10 @@ class SemiSupervisedVAE(nn.Module):
         self.n_labels = n_labels
         # Classifier takes n_latent as input
         self.classifier = ClassifierA(
-            n_latent, n_output=n_labels, do_batch_norm=do_batch_norm, dropout_rate=dropout_rate
+            n_latent,
+            n_output=n_labels,
+            do_batch_norm=do_batch_norm,
+            dropout_rate=dropout_rate,
         )
 
         self.encoder_z1 = EncoderA(
@@ -62,9 +70,7 @@ class SemiSupervisedVAE(nn.Module):
         )
 
         self.decoder_z1_z2 = DecoderA(
-            n_input=n_latent + n_labels,
-            n_output=n_latent,
-            n_hidden=n_hidden,
+            n_input=n_latent + n_labels, n_output=n_latent, n_hidden=n_hidden,
         )
 
         self.x_decoder = BernoulliDecoderA(
@@ -268,7 +274,7 @@ class SemiSupervisedVAE(nn.Module):
             loss = -(ws.detach() * log_ratios).sum(dim=0)
         else:
             if evaluate:
-                q_c = kwargs["log_qc_z1"]
+                q_c = kwargs["log_qc_z1"].exp()
                 n_samples = log_ratios.shape[1]
                 res = q_c * (torch.logsumexp(log_ratios, dim=1) - np.log(n_samples))
                 res = res.mean(1)
@@ -279,7 +285,7 @@ class SemiSupervisedVAE(nn.Module):
 
     @staticmethod
     def forward_kl(log_ratios, is_labelled, **kwargs):
-        #TODO Triple check
+        # TODO Triple check
         if is_labelled:
             ws = torch.softmax(log_ratios, dim=0)
             rev_kl = ws.detach() * (-1) * kwargs["sum_log_q"]
@@ -307,8 +313,8 @@ class SemiSupervisedVAE(nn.Module):
         else:
             # Prefer to deal this case separately to avoid mistakes
             if evaluate:
-                w_sq = (2.*log_ratios).exp()
-                q_c = kwargs["log_qc_z1"]
+                w_sq = (2.0 * log_ratios).exp()
+                q_c = kwargs["log_qc_z1"].exp()
                 res = q_c * w_sq
                 res = res.mean(1)
                 return res.sum(0)
