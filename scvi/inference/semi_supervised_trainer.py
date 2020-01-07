@@ -46,7 +46,11 @@ class MnistTrainer:
 
         self.iterate = 0
         self.metrics = dict(
-            train_theta_wake=[], train_phi_wake=[], train_phi_sleep=[], train_loss=[], classification_loss=[],
+            train_theta_wake=[],
+            train_phi_wake=[],
+            train_phi_sleep=[],
+            train_loss=[],
+            classification_loss=[],
         )
 
     def train(
@@ -70,8 +74,7 @@ class MnistTrainer:
             n_samples_phi = n_samples
         logger.info(
             "Using {n_samples_theta} and {n_samples_phi} samples for theta wake / phi wake".format(
-                n_samples_theta=n_samples_theta,
-                n_samples_phi=n_samples_phi,
+                n_samples_theta=n_samples_theta, n_samples_phi=n_samples_phi,
             )
         )
 
@@ -200,7 +203,9 @@ class MnistTrainer:
         return loss
 
     @torch.no_grad()
-    def inference(self, data_loader, keys=None, n_samples: int = 10, eval_mode=True) -> dict:
+    def inference(
+        self, data_loader, keys=None, n_samples: int = 10, eval_mode=True
+    ) -> dict:
         all_res = dict()
         if eval_mode:
             self.model = self.model.eval()
@@ -236,7 +241,7 @@ class MnistTrainer:
                     **res,
                 )
             if "IWELBO" in keys:
-                filtered_res["IWELBO"] = self.model.cubo(
+                filtered_res["IWELBO"] = self.model.iwelbo(
                     log_ratios=log_ratios,
                     is_labelled=is_labelled,
                     evaluate=True,
@@ -245,7 +250,7 @@ class MnistTrainer:
             if "log_ratios":
                 n_labels, n_samples, n_batch = log_ratios.shape
                 log_ratios = log_ratios.view(-1, n_batch)
-                samp = np.random.choice(n_labels*n_samples, size=n_samples)
+                samp = np.random.choice(n_labels * n_samples, size=n_samples)
                 log_ratios = log_ratios[samp, :]
                 filtered_res["log_ratios"] = log_ratios
 

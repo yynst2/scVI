@@ -276,7 +276,9 @@ class SemiSupervisedVAE(nn.Module):
             if evaluate:
                 q_c = kwargs["log_qc_z1"].exp()
                 n_samples = log_ratios.shape[1]
-                res = q_c * (torch.logsumexp(log_ratios, dim=1) - np.log(n_samples))
+                res = q_c * (
+                    torch.logsumexp(log_ratios, dim=1, keepdim=True) - np.log(n_samples)
+                )
                 res = res.mean(1)
                 return res.sum(0)
             # loss =
@@ -316,7 +318,8 @@ class SemiSupervisedVAE(nn.Module):
                 q_c = kwargs["log_qc_z1"].exp()
                 n_samples_mc = log_ratios.shape[1]
                 res = q_c * (
-                    torch.logsumexp(2 * log_ratios, dim=1) - np.log(n_samples_mc)
+                    torch.logsumexp(2 * log_ratios, dim=1, keepdim=True)
+                    - np.log(n_samples_mc)
                 )
                 res = res.mean(1)
                 return res.sum(0)
