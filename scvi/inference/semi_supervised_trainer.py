@@ -51,6 +51,7 @@ class MnistTrainer:
             train_phi_sleep=[],
             train_loss=[],
             classification_loss=[],
+            train_cubo=[],
         )
 
     def train(
@@ -200,6 +201,12 @@ class MnistTrainer:
 
         if self.iterate % 100 == 0:
             self.metrics["classification_loss"].append(l_class.item())
+
+            other_metrics = self.inference(
+                self.train_loader, keys=["CUBO"], n_samples=10
+            )
+            self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
+
         return loss
 
     @torch.no_grad()
