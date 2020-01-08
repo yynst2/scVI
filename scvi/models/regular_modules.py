@@ -149,6 +149,8 @@ class DecoderA(nn.Module):
         self.mean_decoder = nn.Linear(n_hidden, n_output)
         self.var_decoder = nn.Linear(n_hidden, n_output)
 
+        self.tanh = nn.Tanh()
+
     def forward(self, x: torch.Tensor, *cat_list: int):
         r"""The forward computation for a single sample.
 
@@ -165,7 +167,8 @@ class DecoderA(nn.Module):
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
-        return p_m, 1e-16 + p_v.exp()
+        p_v = 16. * self.tanh(p_v)
+        return p_m, p_v.exp()
 
 
 class ClassifierA(nn.Module):

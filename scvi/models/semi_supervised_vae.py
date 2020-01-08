@@ -275,13 +275,15 @@ class SemiSupervisedVAE(nn.Module):
             loss = -(ws.detach() * log_ratios).sum(dim=0)
         else:
             if evaluate:
-                q_c = kwargs["log_qc_z1"].exp()
-                n_samples = log_ratios.shape[1]
-                res = q_c * (
-                    torch.logsumexp(log_ratios, dim=1, keepdim=True) - np.log(n_samples)
+                log_q_c = kwargs["log_qc_z1"]
+                n_cat, n_samples, n_batch = log_ratios.shape
+                res = torch.logsumexp(
+                    (log_ratios + log_q_c).view(n_cat * n_samples, n_batch),
+                    dim=0,
+                    keepdim=False,
                 )
-                res = res.mean(1)
-                return res.sum(0)
+                res = res - np.log(n_samples)
+                return res
             # loss =
             raise NotImplementedError
         return loss
