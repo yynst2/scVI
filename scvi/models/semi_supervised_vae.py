@@ -242,9 +242,9 @@ class SemiSupervisedVAE(nn.Module):
         assert everything_ok
 
         if loss_type == "ELBO":
-            loss = self.elbo(log_ratio, is_labelled, **vars)
+            loss = self.elbo(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "CUBO":
-            loss = self.cubo(log_ratio, is_labelled, **vars)
+            loss = self.cubo(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "REVKL":
             loss = self.forward_kl(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "IWELBO":
@@ -290,6 +290,11 @@ class SemiSupervisedVAE(nn.Module):
 
     @staticmethod
     def forward_kl(log_ratios, is_labelled, **kwargs):
+        """ 
+        IMPORTANT: Assumes non reparameterized latent samples
+        # TODO: Reparameterized version?
+        """
+
         # TODO Triple check
         if is_labelled:
             ws = torch.softmax(log_ratios, dim=0)
@@ -298,15 +303,22 @@ class SemiSupervisedVAE(nn.Module):
             return rev_kl.sum(dim=0)
         else:
             log_pz1z2x_c = kwargs["log_pz1_z2"] + kwargs["log_pz2"] + kwargs["log_px_z"]
-            log_z1z2_xc = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
+            log_qz1z2_xc = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
+            log_q = log_qz1z2_xc + kwargs["log_qc_z1"]
             # Shape (n_cat, n_is, n_batch)
-            importance_weights = torch.softmax(log_pz1z2x_c - log_z1z2_xc, dim=1)
-            rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
+            importance_weights = torch.softmax(log_pz1z2x_c - log_qz1z2_xc, dim=1)
+
+            # Reparameterized version
+            # rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
+            # Reinforce version
+            rev_kl = (-1.) * importance_weights.detach() * log_q
+            rev_kl = rev_kl.sum(dim=1)
+
             categorical_weights = kwargs["pc"].detach()
-            # print(categorical_weights.shape)
+            # print(categorical_weights.shape) ==> 3d
             # assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
             categorical_weights = categorical_weights.mean(1)
-            rev_kl = -1. * (categorical_weights * rev_kl).sum(1)
+            rev_kl = (categorical_weights * rev_kl).sum(0)
             return rev_kl
 
     @staticmethod
