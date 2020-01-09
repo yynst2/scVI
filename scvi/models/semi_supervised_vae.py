@@ -293,7 +293,8 @@ class SemiSupervisedVAE(nn.Module):
         # TODO Triple check
         if is_labelled:
             ws = torch.softmax(log_ratios, dim=0)
-            rev_kl = ws.detach() * (-1) * kwargs["sum_log_q"]
+            sum_log_q = kwargs["log_qz1_x"] - kwargs["log_qz2_z1"]
+            rev_kl = ws.detach() * (-1) * sum_log_q
             return rev_kl.sum(dim=0)
         else:
             log_pz1z2x_c = kwargs["log_pz1_z2"] + kwargs["log_pz2"] + kwargs["log_px_z"]
@@ -305,7 +306,7 @@ class SemiSupervisedVAE(nn.Module):
             print(categorical_weights.shape)
             # assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
             categorical_weights = categorical_weights.mean(1)
-            rev_kl = (categorical_weights * rev_kl).sum(1)
+            rev_kl = -1. * (categorical_weights * rev_kl).sum(1)
             return rev_kl
 
     @staticmethod

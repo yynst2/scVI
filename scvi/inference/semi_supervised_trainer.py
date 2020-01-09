@@ -66,6 +66,7 @@ class MnistTrainer:
         n_samples_theta: int = None,
         classification_ratio: float = 50.0,
         update_mode: str = "all",
+        reparam: bool = True,
     ):
         assert update_mode in ["all", "alternate"]
         assert (n_samples_phi is None) == (n_samples_theta is None)
@@ -115,7 +116,7 @@ class MnistTrainer:
                         tensor_superv,
                         loss_type=overall_loss,
                         n_samples=n_samples,
-                        reparam=True,
+                        reparam=reparam,
                         classification_ratio=classification_ratio,
                         mode=update_mode,
                     )
@@ -132,7 +133,7 @@ class MnistTrainer:
                         tensor_superv,
                         loss_type=wake_theta,
                         n_samples=n_samples_theta,
-                        reparam=True,
+                        reparam=reparam,
                         classification_ratio=classification_ratio,
                     )
                     optim_gen.zero_grad()
@@ -147,7 +148,7 @@ class MnistTrainer:
                         tensor_superv,
                         loss_type=wake_psi,
                         n_samples=n_samples_phi,
-                        reparam=True,
+                        reparam=reparam,
                         classification_ratio=classification_ratio,
                     )
                     optim_var_wake.zero_grad()
