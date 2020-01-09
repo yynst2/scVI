@@ -303,7 +303,7 @@ class SemiSupervisedVAE(nn.Module):
             importance_weights = torch.softmax(log_pz1z2x_c - log_z1z2_xc, dim=1)
             rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
             categorical_weights = kwargs["pc"].detach()
-            print(categorical_weights.shape)
+            # print(categorical_weights.shape)
             # assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
             categorical_weights = categorical_weights.mean(1)
             rev_kl = -1. * (categorical_weights * rev_kl).sum(1)
