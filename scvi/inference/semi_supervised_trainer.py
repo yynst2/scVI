@@ -254,7 +254,7 @@ class MnistTrainer:
                     evaluate=True,
                     **res,
                 )
-            if "log_ratios":
+            if "log_ratios" in keys:
                 n_labels, n_samples, n_batch = log_ratios.shape
                 log_ratios = log_ratios.view(-1, n_batch)
                 samp = np.random.choice(n_labels * n_samples, size=n_samples)

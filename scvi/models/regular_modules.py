@@ -66,12 +66,15 @@ class EncoderA(nn.Module):
         )
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.var_encoder = nn.Linear(n_hidden, n_output)
+        self.tanh = nn.Tanh()
 
     def forward(self, x, n_samples, squeeze=True, reparam=True):
         q = self.encoder(x)
         q_m = self.mean_encoder(q)
         q_v = self.var_encoder(q)
-        q_v = 1e-16 + q_v.exp()
+        q_v = 16.0 * self.tanh(q_v)
+        q_v = q_v.exp()
+        # q_v = 1e-16 + q_v.exp()
 
         variational_dist = Normal(loc=q_m, scale=q_v.sqrt())
 
