@@ -1,7 +1,7 @@
 from .brain_large import BrainLargeDataset
 from .cortex import CortexDataset
 from .dataset import GeneExpressionDataset
-from .synthetic import SyntheticDataset, SyntheticRandomDataset
+from .synthetic import SyntheticDataset, SyntheticRandomDataset, SignedGamma
 from .cite_seq import CiteSeqDataset, CbmcDataset
 from .pbmc import PbmcDataset, PurifiedPBMCDataset
 from .hemato import HematoDataset
@@ -38,5 +38,6 @@ __all__ = ['SyntheticDataset',
            'MouseOBDataset',
            'PurifiedPBMCDataset',
            'MnistDataset',
+           'SignedGamma',
 ]
 

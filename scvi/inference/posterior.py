@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SequentialSampler, SubsetRandomSampler, RandomSampler
 
 from scvi.models.log_likelihood import compute_log_likelihood, compute_marginal_log_likelihood
+from scvi.inference.semi_supervised_trainer import dic_update, dic_concat
 
 
 class SequentialSubsetSampler(SubsetRandomSampler):
@@ -109,6 +110,32 @@ class Posterior:
         posterior.data_loader_kwargs.update(data_loader_kwargs)
         posterior.data_loader = DataLoader(self.gene_dataset, **posterior.data_loader_kwargs)
         return posterior
+
+    @torch.no_grad()
+    def getter(self, keys=None, n_samples=10, batch_size=128):
+        all_res = dict()
+        for tensors in self:
+            sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
+            res = self.model.inference(
+                sample_batch,
+                local_l_mean=local_l_mean,
+                local_l_var=local_l_var,
+                batch_index=batch_index,
+                n_samples=n_samples,
+            )
+            res["label"] = label
+            if keys is not None:
+                filtered_res = {key: val for (key, val) in res.items() if key in keys}
+            else:
+                filtered_res = res
+
+            if "CUBO" in keys:
+                pass
+            if "IWELBO" in keys:
+                pass
+            all_res = dic_update(all_res, filtered_res)
+        all_res = dic_concat(all_res, batch_size=batch_size)
+        return all_res
 
     def sequential(self, batch_size=128):
         return self.update({'batch_size': batch_size, 'sampler': SequentialSubsetSampler(indices=self.indices)})

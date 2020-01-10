@@ -457,7 +457,7 @@ class VAE(nn.Module):
             assert n_samples >= 2
             loss = self.iwelbo(log_ratio)
         else:
-            raise ValueError("loss {} not recognized".format(loss_type))
+            return {"log_ratio": log_ratio, **op, **variables}
 
         return loss
 
