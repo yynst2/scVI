@@ -212,7 +212,7 @@ class MnistTrainer:
 
     @torch.no_grad()
     def inference(
-        self, data_loader, keys=None, n_samples: int = 10, eval_mode=True
+        self, data_loader, do_supervised=False, keys=None, n_samples: int = 10, eval_mode=True
     ) -> dict:
         all_res = dict()
         if eval_mode:
@@ -223,7 +223,10 @@ class MnistTrainer:
             x, y = tensor_all
             x = x.to("cuda")
             y = y.to("cuda")
-            res = self.model.inference(x, n_samples=n_samples)
+            if not do_supervised:
+                res = self.model.inference(x, n_samples=n_samples)
+            else:
+                res = self.model.inference(x, y=y, n_samples=n_samples)
             res["y"] = y
             if keys is not None:
                 filtered_res = {key: val for (key, val) in res.items() if key in keys}
@@ -256,10 +259,10 @@ class MnistTrainer:
                     **res,
                 )
             if "log_ratios" in keys:
-                n_labels, n_samples, n_batch = log_ratios.shape
-                log_ratios = log_ratios.view(-1, n_batch)
-                samp = np.random.choice(n_labels * n_samples, size=n_samples)
-                log_ratios = log_ratios[samp, :]
+                # n_labels, n_samples, n_batch = log_ratios.shape
+                # log_ratios = log_ratios.view(-1, n_batch)
+                # samp = np.random.choice(n_labels * n_samples, size=n_samples)
+                # log_ratios = log_ratios[samp, :]
                 filtered_res["log_ratios"] = log_ratios
 
             all_res = dic_update(all_res, filtered_res)
