@@ -116,12 +116,13 @@ class Posterior:
         all_res = dict()
         for tensors in self:
             sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-            res = self.model.inference(
+            res = self.model(
                 sample_batch,
                 local_l_mean=local_l_mean,
                 local_l_var=local_l_var,
                 batch_index=batch_index,
                 n_samples=n_samples,
+                loss_type=None,
             )
             res["label"] = label
             if keys is not None:
