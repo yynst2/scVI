@@ -79,7 +79,7 @@ class UnsupervisedTrainer(Trainer):
         self.model.eval()
         self.training_time += (time.time() - begin) - self.compute_metrics_time
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_theta="ELBO", wake_psi="ELBO", n_samples=1):
+    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_theta="ELBO", wake_psi="ELBO", n_samples=1, reparam=True):
         begin = time.time()
         self.model.train()
 
@@ -121,9 +121,6 @@ class UnsupervisedTrainer(Trainer):
                     optimizer_gen.step()
 
                     # wake phi update
-                    reparam = True
-                    if wake_psi == "KL":
-                        reparam = False
                     loss = self.model(
                         sample_batch,
                         local_l_mean,

@@ -2,6 +2,7 @@
 """Main module."""
 
 import logging
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -445,7 +446,7 @@ class VAE(nn.Module):
 
         if loss_type == "ELBO":
             loss = -log_ratio.mean(dim=0)
-        elif loss_type == "KL":
+        elif loss_type == "REVKL":
             loss = self.forward_kl(
                 log_ratio=log_ratio, sum_log_q=op["log_qz_x"]+op["log_ql_x"]
             )
@@ -457,7 +458,17 @@ class VAE(nn.Module):
             assert n_samples >= 2
             loss = self.iwelbo(log_ratio)
         else:
-            return {"log_ratio": log_ratio, **op, **variables}
+            cubo_loss = torch.logsumexp(2 * log_ratio, dim=0) - np.log(n_samples)
+            cubo_loss = 0.5 * cubo_loss
+        
+            iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples)
+            return {
+                "log_ratio": log_ratio,
+                "CUBO": cubo_loss,
+                "IWELBO": iwelbo_loss,
+                **op, 
+                **variables
+            }
 
         return loss
 

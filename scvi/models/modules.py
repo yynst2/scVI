@@ -182,6 +182,7 @@ class Encoder(nn.Module):
             q_m = 14.0 * nn.Tanh()(q_m)
             q_v = 5.0 * nn.Sigmoid()(q_v)
         else:
+            q_v = torch.clamp(q_v, min=-18., max=14.)
             q_v = 1e-16 + torch.exp(
                 self.var_encoder(q)
             )  # (computational stability safeguard)torch.clamp(, -5, 5)
