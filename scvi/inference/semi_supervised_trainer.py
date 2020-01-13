@@ -145,15 +145,19 @@ class MnistTrainer:
                     # Wake phi
                     if wake_psi == "REVKL+CUBO":
                         if epoch <= int(n_epochs / 3):
+                            reparam_epoch = False
                             wake_psi_epoch = "REVKL"
                         else:
+                            reparam_epoch = True
                             wake_psi_epoch = "CUBO"
                     elif wake_psi == "ELBO+CUBO":
+                        reparam_epoch = True
                         if epoch <= int(n_epochs / 3):
                             wake_psi_epoch = "ELBO"
                         else:
                             wake_psi_epoch = "CUBO"
                     else:
+                        reparam_epoch = reparam_wphi
                         wake_psi_epoch = wake_psi
 
                     psi_loss = self.loss(
@@ -161,7 +165,7 @@ class MnistTrainer:
                         tensor_superv,
                         loss_type=wake_psi_epoch,
                         n_samples=n_samples_phi,
-                        reparam=reparam_wphi,
+                        reparam=reparam_epoch,
                         classification_ratio=classification_ratio,
                     )
                     optim_var_wake.zero_grad()
