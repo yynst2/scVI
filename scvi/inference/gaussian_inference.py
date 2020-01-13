@@ -74,9 +74,17 @@ class GaussianTrainer(Trainer):
 
                 if params_wvar is not None:
                     # WAKE PHASE for variational model
+                    if loss_wvar == "REVKL+CUBO":
+                        if self. epoch <= int(n_epochs / 3):
+                            loss_wvar_epoch = "REVKL"
+                        else:
+                            loss_wvar_epoch = "CUBO"
+                    else:
+                        loss_wvar_epoch = loss_wvar
+
                     for tensors_list in self.data_loaders_loop():
                         data_tensor = torch.stack(*tensors_list, 0)
-                        loss = torch.mean(self.model(data_tensor, loss_wvar))
+                        loss = torch.mean(self.model(data_tensor, loss_wvar_epoch))
                         optimizers[1].zero_grad()
                         loss.backward()
                         optimizers[1].step()

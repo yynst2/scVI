@@ -121,14 +121,26 @@ class UnsupervisedTrainer(Trainer):
                     optimizer_gen.step()
 
                     # wake phi update
+                    # Wake phi
+                    if wake_psi == "REVKL+CUBO":
+                        if self.epoch <= int(n_epochs / 3):
+                            wake_psi_epoch = "REVKL"
+                            reparam_epoch = False
+                        else:
+                            wake_psi_epoch = "CUBO"
+                            reparam_epoch = True
+                    else:
+                        wake_psi_epoch = wake_psi
+                        reparam_epoch = reparam
+
                     loss = self.model(
                         sample_batch,
                         local_l_mean,
                         local_l_var,
                         batch_index,
-                        loss_type=wake_psi,
+                        loss_type=wake_psi_epoch,
                         n_samples=n_samples,
-                        reparam=reparam,
+                        reparam=reparam_epoch,
                     )
                     loss = torch.mean(loss)
                     optimizer_var_wake.zero_grad()

@@ -143,10 +143,18 @@ class MnistTrainer:
                         self.metrics["train_theta_wake"].append(theta_loss.item())
 
                     # Wake phi
+                    if wake_psi == "REVKL+CUBO":
+                        if epoch <= int(n_epochs / 3):
+                            wake_psi_epoch = "REVKL"
+                        else:
+                            wake_psi_epoch = "CUBO"
+                    else:
+                        wake_psi_epoch = wake_psi
+
                     psi_loss = self.loss(
                         tensor_all,
                         tensor_superv,
-                        loss_type=wake_psi,
+                        loss_type=wake_psi_epoch,
                         n_samples=n_samples_phi,
                         reparam=reparam_wphi,
                         classification_ratio=classification_ratio,
