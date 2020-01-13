@@ -79,6 +79,11 @@ class GaussianTrainer(Trainer):
                             loss_wvar_epoch = "REVKL"
                         else:
                             loss_wvar_epoch = "CUBO"
+                    elif loss_wvar == "ELBO+CUBO":
+                        if self.epoch <= int(n_epochs / 3):
+                            loss_wvar_epoch = "ELBO"
+                        else:
+                            loss_wvar_epoch = "CUBO"
                     else:
                         loss_wvar_epoch = loss_wvar
 

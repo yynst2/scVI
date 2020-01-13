@@ -7,7 +7,7 @@ from tqdm import trange
 import sys
 from . import Trainer
 
-plt.switch_backend('agg')
+plt.switch_backend("agg")
 
 
 class UnsupervisedTrainer(Trainer):
@@ -28,15 +28,19 @@ class UnsupervisedTrainer(Trainer):
         >>> infer = VariationalInference(gene_dataset, vae, train_size=0.5)
         >>> infer.train(n_epochs=20, lr=1e-3)
     """
-    default_metrics_to_monitor = ['ll']
+    default_metrics_to_monitor = ["ll"]
 
-    def __init__(self, model, gene_dataset, train_size=0.8, test_size=None, kl=None, **kwargs):
+    def __init__(
+        self, model, gene_dataset, train_size=0.8, test_size=None, kl=None, **kwargs
+    ):
         super().__init__(model, gene_dataset, **kwargs)
         self.kl = kl
         if type(self) is UnsupervisedTrainer:
-            self.train_set, self.test_set = self.train_test(model, gene_dataset, train_size, test_size)
-            self.train_set.to_monitor = ['ll']
-            self.test_set.to_monitor = ['ll']
+            self.train_set, self.test_set = self.train_test(
+                model, gene_dataset, train_size, test_size
+            )
+            self.train_set.to_monitor = ["ll"]
+            self.test_set.to_monitor = ["ll"]
 
     def train_aevb(self, n_epochs=20, lr=1e-3, eps=0.01, params=None):
         begin = time.time()
@@ -45,23 +49,27 @@ class UnsupervisedTrainer(Trainer):
         if params is None:
             params = filter(lambda p: p.requires_grad, self.model.parameters())
 
-        optimizer = self.optimizer = torch.optim.Adam(
-            params,
-            lr=lr,
-            eps=eps,
-        )
+        optimizer = self.optimizer = torch.optim.Adam(params, lr=lr, eps=eps,)
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
         self.compute_metrics()
 
-        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+        with trange(
+            n_epochs, desc="training", file=sys.stdout, disable=self.verbose
+        ) as pbar:
             for self.epoch in pbar:
                 self.on_epoch_begin()
                 pbar.update(1)
 
                 for tensors_list in self.data_loaders_loop():
-                    sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors_list[0]
+                    (
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        _,
+                    ) = tensors_list[0]
                     elbo = self.model(
                         sample_batch,
                         local_l_mean,
@@ -79,15 +87,29 @@ class UnsupervisedTrainer(Trainer):
         self.model.eval()
         self.training_time += (time.time() - begin) - self.compute_metrics_time
 
-    def train(self, n_epochs=20, lr=1e-3, eps=0.01, wake_theta="ELBO", wake_psi="ELBO", n_samples=1, reparam=True):
+    def train(
+        self,
+        n_epochs=20,
+        lr=1e-3,
+        eps=0.01,
+        wake_theta="ELBO",
+        wake_psi="ELBO",
+        n_samples=1,
+        reparam=True,
+    ):
         begin = time.time()
         self.model.train()
 
-        params_gen = list(filter(lambda p: p.requires_grad, self.model.decoder.parameters())) + [self.model.px_r]
+        params_gen = list(
+            filter(lambda p: p.requires_grad, self.model.decoder.parameters())
+        ) + [self.model.px_r]
         optimizer_gen = torch.optim.Adam(params_gen, lr=lr, eps=eps)
 
-        params_var = filter(lambda p: p.requires_grad, list(self.model.l_encoder.parameters())
-                            + list(self.model.z_encoder.parameters()))
+        params_var = filter(
+            lambda p: p.requires_grad,
+            list(self.model.l_encoder.parameters())
+            + list(self.model.z_encoder.parameters()),
+        )
         optimizer_var_wake = torch.optim.Adam(params_var, lr=lr, eps=eps)
         # optimizer_var_sleep = torch.optim.Adam(params_var, lr=lr, eps=eps)
 
@@ -95,7 +117,9 @@ class UnsupervisedTrainer(Trainer):
         self.n_epochs = n_epochs
         self.compute_metrics()
 
-        with trange(n_epochs, desc="training", file=sys.stdout, disable=self.verbose) as pbar:
+        with trange(
+            n_epochs, desc="training", file=sys.stdout, disable=self.verbose
+        ) as pbar:
             # We have to use tqdm this way so it works in Jupyter notebook.
             # See https://stackoverflow.com/questions/42212810/tqdm-in-jupyter-notebook
             for self.epoch in pbar:
@@ -104,7 +128,13 @@ class UnsupervisedTrainer(Trainer):
 
                 # for all minibatches, update phi and psi alternately
                 for tensors_list in self.data_loaders_loop():
-                    sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors_list[0]
+                    (
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        _,
+                    ) = tensors_list[0]
 
                     # wake theta update
                     elbo = self.model(
@@ -129,6 +159,11 @@ class UnsupervisedTrainer(Trainer):
                         else:
                             wake_psi_epoch = "CUBO"
                             reparam_epoch = True
+                    elif wake_psi == "ELBO+CUBO":
+                        if self.epoch <= int(n_epochs / 3):
+                            wake_psi_epoch = "ELBO"
+                        else:
+                            wake_psi_epoch = "CUBO"
                     else:
                         wake_psi_epoch = wake_psi
                         reparam_epoch = reparam
@@ -165,25 +200,30 @@ class UnsupervisedTrainer(Trainer):
         self.model.eval()
         self.training_time += (time.time() - begin) - self.compute_metrics_time
         if self.verbose and self.frequency:
-            print("\nTraining time:  %i s. / %i epochs" % (int(self.training_time), self.n_epochs))
+            print(
+                "\nTraining time:  %i s. / %i epochs"
+                % (int(self.training_time), self.n_epochs)
+            )
 
     @property
     def posteriors_loop(self):
-        return ['train_set']
+        return ["train_set"]
 
 
 class AdapterTrainer(UnsupervisedTrainer):
     def __init__(self, model, gene_dataset, posterior_test, frequency=5):
         super().__init__(model, gene_dataset, frequency=frequency)
         self.test_set = posterior_test
-        self.test_set.to_monitor = ['ll']
-        self.params = list(self.model.z_encoder.parameters()) + list(self.model.l_encoder.parameters())
+        self.test_set.to_monitor = ["ll"]
+        self.params = list(self.model.z_encoder.parameters()) + list(
+            self.model.l_encoder.parameters()
+        )
         self.z_encoder_state = copy.deepcopy(model.z_encoder.state_dict())
         self.l_encoder_state = copy.deepcopy(model.l_encoder.state_dict())
 
     @property
     def posteriors_loop(self):
-        return ['test_set']
+        return ["test_set"]
 
     def train(self, n_path=10, n_epochs=50, **kwargs):
         for i in range(n_path):
