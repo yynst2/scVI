@@ -460,8 +460,7 @@ class VAE(nn.Module):
         else:
             cubo_loss = torch.logsumexp(2 * log_ratio, dim=0) - np.log(n_samples)
             cubo_loss = 0.5 * cubo_loss
-        
-            iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples)
+            iwelbo_loss = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples)
             return {
                 "log_ratio": log_ratio,
                 "CUBO": cubo_loss,
