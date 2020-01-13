@@ -298,7 +298,7 @@ class SemiSupervisedVAE(nn.Module):
         # TODO Triple check
         if is_labelled:
             ws = torch.softmax(log_ratios, dim=0)
-            sum_log_q = kwargs["log_qz1_x"] - kwargs["log_qz2_z1"]
+            sum_log_q = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
             rev_kl = ws.detach() * (-1) * sum_log_q
             return rev_kl.sum(dim=0)
         else:
