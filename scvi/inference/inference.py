@@ -95,6 +95,7 @@ class UnsupervisedTrainer(Trainer):
         wake_theta="ELBO",
         wake_psi="ELBO",
         n_samples=1,
+        n_warmup=5,
         reparam=True,
     ):
         begin = time.time()
@@ -153,7 +154,7 @@ class UnsupervisedTrainer(Trainer):
                     # wake phi update
                     # Wake phi
                     if wake_psi == "REVKL+CUBO":
-                        if self.epoch <= int(n_epochs / 3):
+                        if self.epoch <= n_warmup:
                             wake_psi_epoch = "REVKL"
                             reparam_epoch = False
                         else:
@@ -161,12 +162,12 @@ class UnsupervisedTrainer(Trainer):
                             reparam_epoch = True
                     elif wake_psi == "ELBO+CUBO":
                         reparam_epoch = True
-                        if self.epoch <= int(n_epochs / 3):
+                        if self.epoch <= n_warmup:
                             wake_psi_epoch = "ELBO"
                         else:
                             wake_psi_epoch = "CUBO"
                     elif wake_psi == "ELBO+REVKL":
-                        if self.epoch <= int(n_epochs / 3):
+                        if self.epoch <= n_warmup:
                             wake_psi_epoch = "ELBO"
                             reparam_epoch = True
                         else:
