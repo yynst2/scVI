@@ -165,6 +165,14 @@ class UnsupervisedTrainer(Trainer):
                             wake_psi_epoch = "ELBO"
                         else:
                             wake_psi_epoch = "CUBO"
+                    elif wake_psi == "ELBO+REVKL":
+                        if self.epoch <= int(n_epochs / 3):
+                            wake_psi_epoch = "ELBO"
+                            reparam_epoch = True
+                        else:
+                            wake_psi_epoch = "REVKL"
+                            reparam_epoch = False
+
                     else:
                         wake_psi_epoch = wake_psi
                         reparam_epoch = reparam
