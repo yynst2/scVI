@@ -160,7 +160,9 @@ class Encoder(nn.Module):
             latent = Normal(mu, var.sqrt()).sample()
         return latent
 
-    def forward(self, x: torch.Tensor, *cat_list: int, n_samples=1, reparam=True, squeeze=True):
+    def forward(
+        self, x: torch.Tensor, *cat_list: int, n_samples=1, reparam=True, squeeze=True
+    ):
         r"""The forward computation for a single sample.
 
          #. Encodes the data into latent space using the encoder network
@@ -179,10 +181,12 @@ class Encoder(nn.Module):
         q_v = 1e-16 + self.var_encoder(q)
 
         if self.prevent_saturation:
-            q_m = 14.0 * nn.Tanh()(q_m)
-            q_v = 5.0 * nn.Sigmoid()(q_v)
+            q_m = 12.0 * nn.Tanh()(q_m)
+            q_v = 3.0 * nn.Sigmoid()(q_v)
+            # q_m = torch.clamp(q_m, min=,)
+            # q_v = torch.clamp(q_v, min=,)
         else:
-            q_v = torch.clamp(q_v, min=-18., max=14.)
+            q_v = torch.clamp(q_v, min=-18.0, max=14.0)
             q_v = 1e-16 + torch.exp(
                 self.var_encoder(q)
             )  # (computational stability safeguard)torch.clamp(, -5, 5)
@@ -414,7 +418,7 @@ class EncoderH(nn.Module):
         z = self.encoder(x, *cat_list)
         mu = self.mu(z)
         sigma = self.sigma(z)
-        sigma = torch.clamp(sigma, min=-50.)
+        sigma = torch.clamp(sigma, min=-50.0)
         if self.do_sigmoid:
             sigma = self.activation(sigma)
         else:
@@ -527,9 +531,7 @@ class EncoderIAF(nn.Module):
         # z shape (n_samples, n_batch, n_latent)
         if (z.dim() == 3) & (h.dim() == 2):
             n_batches, n_hdim = h.shape
-            h_it = h.reshape(1, n_batches, n_hdim).expand(
-                n_samples, n_batches, n_hdim
-            )
+            h_it = h.reshape(1, n_batches, n_hdim).expand(n_samples, n_batches, n_hdim)
         else:
             h_it = h
 

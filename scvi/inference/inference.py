@@ -35,6 +35,8 @@ class UnsupervisedTrainer(Trainer):
     ):
         super().__init__(model, gene_dataset, **kwargs)
         self.kl = kl
+        self.iter = 0
+        self.metrics = dict(wtheta=[], wphi=[])
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(
                 model, gene_dataset, train_size, test_size
@@ -151,6 +153,9 @@ class UnsupervisedTrainer(Trainer):
                     loss.backward()
                     optimizer_gen.step()
 
+                    if self.iter % 100 == 0:
+                        self.metrics["wtheta"].append(loss.item())
+
                     # wake phi update
                     # Wake phi
                     if wake_psi == "REVKL+CUBO":
@@ -192,6 +197,8 @@ class UnsupervisedTrainer(Trainer):
                     loss.backward()
                     optimizer_var_wake.step()
 
+                    if self.iter % 100 == 0:
+                        self.metrics["wphi"].append(loss.item())
                     # # Sleep phi update
                     # synthetic_obs = self.model.generate_new_obs(
                     #     sample_batch,
@@ -199,6 +206,8 @@ class UnsupervisedTrainer(Trainer):
                     # )
                     #
                     # loss = self.mod
+
+                    self.iter += 1
 
                 if not self.on_epoch_end():
                     break

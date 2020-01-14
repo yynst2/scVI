@@ -181,7 +181,9 @@ class VAE(nn.Module):
             "px_scale"
         ]
 
-    def get_log_ratio(self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1):
+    def get_log_ratio(
+        self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1
+    ):
         r"""Returns the tensor of log_pz + log_px_z - log_qz_x
 
         :param x: tensor of values with shape ``(batch_size, n_input)``
@@ -444,16 +446,16 @@ class VAE(nn.Module):
             - op["log_ql_x"]
         )
 
+        z_log_ratio = op["log_px_zl"] + op["log_pz"] - op["log_ql_x"]
+
         if loss_type == "ELBO":
             loss = -log_ratio.mean(dim=0)
         elif loss_type == "REVKL":
             loss = self.forward_kl(
-                log_ratio=log_ratio, sum_log_q=op["log_qz_x"]+op["log_ql_x"]
+                log_ratio=log_ratio, sum_log_q=op["log_qz_x"] + op["log_ql_x"]
             )
         elif loss_type == "CUBO":
-            loss = self.cubo(
-                log_ratio=log_ratio
-            )
+            loss = self.cubo(log_ratio=log_ratio)
         elif loss_type == "IWELBO":
             assert n_samples >= 2
             loss = self.iwelbo(log_ratio)
@@ -463,10 +465,12 @@ class VAE(nn.Module):
             iwelbo_loss = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples)
             return {
                 "log_ratio": log_ratio,
+                "z_log_ratio": z_log_ratio,
                 "CUBO": cubo_loss,
                 "IWELBO": iwelbo_loss,
-                **op, 
-                **variables
+                "debug_log_qz_x": op["log_qz_x"],
+                **op,
+                **variables,
             }
 
         return loss
