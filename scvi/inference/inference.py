@@ -96,8 +96,11 @@ class UnsupervisedTrainer(Trainer):
         eps=0.01,
         wake_theta="ELBO",
         wake_psi="ELBO",
-        n_samples=1,
+        n_samples_theta=1,
+        n_samples_phi=1,
         n_warmup=5,
+        n_every_theta=1,
+        n_every_phi=1,
         reparam=True,
     ):
         begin = time.time()
@@ -140,18 +143,19 @@ class UnsupervisedTrainer(Trainer):
                     ) = tensors_list[0]
 
                     # wake theta update
-                    elbo = self.model(
-                        sample_batch,
-                        local_l_mean,
-                        local_l_var,
-                        batch_index,
-                        loss_type=wake_theta,
-                        n_samples=n_samples,
-                    )
-                    loss = torch.mean(elbo)
-                    optimizer_gen.zero_grad()
-                    loss.backward()
-                    optimizer_gen.step()
+                    if self.iter % n_every_theta == 0:
+                        elbo = self.model(
+                            sample_batch,
+                            local_l_mean,
+                            local_l_var,
+                            batch_index,
+                            loss_type=wake_theta,
+                            n_samples=n_samples_theta,
+                        )
+                        loss = torch.mean(elbo)
+                        optimizer_gen.zero_grad()
+                        loss.backward()
+                        optimizer_gen.step()
 
                     if self.iter % 100 == 0:
                         self.metrics["wtheta"].append(loss.item())
@@ -183,19 +187,20 @@ class UnsupervisedTrainer(Trainer):
                         wake_psi_epoch = wake_psi
                         reparam_epoch = reparam
 
-                    loss = self.model(
-                        sample_batch,
-                        local_l_mean,
-                        local_l_var,
-                        batch_index,
-                        loss_type=wake_psi_epoch,
-                        n_samples=n_samples,
-                        reparam=reparam_epoch,
-                    )
-                    loss = torch.mean(loss)
-                    optimizer_var_wake.zero_grad()
-                    loss.backward()
-                    optimizer_var_wake.step()
+                    if self.iter % n_every_phi == 0:
+                        loss = self.model(
+                            sample_batch,
+                            local_l_mean,
+                            local_l_var,
+                            batch_index,
+                            loss_type=wake_psi_epoch,
+                            n_samples=n_samples_phi,
+                            reparam=reparam_epoch,
+                        )
+                        loss = torch.mean(loss)
+                        optimizer_var_wake.zero_grad()
+                        loss.backward()
+                        optimizer_var_wake.step()
 
                     if self.iter % 100 == 0:
                         self.metrics["wphi"].append(loss.item())
