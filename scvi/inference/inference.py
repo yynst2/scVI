@@ -93,6 +93,8 @@ class UnsupervisedTrainer(Trainer):
         self,
         n_epochs=20,
         lr=1e-3,
+        lr_theta=None,
+        lr_phi=None,
         eps=0.01,
         wake_theta="ELBO",
         wake_psi="ELBO",
@@ -103,20 +105,23 @@ class UnsupervisedTrainer(Trainer):
         n_every_phi=1,
         reparam=True,
     ):
+        if (lr_theta is None) and (lr_phi is None):
+            lr_theta = lr
+            lr_phi = lr
         begin = time.time()
         self.model.train()
 
         params_gen = list(
             filter(lambda p: p.requires_grad, self.model.decoder.parameters())
         ) + [self.model.px_r]
-        optimizer_gen = torch.optim.Adam(params_gen, lr=lr, eps=eps)
+        optimizer_gen = torch.optim.Adam(params_gen, lr=lr_theta, eps=eps)
 
         params_var = filter(
             lambda p: p.requires_grad,
             list(self.model.l_encoder.parameters())
             + list(self.model.z_encoder.parameters()),
         )
-        optimizer_var_wake = torch.optim.Adam(params_var, lr=lr, eps=eps)
+        optimizer_var_wake = torch.optim.Adam(params_var, lr=lr_phi, eps=eps)
         # optimizer_var_sleep = torch.optim.Adam(params_var, lr=lr, eps=eps)
 
         self.compute_metrics_time = 0
