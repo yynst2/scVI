@@ -245,6 +245,8 @@ class SemiSupervisedVAE(nn.Module):
             loss = self.elbo(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "CUBO":
             loss = self.cubo(log_ratio, is_labelled=is_labelled, **vars)
+        elif loss_type == "CUBOB":
+            loss = self.cubob(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "REVKL":
             loss = self.forward_kl(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "IWELBO":
@@ -290,7 +292,7 @@ class SemiSupervisedVAE(nn.Module):
 
     @staticmethod
     def forward_kl(log_ratios, is_labelled, **kwargs):
-        """ 
+        """
         IMPORTANT: Assumes non reparameterized latent samples
         # TODO: Reparameterized version?
         """
@@ -311,7 +313,7 @@ class SemiSupervisedVAE(nn.Module):
             # Reparameterized version
             # rev_kl = (importance_weights.detach() * log_ratios).sum(dim=1)
             # Reinforce version
-            rev_kl = (-1.) * importance_weights.detach() * log_q
+            rev_kl = (-1.0) * importance_weights.detach() * log_q
             rev_kl = rev_kl.sum(dim=1)
 
             categorical_weights = kwargs["pc"].detach()
@@ -331,15 +333,6 @@ class SemiSupervisedVAE(nn.Module):
         else:
             # Prefer to deal this case separately to avoid mistakes
             if evaluate:
-                # q_c = kwargs["log_qc_z1"].exp()
-                # n_samples_mc = log_ratios.shape[1]
-                # res = q_c * (
-                #     torch.logsumexp(2 * log_ratios, dim=1, keepdim=True)
-                #     - np.log(n_samples_mc)
-                # )
-                # res = res.mean(1)
-                # return res.sum(0)
-
                 log_q_c = kwargs["log_qc_z1"]
                 n_cat, n_samples, n_batch = log_ratios.shape
                 res = torch.logsumexp(
@@ -355,6 +348,25 @@ class SemiSupervisedVAE(nn.Module):
             log_ratios += 0.5 * log_qc_z1
             ws = torch.softmax(2 * log_ratios, dim=1)
             cubo_loss = ws.detach() * (-1) * log_ratios
+            cubo_loss = cubo_loss.mean(dim=1)  # samples
+            cubo_loss = cubo_loss.sum(dim=0)  # cats
+            return cubo_loss
+
+    @staticmethod
+    def cubob(log_ratios, is_labelled, evaluate=False, **kwargs):
+        if is_labelled:
+            assert not evaluate
+            ws = torch.softmax(2 * log_ratios, dim=0)  # Corresponds to squaring
+            cubo_loss = ws.detach() * (-1) * log_ratios
+            return cubo_loss.mean(dim=0)
+        else:
+            assert log_ratios.dim() == 3
+            log_qc_z1 = kwargs["log_qc_z1"]
+            # n_cat, n_samples, n_batch
+            qc_z1_d = kwargs["qc_z1"].detach()
+            ws_d = torch.softmax(2 * log_ratios, dim=1).detach()
+
+            cubo_loss = -(qc_z1_d * ws_d * (log_qc_z1 + 2.0 * log_ratios))
             cubo_loss = cubo_loss.mean(dim=1)  # samples
             cubo_loss = cubo_loss.sum(dim=0)  # cats
             return cubo_loss

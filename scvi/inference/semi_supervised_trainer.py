@@ -156,6 +156,13 @@ class MnistTrainer:
                             wake_psi_epoch = "ELBO"
                         else:
                             wake_psi_epoch = "CUBO"
+                    elif wake_psi == "ELBO+REVKL":
+                        if epoch <= int(n_epochs / 3):
+                            wake_psi_epoch = "ELBO"
+                            reparam_epoch = True
+                        else:
+                            wake_psi_epoch = "REVKL"
+                            reparam_epoch = False
                     else:
                         reparam_epoch = reparam_wphi
                         wake_psi_epoch = wake_psi
