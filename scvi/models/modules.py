@@ -141,6 +141,7 @@ class Encoder(nn.Module):
     ):
         super().__init__()
         self.prevent_saturation = prevent_saturation
+        self.prevent_saturation2 = prevent_saturation2
 
         self.encoder = FCLayers(
             n_in=n_input,
