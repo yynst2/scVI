@@ -2,17 +2,19 @@
 """Main module."""
 
 import logging
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Normal, Poisson, Gamma
+from torch.distributions import Gamma, Normal, Poisson
+
+from scvi.models.log_likelihood import log_nb_positive, log_zinb_positive
+from scvi.models.modules import DecoderSCVI, Encoder, EncoderIAF
+from scvi.models.utils import one_hot
 
 logger = logging.getLogger(__name__)
 
-from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive
-from scvi.models.modules import Encoder, DecoderSCVI, EncoderIAF
-from scvi.models.utils import one_hot
 
 torch.backends.cudnn.benchmark = True
 
@@ -62,6 +64,7 @@ class VAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
         prevent_library_saturation: bool = False,
+        prevent_library_saturation2: bool = False,
     ):
         super().__init__()
         self.dispersion = dispersion
@@ -115,6 +118,7 @@ class VAE(nn.Module):
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
             prevent_saturation=prevent_library_saturation,
+            prevent_library_saturation2=prevent_library_saturation2,
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = DecoderSCVI(

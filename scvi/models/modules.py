@@ -137,6 +137,7 @@ class Encoder(nn.Module):
         dropout_rate: float = 0.1,
         use_batch_norm: bool = True,
         prevent_saturation: bool = False,
+        prevent_saturation2: bool = False
     ):
         super().__init__()
         self.prevent_saturation = prevent_saturation
@@ -185,6 +186,10 @@ class Encoder(nn.Module):
             q_v = 3.0 * nn.Sigmoid()(q_v)
             # q_m = torch.clamp(q_m, min=,)
             # q_v = torch.clamp(q_v, min=,)
+        if self.prevent_saturation2:
+            q_m = torch.clamp(q_m, max=16.)
+            q_v = torch.clamp(q_v, min=-18.0, max=0.1)
+            q_v = torch.exp(q_v)
         else:
             q_v = torch.clamp(q_v, min=-18.0, max=14.0)
             q_v = 1e-16 + torch.exp(
