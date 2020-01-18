@@ -36,13 +36,21 @@ class UnsupervisedTrainer(Trainer):
         super().__init__(model, gene_dataset, **kwargs)
         self.kl = kl
         self.iter = 0
-        self.metrics = dict(wtheta=[], wphi=[])
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(
                 model, gene_dataset, train_size, test_size
             )
             self.train_set.to_monitor = ["ll"]
             self.test_set.to_monitor = ["ll"]
+
+        self.metrics = dict(
+            train_theta_wake=[],
+            train_phi_wake=[],
+            train_phi_sleep=[],
+            train_loss=[],
+            classification_loss=[],
+            train_cubo=[],
+        )
 
     def train_aevb(self, n_epochs=20, lr=1e-3, eps=0.01, params=None):
         begin = time.time()
@@ -163,7 +171,7 @@ class UnsupervisedTrainer(Trainer):
                         optimizer_gen.step()
 
                     if self.iter % 100 == 0:
-                        self.metrics["wtheta"].append(loss.item())
+                        self.metrics["train_theta_wake"].append(loss.item())
 
                     # wake phi update
                     # Wake phi
@@ -208,7 +216,7 @@ class UnsupervisedTrainer(Trainer):
                         optimizer_var_wake.step()
 
                     if self.iter % 100 == 0:
-                        self.metrics["wphi"].append(loss.item())
+                        self.metrics["train_phi_wake"].append(loss.item())
                     # # Sleep phi update
                     # synthetic_obs = self.model.generate_new_obs(
                     #     sample_batch,
@@ -216,6 +224,12 @@ class UnsupervisedTrainer(Trainer):
                     # )
                     #
                     # loss = self.mod
+
+                    if self.iter % 100 == 0:
+                        other_metrics = self.test_set.sequential().getter(
+                            keys=["CUBO"], n_samples=10
+                        )
+                        self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
 
                     self.iter += 1
 
