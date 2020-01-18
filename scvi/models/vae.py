@@ -118,7 +118,7 @@ class VAE(nn.Module):
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
             prevent_saturation=prevent_library_saturation,
-            prevent_library_saturation2=prevent_library_saturation2,
+            prevent_saturation2=prevent_library_saturation2,
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
         self.decoder = DecoderSCVI(
