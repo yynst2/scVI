@@ -11,11 +11,7 @@ logger = logging.getLogger(__name__)
 
 class FCLayersA(nn.Module):
     def __init__(
-        self,
-        n_input,
-        n_output,
-        dropout_rate=0.1,
-        do_batch_norm=True,
+        self, n_input, n_output, dropout_rate=0.1, do_batch_norm=True,
     ):
         super().__init__()
         self.to_hidden = nn.Linear(in_features=n_input, out_features=500)
@@ -32,11 +28,11 @@ class FCLayersA(nn.Module):
         if self.do_batch_norm:
             if res.ndim == 4:
                 n1, n2, n3, n4 = res.shape
-                res = self.batch_norm(res.view(n1*n2*n3, n4))
+                res = self.batch_norm(res.view(n1 * n2 * n3, n4))
                 res = res.view(n1, n2, n3, n4)
             elif res.ndim == 3:
                 n1, n2, n3 = res.shape
-                res = self.batch_norm(res.view(n1*n2, n3))
+                res = self.batch_norm(res.view(n1 * n2, n3))
                 res = res.view(n1, n2, n3)
             elif res.ndim == 2:
                 res = self.batch_norm(res)
@@ -50,19 +46,14 @@ class FCLayersA(nn.Module):
 
 class EncoderA(nn.Module):
     def __init__(
-        self,
-        n_input,
-        n_output,
-        n_hidden,
-        dropout_rate,
-        do_batch_norm,
+        self, n_input, n_output, n_hidden, dropout_rate, do_batch_norm,
     ):
         super().__init__()
         self.encoder = FCLayersA(
             n_input=n_input,
             n_output=n_hidden,
             dropout_rate=dropout_rate,
-            do_batch_norm=do_batch_norm
+            do_batch_norm=do_batch_norm,
         )
         self.mean_encoder = nn.Linear(n_hidden, n_output)
         self.var_encoder = nn.Linear(n_hidden, n_output)
@@ -72,9 +63,10 @@ class EncoderA(nn.Module):
         q = self.encoder(x)
         q_m = self.mean_encoder(q)
         q_v = self.var_encoder(q)
-        
+
         # q_v = 16.0 * self.tanh(q_v)
-        q_v = torch.clamp(q_v, min=-17., max=14.)
+        # q_v = torch.clamp(q_v, min=-17., max=14.)
+        q_v = torch.clamp(q_v, min=-17.0, max=8.0)
         q_v = q_v.exp()
         # q_v = 1e-16 + q_v.exp()
 
@@ -93,15 +85,15 @@ class EncoderA(nn.Module):
 
 class LinearEncoder(nn.Module):
     def __init__(
-        self,
-        n_input,
-        n_output,
+        self, n_input, n_output,
     ):
         super().__init__()
         self.mean_encoder = nn.Linear(n_input, n_output)
         self.n_output = n_output
 
-        self.var_vals = nn.Parameter(0.1 * torch.rand(n_output, n_output), requires_grad=True)
+        self.var_vals = nn.Parameter(
+            0.1 * torch.rand(n_output, n_output), requires_grad=True
+        )
 
     @property
     def l_mat_encoder(self):
@@ -120,10 +112,7 @@ class LinearEncoder(nn.Module):
         l_mat = self.var_encoder
         q_v = l_mat.matmul(l_mat.T)
 
-        variational_dist = MultivariateNormal(
-            loc=q_m,
-            scale_tril=l_mat
-        )
+        variational_dist = MultivariateNormal(loc=q_m, scale_tril=l_mat)
 
         if squeeze and n_samples == 1:
             sample_shape = []
@@ -139,17 +128,10 @@ class LinearEncoder(nn.Module):
 # Decoder
 class DecoderA(nn.Module):
     def __init__(
-        self,
-        n_input: int,
-        n_output: int,
-        n_hidden: int,
+        self, n_input: int, n_output: int, n_hidden: int,
     ):
         super().__init__()
-        self.decoder = FCLayersA(
-            n_input=n_input,
-            n_output=n_hidden,
-            dropout_rate=0.,
-        )
+        self.decoder = FCLayersA(n_input=n_input, n_output=n_hidden, dropout_rate=0.0,)
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)
         self.var_decoder = nn.Linear(n_hidden, n_output)
@@ -172,18 +154,14 @@ class DecoderA(nn.Module):
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
-        p_v = torch.clamp(p_v, min=-17., max=14.)
+        p_v = torch.clamp(p_v, min=-17.0, max=14.0)
         # p_v = 16. * self.tanh(p_v)
         return p_m, p_v.exp()
 
 
 class ClassifierA(nn.Module):
     def __init__(
-        self,
-        n_input,
-        n_output,
-        dropout_rate=0.,
-        do_batch_norm=True,
+        self, n_input, n_output, dropout_rate=0.0, do_batch_norm=True,
     ):
         super().__init__()
         self.classifier = nn.Sequential(
@@ -213,10 +191,7 @@ class BernoulliDecoderA(nn.Module):
     ):
         super().__init__()
         self.loc = FCLayersA(
-            n_input,
-            n_output,
-            dropout_rate=dropout_rate,
-            do_batch_norm=do_batch_norm,
+            n_input, n_output, dropout_rate=dropout_rate, do_batch_norm=do_batch_norm,
         )
 
     def forward(self, x):
@@ -228,7 +203,7 @@ class BernoulliDecoderA(nn.Module):
 class PSIS:
     def __init__(self, num_samples):
         self.num_samples = num_samples
-        self.m_largest_samples = int(min(num_samples/5.0, 3*np.sqrt(num_samples)))
+        self.m_largest_samples = int(min(num_samples / 5.0, 3 * np.sqrt(num_samples)))
         self.shape = []
         self.loc = []
         self.scale = []
@@ -238,7 +213,7 @@ class PSIS:
             log_ratios = log_ratios[None, :]
 
         for log_ratio_ex in log_ratios:
-            m_biggest = np.argsort(-log_ratio_ex)[:self.m_largest_samples]
+            m_biggest = np.argsort(-log_ratio_ex)[: self.m_largest_samples]
             m_best_log_ratios = log_ratio_ex[m_biggest]
 
             res = genpareto.fit(m_best_log_ratios)
