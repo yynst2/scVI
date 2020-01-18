@@ -124,7 +124,8 @@ class UnsupervisedTrainer(Trainer):
             params_gen = list(
                 filter(
                     lambda p: p.requires_grad,
-                    self.model.decoder.parameters() + self.model.l_encoder.parameters(),
+                    list(self.model.decoder.parameters())
+                    + list(self.model.l_encoder.parameters()),
                 ),
             ) + [self.model.px_r]
 
