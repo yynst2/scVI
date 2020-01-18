@@ -11,7 +11,7 @@ from scvi.models import SemiSupervisedVAE
 from arviz.stats import psislw
 
 NUM = 300
-N_EXPERIMENTS = 5
+N_EXPERIMENTS = 1
 labelled_proportions = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0])
 labelled_proportions = labelled_proportions / labelled_proportions.sum()
 labelled_fraction = 0.05
@@ -41,7 +41,6 @@ print("train labelled examples", len(dataset.train_dataset_labelled.tensors[0]))
 
 scenarios = [  # WAKE updates
     # ( overall_training, loss_gen, loss_wvar, loss_svar, n_samples_train, n_samples_wtheta, n_samples_wphi,)
-
     dict(
         loss_gen="ELBO",
         loss_wvar="CUBOB",
@@ -49,10 +48,10 @@ scenarios = [  # WAKE updates
         n_samples_wtheta=15,
         n_samples_wphi=15,
         reparam_latent=True,
-        n_epochs=25,
+        n_epochs=100,
         lr=3e-4,
     ),
-
+    
     dict(
         loss_gen="ELBO",
         loss_wvar="REVKL",
@@ -60,20 +59,54 @@ scenarios = [  # WAKE updates
         n_samples_wtheta=15,
         n_samples_wphi=15,
         reparam_latent=False,
-        n_epochs=25,
+        n_epochs=100,
         lr=3e-4,
     ),
 
     dict(
         loss_gen="ELBO",
         loss_wvar="ELBO",
-        n_samples_train=None,
-        n_samples_wtheta=15,
-        n_samples_wphi=15,
+        n_samples_train=1,
+        n_samples_wtheta=None,
+        n_samples_wphi=None,
         reparam_latent=True,
-        n_epochs=25,
+        n_epochs=100,
         lr=3e-4,
     ),
+
+    # REGULAR
+    # dict(
+    #     loss_gen="ELBO",
+    #     loss_wvar="CUBOB",
+    #     n_samples_train=None,
+    #     n_samples_wtheta=15,
+    #     n_samples_wphi=15,
+    #     reparam_latent=True,
+    #     n_epochs=25,
+    #     lr=3e-4,
+    # ),
+    
+    # dict(
+    #     loss_gen="ELBO",
+    #     loss_wvar="REVKL",
+    #     n_samples_train=None,
+    #     n_samples_wtheta=15,
+    #     n_samples_wphi=15,
+    #     reparam_latent=False,
+    #     n_epochs=25,
+    #     lr=3e-4,
+    # ),
+
+    # dict(
+    #     loss_gen="ELBO",
+    #     loss_wvar="ELBO",
+    #     n_samples_train=None,
+    #     n_samples_wtheta=15,
+    #     n_samples_wphi=15,
+    #     reparam_latent=True,
+    #     n_epochs=25,
+    #     lr=3e-4,
+    # ),
     # dict(
     #     loss_gen="ELBO",
     #     loss_wvar="ELBO+CUBO",
@@ -85,7 +118,7 @@ scenarios = [  # WAKE updates
     #     lr=LR,
     # ),
 
-
+    
 
     # dict(
     #     loss_gen="ELBO",
@@ -130,7 +163,7 @@ scenarios = [  # WAKE updates
     #     n_epochs=N_EPOCHS,
     #     lr=LR,
     # ),
-
+    
 
     # dict(
     #     loss_gen="ELBO",
@@ -255,9 +288,14 @@ for scenario in scenarios:
 
         try:
             if not os.path.exists(mdl_name):
+                if (loss_gen == "ELBO") and (loss_wvar == "ELBO"):
+                    overall_loss = "ELBO"
+                else:
+                    overall_loss = None
                 trainer.train(
                     n_epochs=n_epochs,
                     lr=lr,
+                    overall_loss=overall_loss,
                     wake_theta=loss_gen,
                     wake_psi=loss_wvar,
                     n_samples=n_samples_train,
