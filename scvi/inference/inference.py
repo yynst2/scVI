@@ -112,6 +112,7 @@ class UnsupervisedTrainer(Trainer):
         n_every_theta=1,
         n_every_phi=1,
         reparam=True,
+        include_library_in_elbo=False,
     ):
         if (lr_theta is None) and (lr_phi is None):
             lr_theta = lr
@@ -119,16 +120,30 @@ class UnsupervisedTrainer(Trainer):
         begin = time.time()
         self.model.train()
 
-        params_gen = list(
-            filter(lambda p: p.requires_grad, self.model.decoder.parameters())
-        ) + [self.model.px_r]
+        if include_library_in_elbo:
+            params_gen = list(
+                filter(
+                    lambda p: p.requires_grad,
+                    self.model.decoder.parameters() + self.model.l_encoder.parameters(),
+                ),
+            ) + [self.model.px_r]
+
+            params_var = filter(
+                lambda p: p.requires_grad, list(self.model.z_encoder.parameters()),
+            )
+        else:
+            params_gen = list(
+                filter(lambda p: p.requires_grad, self.model.decoder.parameters())
+            ) + [self.model.px_r]
+
+            params_var = filter(
+                lambda p: p.requires_grad,
+                list(self.model.l_encoder.parameters())
+                + list(self.model.z_encoder.parameters()),
+            )
+
         optimizer_gen = torch.optim.Adam(params_gen, lr=lr_theta, eps=eps)
 
-        params_var = filter(
-            lambda p: p.requires_grad,
-            list(self.model.l_encoder.parameters())
-            + list(self.model.z_encoder.parameters()),
-        )
         optimizer_var_wake = torch.optim.Adam(params_var, lr=lr_phi, eps=eps)
         # optimizer_var_sleep = torch.optim.Adam(params_var, lr=lr, eps=eps)
 
