@@ -67,6 +67,7 @@ class MnistTrainer:
         classification_ratio: float = 50.0,
         update_mode: str = "all",
         reparam_wphi: bool = True,
+        z2_with_elbo: bool = False,
     ):
         assert update_mode in ["all", "alternate"]
         assert (n_samples_phi is None) == (n_samples_theta is None)
@@ -88,19 +89,36 @@ class MnistTrainer:
             optim = Adam(params, lr=lr)
             logger.info("Monobjective using {} loss".format(overall_loss))
         else:
-            params_gen = filter(
-                lambda p: p.requires_grad,
-                list(self.model.decoder_z1_z2.parameters())
-                + list(self.model.x_decoder.parameters()),
-            )
-            optim_gen = Adam(params_gen, lr=lr)
+            if not z2_with_elbo:
+                params_gen = filter(
+                    lambda p: p.requires_grad,
+                    list(self.model.decoder_z1_z2.parameters())
+                    + list(self.model.x_decoder.parameters()),
+                )
+                optim_gen = Adam(params_gen, lr=lr)
 
-            params_var = filter(
-                lambda p: p.requires_grad,
-                list(self.model.classifier.parameters())
-                + list(self.model.encoder_z1.parameters())
-                + list(self.model.encoder_z2_z1.parameters()),
-            )
+                params_var = filter(
+                    lambda p: p.requires_grad,
+                    list(self.model.classifier.parameters())
+                    + list(self.model.encoder_z1.parameters())
+                    + list(self.model.encoder_z2_z1.parameters()),
+                )
+
+            else:
+                params_gen = filter(
+                    lambda p: p.requires_grad,
+                    list(self.model.decoder_z1_z2.parameters())
+                    + list(self.model.x_decoder.parameters())
+                    + list(self.model.encoder_z2_z1.parameters()),
+                )
+                optim_gen = Adam(params_gen, lr=lr)
+
+                params_var = filter(
+                    lambda p: p.requires_grad,
+                    list(self.model.classifier.parameters())
+                    + list(self.model.encoder_z1.parameters())
+                )
+
             optim_var_wake = Adam(params_var, lr=lr)
             logger.info(
                 "Multiobjective training using {} / {}".format(wake_theta, wake_psi)
