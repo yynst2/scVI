@@ -152,6 +152,7 @@ class MnistTrainer:
                     optim.zero_grad()
                     loss.backward()
                     optim.step()
+                    torch.cuda.synchronize()
 
                     if self.iterate % 100 == 0:
                         self.metrics["train_loss"].append(loss.item())
@@ -169,6 +170,8 @@ class MnistTrainer:
                     optim_gen.zero_grad()
                     theta_loss.backward()
                     optim_gen.step()
+                    torch.cuda.synchronize()
+
                     if self.iterate % 100 == 0:
                         self.metrics["train_theta_wake"].append(theta_loss.item())
 
@@ -209,6 +212,7 @@ class MnistTrainer:
                     optim_var_wake.zero_grad()
                     psi_loss.backward()
                     optim_var_wake.step()
+                    torch.cuda.synchronize()
                     if self.iterate % 100 == 0:
                         self.metrics["train_phi_wake"].append(psi_loss.item())
 
