@@ -21,6 +21,7 @@ class MnistTrainer:
         model: SemiSupervisedVAE,
         batch_size: int = 128,
         use_cuda=True,
+        save_metrics=False
     ):
         self.dataset = dataset
         self.model = model
@@ -43,7 +44,8 @@ class MnistTrainer:
             pin_memory=use_cuda,
         )
         self.cross_entropy_fn = CrossEntropyLoss()
-
+        
+        self.save_metrics = save_metrics
         self.iterate = 0
         self.metrics = dict(
             train_theta_wake=[],
@@ -128,10 +130,19 @@ class MnistTrainer:
             for (tensor_all, tensor_superv) in zip(
                 self.train_loader, cycle(self.train_annotated_loader)
             ):
+
+                x_u, _ = tensor_all
+                x_s, y_s = tensor_superv
+
+                x_u = x_u.to("cuda")
+                x_s = x_s.to("cuda")
+                y_s = y_s.to("cuda")
+
                 if overall_loss is not None:
                     loss = self.loss(
-                        tensor_all,
-                        tensor_superv,
+                        x_u=x_u,
+                        x_s=x_s,
+                        y_s=y_s,
                         loss_type=overall_loss,
                         n_samples=n_samples,
                         reparam=True,
@@ -147,8 +158,9 @@ class MnistTrainer:
                 else:
                     # Wake theta
                     theta_loss = self.loss(
-                        tensor_all,
-                        tensor_superv,
+                        x_u=x_u,
+                        x_s=x_s,
+                        y_s=y_s,
                         loss_type=wake_theta,
                         n_samples=n_samples_theta,
                         reparam=True,
@@ -186,8 +198,9 @@ class MnistTrainer:
                         wake_psi_epoch = wake_psi
 
                     psi_loss = self.loss(
-                        tensor_all,
-                        tensor_superv,
+                        x_u=x_u,
+                        x_s=x_s,
+                        y_s=y_s,
                         loss_type=wake_psi_epoch,
                         n_samples=n_samples_phi,
                         reparam=reparam_epoch,
@@ -203,20 +216,15 @@ class MnistTrainer:
 
     def loss(
         self,
-        tensor_all,
-        tensor_superv,
+        x_u,
+        x_s,
+        y_s,
         loss_type,
         n_samples=5,
         reparam=True,
         classification_ratio=50.0,
         mode="all",
     ):
-        x_u, _ = tensor_all
-        x_s, y_s = tensor_superv
-
-        x_u = x_u.to("cuda")
-        x_s = x_s.to("cuda")
-        y_s = y_s.to("cuda")
 
         labelled_fraction = self.dataset.labelled_fraction
         s_every = int(1 / labelled_fraction)
@@ -242,13 +250,14 @@ class MnistTrainer:
         l_class = self.cross_entropy_fn(y_pred, target=y_s)
         loss = j + classification_ratio * l_class
 
-        if self.iterate % 100 == 0:
-            self.metrics["classification_loss"].append(l_class.item())
+        if self.save_metrics:
+            if self.iterate % 100 == 0:
+                self.metrics["classification_loss"].append(l_class.item())
 
-            other_metrics = self.inference(
-                self.train_loader, keys=["CUBO"], n_samples=10
-            )
-            self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
+                other_metrics = self.inference(
+                    self.train_loader, keys=["CUBO"], n_samples=10
+                )
+                self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
 
         return loss
 
