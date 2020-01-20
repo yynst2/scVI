@@ -113,6 +113,7 @@ class UnsupervisedTrainer(Trainer):
         n_every_phi=1,
         reparam=True,
         include_library_in_elbo=False,
+        do_observed_library=False,
     ):
         if (lr_theta is None) and (lr_phi is None):
             lr_theta = lr
@@ -180,6 +181,7 @@ class UnsupervisedTrainer(Trainer):
                             batch_index,
                             loss_type=wake_theta,
                             n_samples=n_samples_theta,
+                            do_observed_library=do_observed_library,
                         )
                         loss = torch.mean(elbo)
                         optimizer_gen.zero_grad()
@@ -225,6 +227,7 @@ class UnsupervisedTrainer(Trainer):
                             loss_type=wake_psi_epoch,
                             n_samples=n_samples_phi,
                             reparam=reparam_epoch,
+                            do_observed_library=do_observed_library,
                         )
                         loss = torch.mean(loss)
                         optimizer_var_wake.zero_grad()

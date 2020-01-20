@@ -242,7 +242,9 @@ class VAE(nn.Module):
         px_scale, _, _, _ = self.decoder("gene", z, library, batch_index)
         return px_scale
 
-    def inference(self, x, batch_index=None, y=None, n_samples=1, reparam=True):
+    def inference(
+        self, x, batch_index=None, y=None, n_samples=1, reparam=True, local_l_mean=None
+    ):
         x_ = x
         if self.log_variational:
             x_ = torch.log(1 + x_)
@@ -254,6 +256,11 @@ class VAE(nn.Module):
             ql_v=library_post["q_v"],
             library=library_post["latent"],
         )
+
+        if local_l_mean is None:
+            library = library_variables["library"]
+        else:
+            library = local_l_mean
 
         # Z sampling
         z_post = self.z_encoder(x_, y, n_samples=n_samples, reparam=reparam)
@@ -275,7 +282,7 @@ class VAE(nn.Module):
 
         # Decoder pass
         px_scale, px_r, px_rate, px_dropout = self.decoder(
-            self.dispersion, z_post["latent"], library_post["latent"], batch_index, y
+            self.dispersion, z_post["latent"], library, batch_index, y
         )
 
         if self.dispersion == "gene-label":
@@ -418,6 +425,7 @@ class VAE(nn.Module):
         y=None,
         n_samples=1,
         reparam=True,
+        do_observed_library=False,
     ):
         r""" Returns the reconstruction loss and the Kullback divergences
 
@@ -435,20 +443,33 @@ class VAE(nn.Module):
         :rtype: 2-tuple of :py:class:`torch.FloatTensor`
         """
         # Parameters for z latent distribution
+        observed_library = None
+        if do_observed_library:
+            observed_library = local_l_mean
 
         variables = self.inference(
-            x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=reparam
+            x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=reparam, local_l_mean=observed_library
         )
         op = self.from_variables_to_densities(
             x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
         )
-        log_ratio = (
-            op["log_px_zl"]
-            + op["log_pz"]
-            + op["log_pl"]
-            - op["log_qz_x"]
-            - op["log_ql_x"]
-        )
+
+        if do_observed_library:
+            log_ratio = (
+                op["log_px_zl"]
+                + op["log_pz"]
+                - op["log_qz_x"]
+            )
+            sum_log_q = op["log_qz_x"]
+        else:
+            log_ratio = (
+                op["log_px_zl"]
+                + op["log_pz"]
+                + op["log_pl"]
+                - op["log_qz_x"]
+                - op["log_ql_x"]
+            )
+            sum_log_q = op["log_qz_x"] + op["log_ql_x"]
 
         z_log_ratio = op["log_px_zl"] + op["log_pz"] - op["log_ql_x"]
 
@@ -456,7 +477,7 @@ class VAE(nn.Module):
             loss = -log_ratio.mean(dim=0)
         elif loss_type == "REVKL":
             loss = self.forward_kl(
-                log_ratio=log_ratio, sum_log_q=op["log_qz_x"] + op["log_ql_x"]
+                log_ratio=log_ratio, sum_log_q=sum_log_q
             )
         elif loss_type == "CUBO":
             loss = self.cubo(log_ratio=log_ratio)
