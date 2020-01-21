@@ -243,7 +243,13 @@ class VAE(nn.Module):
         return px_scale
 
     def inference(
-        self, x, batch_index=None, y=None, n_samples=1, reparam=True, local_l_mean=None
+        self,
+        x,
+        batch_index=None,
+        y=None,
+        n_samples=1,
+        reparam=True,
+        observed_library=None,
     ):
         x_ = x
         if self.log_variational:
@@ -257,10 +263,10 @@ class VAE(nn.Module):
             library=library_post["latent"],
         )
 
-        if local_l_mean is None:
+        if observed_library is None:
             library = library_variables["library"]
         else:
-            library = local_l_mean
+            library = observed_library
 
         # Z sampling
         z_post = self.z_encoder(x_, y, n_samples=n_samples, reparam=reparam)
@@ -445,21 +451,22 @@ class VAE(nn.Module):
         # Parameters for z latent distribution
         observed_library = None
         if do_observed_library:
-            observed_library = local_l_mean
+            observed_library = x.sum(1, keepdims=True)
 
         variables = self.inference(
-            x, batch_index=batch_index, y=y, n_samples=n_samples, reparam=reparam, local_l_mean=observed_library
+            x,
+            batch_index=batch_index,
+            y=y,
+            n_samples=n_samples,
+            reparam=reparam,
+            observed_library=observed_library,
         )
         op = self.from_variables_to_densities(
             x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
         )
 
         if do_observed_library:
-            log_ratio = (
-                op["log_px_zl"]
-                + op["log_pz"]
-                - op["log_qz_x"]
-            )
+            log_ratio = op["log_px_zl"] + op["log_pz"] - op["log_qz_x"]
             sum_log_q = op["log_qz_x"]
         else:
             log_ratio = (
@@ -476,9 +483,7 @@ class VAE(nn.Module):
         if loss_type == "ELBO":
             loss = -log_ratio.mean(dim=0)
         elif loss_type == "REVKL":
-            loss = self.forward_kl(
-                log_ratio=log_ratio, sum_log_q=sum_log_q
-            )
+            loss = self.forward_kl(log_ratio=log_ratio, sum_log_q=sum_log_q)
         elif loss_type == "CUBO":
             loss = self.cubo(log_ratio=log_ratio)
         elif loss_type == "IWELBO":
