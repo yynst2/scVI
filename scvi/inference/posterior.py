@@ -112,7 +112,7 @@ class Posterior:
         return posterior
 
     @torch.no_grad()
-    def getter(self, keys=None, n_samples=10, batch_size=128, do_observed_library=False):
+    def getter(self, keys=None, n_samples=10, batch_size=128, do_observed_library=False, encoder_key="default", counts=None):
         all_res = dict()
         for tensors in self:
             sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
@@ -123,7 +123,9 @@ class Posterior:
                 batch_index=batch_index,
                 n_samples=n_samples,
                 loss_type=None,
-                do_observed_library=do_observed_library
+                do_observed_library=do_observed_library,
+                encoder_key=encoder_key,
+                counts=counts,
             )
             res["label"] = label
             if keys is not None:

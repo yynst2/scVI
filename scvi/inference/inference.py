@@ -131,7 +131,8 @@ class UnsupervisedTrainer(Trainer):
             ) + [self.model.px_r]
 
             params_var = filter(
-                lambda p: p.requires_grad, list(self.model.z_encoder.parameters()),
+                lambda p: p.requires_grad,
+                list(self.model.z_encoder["default"].parameters()),
             )
         else:
             params_gen = list(
@@ -141,7 +142,7 @@ class UnsupervisedTrainer(Trainer):
             params_var = filter(
                 lambda p: p.requires_grad,
                 list(self.model.l_encoder.parameters())
-                + list(self.model.z_encoder.parameters()),
+                + list(self.model.z_encoder["default"].parameters()),
             )
 
         optimizer_gen = torch.optim.Adam(params_gen, lr=lr_theta, eps=eps)
@@ -247,6 +248,144 @@ class UnsupervisedTrainer(Trainer):
                     if self.iter % 100 == 0:
                         other_metrics = self.test_set.sequential().getter(
                             keys=["CUBO"], n_samples=10
+                        )
+                        self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
+
+                    self.iter += 1
+
+                if not self.on_epoch_end():
+                    break
+
+        if self.early_stopping.save_best_state_metric is not None:
+            self.model.load_state_dict(self.best_state_dict)
+            self.compute_metrics()
+
+        self.model.eval()
+        self.training_time += (time.time() - begin) - self.compute_metrics_time
+        if self.verbose and self.frequency:
+            print(
+                "\nTraining time:  %i s. / %i epochs"
+                % (int(self.training_time), self.n_epochs)
+            )
+
+    def train_defensive(
+        self,
+        n_epochs=20,
+        lr=1e-3,
+        lr_theta=None,
+        lr_phi=None,
+        eps=0.01,
+        wake_theta="ELBO",
+        wake_psi="ELBO",
+        n_samples_theta=1,
+        n_samples_phi=1,
+        counts=torch.tensor([8, 8, 2]),
+    ):
+        if (lr_theta is None) and (lr_phi is None):
+            lr_theta = lr
+            lr_phi = lr
+        begin = time.time()
+        self.model.train()
+
+        params_gen = list(
+            filter(lambda p: p.requires_grad, self.model.decoder.parameters())
+        ) + [self.model.px_r]
+
+        params_var_cubo = filter(
+            lambda p: p.requires_grad, list(self.model.z_encoder["CUBO"].parameters()),
+        )
+
+        params_var_eubo = filter(
+            lambda p: p.requires_grad, list(self.model.z_encoder["EUBO"].parameters()),
+        )
+
+        optimizer_gen = torch.optim.Adam(params_gen, lr=lr_theta, eps=eps)
+        optimizer_var_cubo = torch.optim.Adam(params_var_cubo, lr=lr_phi, eps=eps)
+        optimizer_var_eubo = torch.optim.Adam(params_var_eubo, lr=lr_phi, eps=eps)
+        # optimizer_var_sleep = torch.optim.Adam(params_var, lr=lr, eps=eps)
+
+        self.compute_metrics_time = 0
+        self.n_epochs = n_epochs
+        self.compute_metrics()
+
+        with trange(
+            n_epochs, desc="training", file=sys.stdout, disable=self.verbose
+        ) as pbar:
+            for self.epoch in pbar:
+                self.on_epoch_begin()
+                pbar.update(1)
+                for tensors_list in self.data_loaders_loop():
+                    (
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        _,
+                    ) = tensors_list[0]
+
+                    # wake theta update
+                    elbo = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type="IWELBO",
+                        n_samples=n_samples_theta,
+                        do_observed_library=True,
+                        encoder_key="defensive",
+                        counts=counts,
+                    )
+                    loss = torch.mean(elbo)
+                    optimizer_gen.zero_grad()
+                    loss.backward()
+                    optimizer_gen.step()
+
+                    if self.iter % 100 == 0:
+                        self.metrics["train_theta_wake"].append(loss.item())
+
+                    # wake phi update
+                    # Wake phi CUBO
+                    loss = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type="CUBO",
+                        n_samples=n_samples_phi,
+                        reparam=True,
+                        encoder_key="CUBO",
+                        do_observed_library=True,
+                    )
+                    loss = torch.mean(loss)
+                    optimizer_var_cubo.zero_grad()
+                    loss.backward()
+                    optimizer_var_cubo.step()
+
+                    # wake phi update
+                    # Wake phi EUBO
+                    loss = self.model(
+                        sample_batch,
+                        local_l_mean,
+                        local_l_var,
+                        batch_index,
+                        loss_type="REVKL",
+                        n_samples=n_samples_phi,
+                        reparam=False,
+                        encoder_key="EUBO",
+                        do_observed_library=True,
+                    )
+                    loss = torch.mean(loss)
+                    loss.backward()
+                    optimizer_var_eubo.zero_grad()
+                    optimizer_var_eubo.step()
+
+                    if self.iter % 100 == 0:
+                        other_metrics = self.test_set.sequential().getter(
+                            keys=["CUBO"],
+                            n_samples=10,
+                            encoder_key="defensive",
+                            counts=counts,
+                            do_observed_library=True,
                         )
                         self.metrics["train_cubo"].append(other_metrics["CUBO"].mean())
 

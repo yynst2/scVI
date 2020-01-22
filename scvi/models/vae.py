@@ -65,6 +65,7 @@ class VAE(nn.Module):
         reconstruction_loss: str = "zinb",
         prevent_library_saturation: bool = False,
         prevent_library_saturation2: bool = False,
+        multi_encoder_keys=["default"],
     ):
         super().__init__()
         self.dispersion = dispersion
@@ -75,6 +76,11 @@ class VAE(nn.Module):
         self.n_batch = n_batch
         self.n_labels = n_labels
         self.n_latent_layers = 1  # not sure what this is for, no usages?
+        self.multi_encoder_keys = multi_encoder_keys
+        do_multi_encoders = len(multi_encoder_keys) >= 2
+        z_prior_mean = torch.zeros(n_latent, device="cuda")
+        z_prior_std = torch.ones(n_latent, device="cuda")
+        self.z_prior = Normal(z_prior_mean, z_prior_std)
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input,))
@@ -90,15 +96,21 @@ class VAE(nn.Module):
         self.do_iaf = iaf_t > 0
         if not self.do_iaf:
             logger.info("using MF encoder")
-            self.z_encoder = Encoder(
-                n_input,
-                n_latent,
-                n_layers=n_layers,
-                n_hidden=n_hidden,
-                dropout_rate=dropout_rate,
+            self.z_encoder = nn.ModuleDict(
+                {
+                    key: Encoder(
+                        n_input,
+                        n_latent,
+                        n_layers=n_layers,
+                        n_hidden=n_hidden,
+                        dropout_rate=dropout_rate,
+                    )
+                    for key in self.multi_encoder_keys
+                }
             )
         else:
             logger.info("using IAF encoder")
+            assert not do_multi_encoders
             self.z_encoder = EncoderIAF(
                 n_in=n_input,
                 n_latent=n_latent,
@@ -129,101 +141,50 @@ class VAE(nn.Module):
             n_hidden=n_hidden,
         )
 
-    def get_latents(self, x, y=None):
-        r""" returns the result of ``sample_from_posterior_z`` inside a list
+        assert not self.do_iaf
 
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :return: one element list of tensor
-        :rtype: list of :py:class:`torch.Tensor`
+    def z_defensive_sampling(self, x, counts):
         """
-        return [self.sample_from_posterior_z(x, y)]
-
-    def sample_from_posterior_z(self, x, y=None, give_mean=False):
-        r""" samples the tensor of latent values from the posterior
-        #doesn't really sample, returns the means of the posterior distribution
-
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :param give_mean: is True when we want the mean of the posterior  distribution rather than sampling
-        :return: tensor of shape ``(batch_size, n_latent)``
-        :rtype: :py:class:`torch.Tensor`
+            Samples from q_alpha
+            q_alpha = \alpha_0 q_CUBO + \alpha_1 q_EUBO + \alpha_2 prior
         """
-        if self.log_variational:
-            x = torch.log(1 + x)
-        z_outputs = self.z_encoder(x, y)  # y only used in VAEC
-        latent = z_outputs["latent"]
-        if give_mean:
-            latent = z_outputs["q_m"]
-        return latent
+        n_samples_total = counts.sum()
+        n_batch, _ = x.shape
+        with torch.no_grad():
+            post_cubo = self.z_encoder["CUBO"](x=x, n_samples=counts[0], reparam=False)
+            z_cubo = post_cubo["latent"]
+            q_cubo = Normal(post_cubo["q_m"][0], post_cubo["q_v"][0])
 
-    def sample_from_posterior_l(self, x):
-        r""" samples the tensor of library sizes from the posterior
-        #doesn't really sample, returns the tensor of the means of the posterior distribution
+            post_eubo = self.z_encoder["EUBO"](x=x, n_samples=counts[1], reparam=False)
+            z_eubo = post_eubo["latent"]
+            q_eubo = Normal(post_eubo["q_m"][0], post_eubo["q_v"][0])
 
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :return: tensor of shape ``(batch_size, 1)``
-        :rtype: :py:class:`torch.Tensor`
-        """
-        if self.log_variational:
-            x = torch.log(1 + x)
-        ql_m, ql_v, library = self.l_encoder(x)
-        return library
+            z_prior = self.z_prior.sample((counts[2], n_batch))
+            q_prior = self.z_prior
 
-    def get_sample_scale(self, x, batch_index=None, y=None, n_samples=1):
-        r"""Returns the tensor of predicted frequencies of expression
+        print(z_cubo.shape, z_eubo.shape, z_prior.shape)
+        z_all = torch.cat([z_cubo, z_eubo, z_prior], dim=0)
+        log_p_cubo = q_cubo.log_prob(z_all).sum(-1)
+        log_p_eubo = q_eubo.log_prob(z_all).sum(-1)
+        log_p_prior = q_prior.log_prob(z_all).sum(-1)
 
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :param n_samples: number of samples
-        :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
-        :rtype: :py:class:`torch.Tensor`
-        """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[
-            "px_scale"
-        ]
-
-    def get_log_ratio(
-        self, x, local_l_mean, local_l_var, batch_index=None, y=None, n_samples=1
-    ):
-        r"""Returns the tensor of log_pz + log_px_z - log_qz_x
-
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :param n_samples: number of samples
-        :return: tensor of predicted frequencies of expression with shape ``(batch_size, n_input)``
-        :rtype: :py:class:`torch.Tensor`
-        """
-        variables = self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)
-        op = self.from_variables_to_densities(
-            x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
+        print(log_p_cubo.shape, log_p_eubo.shape, log_p_prior.shape)
+        # Mixture probability
+        # q_alpha = sum p(alpha_j) * q_j(x)
+        log_p_alpha = (1.0 * counts / counts.sum()).log()
+        log_contrib_cubo = log_p_cubo + log_p_alpha[0]
+        log_contrib_eubo = log_p_eubo + log_p_alpha[1]
+        log_contrib_prior = log_p_prior + log_p_alpha[2]
+        log_q_alpha = torch.cat(
+            [
+                log_contrib_cubo.view(n_samples_total, n_batch, 1),
+                log_contrib_eubo.view(n_samples_total, n_batch, 1),
+                log_contrib_prior.view(n_samples_total, n_batch, 1),
+            ],
+            dim=2,
         )
-        log_ratio = (
-            op["log_px_zl"]
-            + op["log_pz"]
-            + op["log_pl"]
-            - op["log_qz_x"]
-            - op["log_ql_x"]
-        )
-
-        return op["log_pz"] + op["log_px_z"] - op["log_qz_x"]
-
-    def get_sample_rate(self, x, batch_index=None, y=None, n_samples=1):
-        r"""Returns the tensor of means of the negative binomial distribution
-
-        :param x: tensor of values with shape ``(batch_size, n_input)``
-        :param y: tensor of cell-types labels with shape ``(batch_size, n_labels)``
-        :param batch_index: array that indicates which batch the cells belong to with shape ``batch_size``
-        :param n_samples: number of samples
-        :return: tensor of means of the negative binomial distribution with shape ``(batch_size, n_input)``
-        :rtype: :py:class:`torch.Tensor`
-        """
-        return self.inference(x, batch_index=batch_index, y=y, n_samples=n_samples)[
-            "px_rate"
-        ]
+        log_q_alpha = torch.logsumexp(log_q_alpha, dim=2)
+        return dict(latent=z_all, posterior_density=log_q_alpha)
 
     def _reconstruction_loss(self, x, px_rate, px_r, px_dropout):
         # Reconstruction Loss
@@ -250,6 +211,8 @@ class VAE(nn.Module):
         n_samples=1,
         reparam=True,
         observed_library=None,
+        encoder_key: str = "default",
+        counts: torch.Tensor = None,
     ):
         x_ = x
         if self.log_variational:
@@ -269,21 +232,27 @@ class VAE(nn.Module):
             library = observed_library
 
         # Z sampling
-        z_post = self.z_encoder(x_, y, n_samples=n_samples, reparam=reparam)
-        if not self.do_iaf:
-            z_variables = dict(
-                qz_m=z_post["q_m"],
-                qz_v=z_post["q_v"],
-                z=z_post["latent"],
-                log_qz_x=None,
+        if encoder_key != "defensive":
+            z_post = self.z_encoder[encoder_key](
+                x_, y, n_samples=n_samples, reparam=reparam
             )
         else:
+            z_post = self.z_defensive_sampling(x_, counts=counts)
+
+        if self.do_iaf or encoder_key == "defensive":
             # IAF does not parametrize the means/covariances of the variational posterior
             z_variables = dict(
                 qz_m=None,
                 qz_v=None,
                 z=z_post["latent"],
                 log_qz_x=z_post["posterior_density"],
+            )
+        else:
+            z_variables = dict(
+                qz_m=z_post["q_m"],
+                qz_v=z_post["q_v"],
+                z=z_post["latent"],
+                log_qz_x=None,
             )
 
         # Decoder pass
@@ -432,6 +401,8 @@ class VAE(nn.Module):
         n_samples=1,
         reparam=True,
         do_observed_library=False,
+        counts=None,
+        encoder_key="default",
     ):
         r""" Returns the reconstruction loss and the Kullback divergences
 
@@ -460,6 +431,8 @@ class VAE(nn.Module):
             n_samples=n_samples,
             reparam=reparam,
             observed_library=observed_library,
+            counts=counts,
+            encoder_key=encoder_key,
         )
         op = self.from_variables_to_densities(
             x=x, local_l_mean=local_l_mean, local_l_var=local_l_var, **variables,
@@ -478,7 +451,7 @@ class VAE(nn.Module):
             )
             sum_log_q = op["log_qz_x"] + op["log_ql_x"]
 
-        z_log_ratio = op["log_px_zl"] + op["log_pz"] - op["log_ql_x"]
+        z_log_ratio = op["log_px_zl"] + op["log_pz"] - op["log_qz_x"]
 
         if loss_type == "ELBO":
             loss = -log_ratio.mean(dim=0)
