@@ -48,7 +48,7 @@ class MnistDataset(MNIST):
 
         if test_size > 0.0:
             ind_train, ind_test = train_test_split(
-                np.arange(len(x)), test_size=test_size
+                np.arange(len(x)), test_size=test_size, random_state=42,
             )
         else:
             ind_train = np.arange(len(x))
