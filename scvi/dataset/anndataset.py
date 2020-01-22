@@ -52,6 +52,7 @@ class AnnDatasetFromAnnData(GeneExpressionDataset):
             batch_indices=batch_indices,
             gene_names=gene_names,
             cell_types=cell_types,
+            labels=labels,
         )
         self.filter_cells_by_count()
 
