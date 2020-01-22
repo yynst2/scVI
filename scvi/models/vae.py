@@ -162,13 +162,11 @@ class VAE(nn.Module):
             z_prior = self.z_prior.sample((counts[2], n_batch))
             q_prior = self.z_prior
 
-        print(z_cubo.shape, z_eubo.shape, z_prior.shape)
         z_all = torch.cat([z_cubo, z_eubo, z_prior], dim=0)
         log_p_cubo = q_cubo.log_prob(z_all).sum(-1)
         log_p_eubo = q_eubo.log_prob(z_all).sum(-1)
         log_p_prior = q_prior.log_prob(z_all).sum(-1)
 
-        print(log_p_cubo.shape, log_p_eubo.shape, log_p_prior.shape)
         # Mixture probability
         # q_alpha = sum p(alpha_j) * q_j(x)
         log_p_alpha = (1.0 * counts / counts.sum()).log()
