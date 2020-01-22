@@ -375,8 +375,8 @@ class UnsupervisedTrainer(Trainer):
                         do_observed_library=True,
                     )
                     loss = torch.mean(loss)
-                    loss.backward()
                     optimizer_var_eubo.zero_grad()
+                    loss.backward()
                     optimizer_var_eubo.step()
 
                     if self.iter % 100 == 0:
