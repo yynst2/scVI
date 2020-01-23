@@ -232,20 +232,26 @@ class MnistTrainer:
 
         labelled_fraction = self.dataset.labelled_fraction
         s_every = int(1 / labelled_fraction)
-        l_u = self.model.forward(
-            x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
-        )
-        l_s = self.model.forward(
-            x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
-        )
 
         if mode == "all":
+            l_u = self.model.forward(
+                x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
+            )
+            l_s = self.model.forward(
+                x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
+            )
             l_s = labelled_fraction * l_s
             j = l_u.mean() + l_s.mean()
         elif mode == "alternate":
             if self.iterate % s_every == 0:
+                l_s = self.model.forward(
+                    x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
+                )
                 j = l_s.mean()
             else:
+                l_u = self.model.forward(
+                    x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
+                )
                 j = l_u.mean()
         else:
             raise ValueError("Mode {} not recognized".format(mode))
