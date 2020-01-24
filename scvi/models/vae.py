@@ -151,36 +151,45 @@ class VAE(nn.Module):
         n_samples_total = counts.sum()
         n_batch, _ = x.shape
         with torch.no_grad():
-            post_cubo = self.z_encoder["CUBO"](x=x, n_samples=counts[0], reparam=False)
-            z_cubo = post_cubo["latent"]
-            q_cubo = Normal(post_cubo["q_m"][0], post_cubo["q_v"][0])
+            post_cubo = self.z_encoder["CUBO"](
+                x=x, n_samples=counts[0], reparam=False, squeeze=False
+            )
+            if counts[0] >= 1:
+                z_cubo = post_cubo["latent"]
+                q_cubo = Normal(post_cubo["q_m"][0], post_cubo["q_v"][0])
+            else:
+                # Specific handling of counts=0 required for latter concatenation
+                z_cubo = torch.tensor([], device="cuda")
+                q_cubo = None
 
-            post_eubo = self.z_encoder["EUBO"](x=x, n_samples=counts[1], reparam=False)
-            z_eubo = post_eubo["latent"]
-            q_eubo = Normal(post_eubo["q_m"][0], post_eubo["q_v"][0])
+            post_eubo = self.z_encoder["EUBO"](
+                x=x, n_samples=counts[1], reparam=False, squeeze=False
+            )
+            if counts[1] >= 1:
+                z_eubo = post_eubo["latent"]
+                q_eubo = Normal(post_eubo["q_m"][0], post_eubo["q_v"][0])
+            else:
+                # Specific handling of counts=0 required for latter concatenation
+                z_eubo = torch.tensor([], device="cuda")
+                q_eubo = None
 
             z_prior = self.z_prior.sample((counts[2], n_batch))
             q_prior = self.z_prior
 
         z_all = torch.cat([z_cubo, z_eubo, z_prior], dim=0)
-        log_p_cubo = q_cubo.log_prob(z_all).sum(-1)
-        log_p_eubo = q_eubo.log_prob(z_all).sum(-1)
-        log_p_prior = q_prior.log_prob(z_all).sum(-1)
-
+        distribs_all = [q_cubo, q_eubo, q_prior]
         # Mixture probability
         # q_alpha = sum p(alpha_j) * q_j(x)
         log_p_alpha = (1.0 * counts / counts.sum()).log()
-        log_contrib_cubo = log_p_cubo + log_p_alpha[0]
-        log_contrib_eubo = log_p_eubo + log_p_alpha[1]
-        log_contrib_prior = log_p_prior + log_p_alpha[2]
-        log_q_alpha = torch.cat(
-            [
-                log_contrib_cubo.view(n_samples_total, n_batch, 1),
-                log_contrib_eubo.view(n_samples_total, n_batch, 1),
-                log_contrib_prior.view(n_samples_total, n_batch, 1),
-            ],
-            dim=2,
-        )
+
+        log_contribs = []
+        for count, distrib, log_p_a in zip(counts, distribs_all, log_p_alpha):
+            if count >= 1:
+                contribution = distrib.log_prob(z_all).sum(-1) + log_p_a
+                contribution = contribution.view(n_samples_total, n_batch, 1)
+                log_contribs.append(contribution)
+
+        log_q_alpha = torch.cat(log_contribs, dim=2)
         log_q_alpha = torch.logsumexp(log_q_alpha, dim=2)
         return dict(latent=z_all, posterior_density=log_q_alpha)
 
@@ -420,7 +429,7 @@ class VAE(nn.Module):
         # Parameters for z latent distribution
         observed_library = None
         if do_observed_library:
-            observed_library = x.sum(1, keepdims=True)
+            observed_library = x.sum(1, keepdim=True)
 
         variables = self.inference(
             x,
