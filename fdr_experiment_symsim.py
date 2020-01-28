@@ -18,8 +18,9 @@ from scvi.inference import UnsupervisedTrainer
 from scvi.models import VAE
 
 NUMS = 5
-FILENAME = "simu_fdr_symsim_2.0"
-MODEL_DIR = "models/fdr_symsim_2.0"
+FILENAME = "simu_fdr_symsim_7_observed_l_batch_size_128_defensive_sampling"
+MODEL_DIR = "models/fdr_symsim_7_observed_l_batch_size_128"
+DO_OBSERVED_LIBRARY = True
 
 if not os.path.exists(MODEL_DIR):
     os.makedirs(MODEL_DIR)
@@ -28,12 +29,12 @@ if not os.path.exists(MODEL_DIR):
 N_EPOCHS = 200  # High number of epochs sounds vital to reach acceptable levels of khat
 LR = 1e-3
 TRAIN_SIZE = 0.8
-BATCH_SIZE = 1024
+BATCH_SIZE = 128
 
 N_HIDDEN_ARR = [128]
 
 # Params for FDR measurements
-N_PICKS = 20
+N_PICKS = 5
 
 
 # 1. Dataset
@@ -58,7 +59,7 @@ LFC_INFO = pd.read_csv(
 
 DATASET = GeneExpressionDataset(
     *GeneExpressionDataset.get_attributes_from_matrix(
-        X=X_OBS.values[:, :50],
+        X=X_OBS.values,
         batch_indices=BATCH_INFO["x"].values,
         labels=METADATA["pop"].values,
     )
@@ -145,18 +146,18 @@ Y = METADATA["pop"].values
 IS_SIGNIFICANT_DE = (LFC_INFO["12"].abs() >= 0.5).values
 LFC_GT = LFC_INFO["12"].values
 
-DO_OBSERVED_LIBRARY = True
-
 
 def get_predictions_is(post, samp_a, samp_b, encoder_key, counts, n_post_samples=50):
     n_samples = len(samp_a)
     softmax = nn.Softmax(dim=0)
+
+    factor_counts = n_post_samples // counts.sum()
     post_vals = post.getter(
         keys=["px_scale", "log_ratio"],
         n_samples=n_post_samples,
         do_observed_library=DO_OBSERVED_LIBRARY,
         encoder_key=encoder_key,
-        counts=counts,
+        counts=factor_counts*counts,
     )
 
     w_a = post_vals["log_ratio"][:, samp_a]
@@ -209,48 +210,93 @@ def posterior_expected_fdr(y_pred, fdr_target=0.05) -> tuple:
 
 
 # 2. Experiment
+
+# Regular
+# SCENARIOS = [  # WAKE updates
+#     dict(
+#         loss_gen="IWELBO",
+#         loss_wvar="CUBO",
+#         reparam_wphi=True,
+#         n_samples_theta=25,
+#         n_samples_phi=25,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+#     dict(
+#         loss_gen="ELBO",
+#         loss_wvar="CUBO",
+#         reparam_wphi=True,
+#         n_samples_theta=1,
+#         n_samples_phi=25,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+#     dict(
+#         loss_gen="IWELBO",
+#         loss_wvar="REVKL",
+#         reparam_wphi=False,
+#         n_samples_theta=25,
+#         n_samples_phi=25,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+#     dict(
+#         loss_gen="ELBO",
+#         loss_wvar="REVKL",
+#         reparam_wphi=False,
+#         n_samples_theta=1,
+#         n_samples_phi=25,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+#     dict(
+#         loss_gen="ELBO",
+#         loss_wvar="ELBO",
+#         reparam_wphi=True,
+#         n_samples_theta=10,
+#         n_samples_phi=10,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+#     dict(
+#         loss_gen="ELBO",
+#         loss_wvar="ELBO",
+#         reparam_wphi=True,
+#         n_samples_theta=1,
+#         n_samples_phi=1,
+#         iaf_t=0,
+#         n_epochs=200,
+#     ),
+# ]
+
+# Defensive
 SCENARIOS = [  # WAKE updates
     dict(
-        loss_gen="ELBO",
-        loss_wvar="CUBO",
+        loss_gen="IWELBO",
+        loss_wvar="defensive",
         reparam_wphi=True,
         n_samples_theta=25,
+        counts=torch.tensor([10, 10, 0]),
         n_samples_phi=25,
         iaf_t=0,
         n_epochs=200,
     ),
     dict(
-        loss_gen="ELBO",
-        loss_wvar="REVKL",
-        reparam_wphi=False,
-        n_samples_theta=25,
-        n_samples_phi=25,
-        iaf_t=0,
-        n_epochs=200,
-    ),
-    dict(
-        loss_gen="ELBO",
-        loss_wvar="REVKL",
-        reparam_wphi=False,
-        n_samples_theta=1,
-        n_samples_phi=25,
-        iaf_t=0,
-        n_epochs=200,
-    ),
-    dict(
-        loss_gen="ELBO",
-        loss_wvar="ELBO",
+        loss_gen="IWELBO",
+        loss_wvar="defensive",
         reparam_wphi=True,
-        n_samples_theta=10,
-        n_samples_phi=10,
+        n_samples_theta=25,
+        counts=torch.tensor([10, 10, 2]),
+        n_samples_phi=25,
         iaf_t=0,
         n_epochs=200,
     ),
     dict(
-        loss_gen="ELBO",
-        loss_wvar="REVKL",
-        reparam_wphi=False,
-        n_samples_theta=1,
+        loss_gen="IWELBO",
+        loss_wvar="defensive",
+        reparam_wphi=True,
+        n_samples_theta=25,
+        counts=torch.tensor([10, 10, 5]),
         n_samples_phi=25,
         iaf_t=0,
         n_epochs=200,
@@ -266,7 +312,14 @@ for scenario in SCENARIOS:
     n_samples_phi = scenario["n_samples_phi"]
     reparam_wphi = scenario["reparam_wphi"]
     iaf_t = scenario["iaf_t"]
-    counts = torch.tensor([8, 8, 2])
+    if "batch_size" in scenario:
+        batch_size = scenario["batch_size"]
+    else:
+        batch_size = BATCH_SIZE
+    if "counts" in scenario:
+        counts = scenario["counts"]
+    else:
+        counts = None
 
     if "n_epochs" in scenario:
         n_epochs = scenario["n_epochs"]
@@ -318,8 +371,8 @@ for scenario in SCENARIOS:
             mdl = VAE(
                 n_input=N_GENES,
                 n_hidden=n_hidden,
-                n_latent=128,
-                n_layers=10,
+                n_latent=10,
+                n_layers=1,
                 prevent_library_saturation=False,  # Maybe this parameter is better set to False
                 iaf_t=iaf_t,
                 multi_encoder_keys=multi_encoder_keys,
@@ -329,12 +382,12 @@ for scenario in SCENARIOS:
                 mdl.load_state_dict(torch.load(mdl_name))
             mdl.cuda()
             trainer = UnsupervisedTrainer(
-                model=mdl, gene_dataset=DATASET, batch_size=1024,
+                model=mdl, gene_dataset=DATASET, batch_size=batch_size,
             )
             # try:
             if not os.path.exists(mdl_name):
                 if loss_wvar == "defensive":
-                    print("Training using defensive sampling")
+                    print("Training using defensive sampling with counts: ", counts)
                     trainer.train_defensive(
                         n_epochs=n_epochs,
                         lr=1e-3,
@@ -342,6 +395,7 @@ for scenario in SCENARIOS:
                         wake_psi=loss_wvar,
                         n_samples_theta=n_samples_theta,
                         n_samples_phi=n_samples_phi,
+                        counts=counts,
                     )
                 else:
                     trainer.train(
@@ -352,7 +406,7 @@ for scenario in SCENARIOS:
                         n_samples_theta=n_samples_theta,
                         n_samples_phi=n_samples_phi,
                         reparam=reparam_wphi,
-                        do_observed_library=True,
+                        do_observed_library=DO_OBSERVED_LIBRARY,
                     )
             torch.save(mdl.state_dict(), mdl_name)
 
@@ -366,7 +420,7 @@ for scenario in SCENARIOS:
                     n_samples=100,
                     do_observed_library=DO_OBSERVED_LIBRARY,
                     encoder_key=encoder_eval_name,
-                    counts=counts,
+                    counts=10*counts,
                 )["CUBO"]
                 .cpu()
                 .numpy()
@@ -380,7 +434,7 @@ for scenario in SCENARIOS:
                     n_samples=100,
                     do_observed_library=DO_OBSERVED_LIBRARY,
                     encoder_key=encoder_eval_name,
-                    counts=counts,
+                    counts=10*counts,
                 )["IWELBO"]
                 .cpu()
                 .numpy()
@@ -391,7 +445,7 @@ for scenario in SCENARIOS:
             # Using 1000 samples
             log_ratios = []
             n_samples_total = 1e4
-            n_samples_per_pass = 25
+            n_samples_per_pass = 25 if encoder_eval_name == "default" else counts.sum()
             n_iter = int(n_samples_total / n_samples_per_pass)
             for _ in tqdm(range(n_iter)):
                 with torch.no_grad():
@@ -402,15 +456,17 @@ for scenario in SCENARIOS:
                         loss_type=None,
                         n_samples=n_samples_per_pass,
                         reparam=False,
+                        encoder_key=encoder_eval_name,
+                        counts=counts,
                         do_observed_library=DO_OBSERVED_LIBRARY,
                     )
                 out = out["log_ratio"].cpu()
                 log_ratios.append(out)
 
+            log_ratios = torch.cat(log_ratios)
             wi = torch.softmax(log_ratios, 0)
             ess_here = 1.0 / (wi ** 2).sum(0)
 
-            log_ratios = torch.cat(log_ratios)
             _, khats = psislw(log_ratios.T.clone())
 
             khat_arr_10000.append(khats)
@@ -420,6 +476,7 @@ for scenario in SCENARIOS:
             test_indices = train_post.indices
             y_test = Y[test_indices]
 
+            IS_SIGNIFICANT_DE = (LFC_INFO["12"].abs() >= 0.5).values
             l2_errs = np.zeros(N_PICKS)
             l1_errs = np.zeros(N_PICKS)
             m_ap_vals = np.zeros(N_PICKS)
@@ -440,13 +497,12 @@ for scenario in SCENARIOS:
                     samples_b,
                     encoder_key=encoder_eval_name,
                     counts=counts,
-                    n_post_samples=100,
+                    n_post_samples=200,
                 )
                 y_pred_is = y_pred_is.numpy()
 
                 true_fdr_arr = true_fdr(y_true=IS_SIGNIFICANT_DE, y_pred=y_pred_is)
                 pe_fdr_arr, y_decision_rule = posterior_expected_fdr(y_pred=y_pred_is)
-
                 # Fdr related
                 fdr_gt[:, ipick] = true_fdr_arr
                 pe_fdr[:, ipick] = pe_fdr_arr
@@ -487,84 +543,14 @@ for scenario in SCENARIOS:
             fdr_controlled_fdr10.append(decision_rule_fdr10)
             fdr_controlled_tpr10.append(decision_rule_tpr10)
 
-            l2_errs_50 = np.zeros(N_PICKS)
-            l1_errs_50 = np.zeros(N_PICKS)
-            m_ap_vals_50 = np.zeros(N_PICKS)
-            auc_vals_50 = np.zeros(N_PICKS)
-            decision_rule_fdr_50 = np.zeros(N_PICKS)
-            decision_rule_tpr_50 = np.zeros(N_PICKS)
-            decision_rule_fdr10_50 = np.zeros(N_PICKS)
-            decision_rule_tpr10_50 = np.zeros(N_PICKS)
-            fdr_gt_50 = np.zeros((N_GENES, N_PICKS))
-            pe_fdr_50 = np.zeros((N_GENES, N_PICKS))
-            for ipick in range(N_PICKS):
-                samples_a = np.random.choice(np.where(y_test == 1)[0], size=50)
-                samples_b = np.random.choice(np.where(y_test == 2)[0], size=50)
-
-                y_pred_is = get_predictions_is(
-                    train_post,
-                    samples_a,
-                    samples_b,
-                    encoder_key=encoder_eval_name,
-                    counts=counts,
-                    n_post_samples=50,
-                )
-                y_pred_is = y_pred_is.numpy()
-
-                true_fdr_arr = true_fdr(y_true=IS_SIGNIFICANT_DE, y_pred=y_pred_is)
-                pe_fdr_arr, y_decision_rule = posterior_expected_fdr(y_pred=y_pred_is)
-
-                # Fdr related
-                fdr_gt_50[:, ipick] = true_fdr_arr
-                pe_fdr_50[:, ipick] = pe_fdr_arr
-
-                l2_errs_50[ipick] = np.linalg.norm(true_fdr_arr - pe_fdr_arr, ord=2)
-                l1_errs_50[ipick] = np.linalg.norm(true_fdr_arr - pe_fdr_arr, ord=1)
-
-                # Overall classification
-                m_ap_vals_50[ipick] = average_precision_score(
-                    IS_SIGNIFICANT_DE, y_pred_is
-                )
-                auc_vals_50[ipick] = auc(IS_SIGNIFICANT_DE, y_pred_is)
-
-                # Decision rule related
-                decision_rule_fdr_50[ipick] = 1 - precision_score(
-                    y_true=IS_SIGNIFICANT_DE, y_pred=y_decision_rule
-                )
-                decision_rule_tpr_50[ipick] = recall_score(
-                    y_true=IS_SIGNIFICANT_DE, y_pred=y_decision_rule
-                )
-
-                _, y_decision_rule10_50 = posterior_expected_fdr(
-                    y_pred=y_pred_is, fdr_target=0.1
-                )
-                decision_rule_fdr10_50[ipick] = 1 - precision_score(
-                    y_true=IS_SIGNIFICANT_DE, y_pred=y_decision_rule10_50
-                )
-                decision_rule_tpr10_50[ipick] = recall_score(
-                    y_true=IS_SIGNIFICANT_DE, y_pred=y_decision_rule10_50
-                )
-
-            all_fdr_gt_50.append(fdr_gt_50)
-            all_pe_fdr_50.append(pe_fdr_50)
-            fdr_l1_err_50.append(l1_errs_50)
-            fdr_l2_err_50.append(l2_errs_50)
-            precision_arr_50.append(m_ap_vals_50)
-            auc_arr_50.append(auc_vals_50)
-            fdr_controlled_fdr_50.append(decision_rule_fdr_50)
-            fdr_controlled_tpr_50.append(decision_rule_tpr_50)
-            fdr_controlled_fdr10_50.append(decision_rule_fdr10_50)
-            fdr_controlled_tpr10_50.append(decision_rule_tpr10_50)
-
-            # except Exception as e:
-            #     print(e)
-            #     pass
         res = {
             "wake_theta": loss_gen,
             "wake_psi": loss_wvar,
+            "batch_size": batch_size,
             "n_samples_theta": n_samples_theta,
             "n_samples_phi": n_samples_phi,
             "reparam_wphi": reparam_wphi,
+            "counts": counts,
             "n_epochs": n_epochs,
             "iaf_t": iaf_t,
             "n_hidden": n_hidden,
