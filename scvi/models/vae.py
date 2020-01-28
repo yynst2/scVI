@@ -143,6 +143,7 @@ class VAE(nn.Module):
 
         assert not self.do_iaf
 
+    @torch.no_grad()
     def z_defensive_sampling(self, x, counts):
         """
             Samples from q_alpha
@@ -150,31 +151,31 @@ class VAE(nn.Module):
         """
         n_samples_total = counts.sum()
         n_batch, _ = x.shape
-        with torch.no_grad():
-            post_cubo = self.z_encoder["CUBO"](
-                x=x, n_samples=counts[0], reparam=False, squeeze=False
-            )
-            if counts[0] >= 1:
-                z_cubo = post_cubo["latent"]
-                q_cubo = Normal(post_cubo["q_m"][0], post_cubo["q_v"][0])
-            else:
-                # Specific handling of counts=0 required for latter concatenation
-                z_cubo = torch.tensor([], device="cuda")
-                q_cubo = None
+        # with torch.no_grad():
+        post_cubo = self.z_encoder["CUBO"](
+            x=x, n_samples=counts[0], reparam=False, squeeze=False
+        )
+        if counts[0] >= 1:
+            z_cubo = post_cubo["latent"]
+            q_cubo = Normal(post_cubo["q_m"][0], post_cubo["q_v"][0].sqrt())
+        else:
+            # Specific handling of counts=0 required for latter concatenation
+            z_cubo = torch.tensor([], device="cuda")
+            q_cubo = None
 
-            post_eubo = self.z_encoder["EUBO"](
-                x=x, n_samples=counts[1], reparam=False, squeeze=False
-            )
-            if counts[1] >= 1:
-                z_eubo = post_eubo["latent"]
-                q_eubo = Normal(post_eubo["q_m"][0], post_eubo["q_v"][0])
-            else:
-                # Specific handling of counts=0 required for latter concatenation
-                z_eubo = torch.tensor([], device="cuda")
-                q_eubo = None
+        post_eubo = self.z_encoder["EUBO"](
+            x=x, n_samples=counts[1], reparam=False, squeeze=False
+        )
+        if counts[1] >= 1:
+            z_eubo = post_eubo["latent"]
+            q_eubo = Normal(post_eubo["q_m"][0], post_eubo["q_v"][0].sqrt())
+        else:
+            # Specific handling of counts=0 required for latter concatenation
+            z_eubo = torch.tensor([], device="cuda")
+            q_eubo = None
 
-            z_prior = self.z_prior.sample((counts[2], n_batch))
-            q_prior = self.z_prior
+        z_prior = self.z_prior.sample((counts[2], n_batch))
+        q_prior = self.z_prior
 
         z_all = torch.cat([z_cubo, z_eubo, z_prior], dim=0)
         distribs_all = [q_cubo, q_eubo, q_prior]
