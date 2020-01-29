@@ -222,23 +222,15 @@ class MnistTrainer:
         self,
         n_epochs,
         lr=1e-3,
-        overall_loss: str = None,
         wake_theta: str = "ELBO",
         wake_psi: str = "ELBO",
         n_samples_phi: int = None,
         n_samples_theta: int = None,
         classification_ratio: float = 50.0,
         update_mode: str = "all",
-        reparam_wphi: bool = True,
-        z2_with_elbo: bool = False,
+        counts=torch.tensor([8, 8, 2]),
     ):
         assert update_mode in ["all", "alternate"]
-
-        logger.info(
-            "Using {n_samples_theta} and {n_samples_phi} samples for theta wake / phi wake".format(
-                n_samples_theta=n_samples_theta, n_samples_phi=n_samples_phi,
-            )
-        )
 
         params_gen = filter(
             lambda p: p.requires_grad,
@@ -250,16 +242,16 @@ class MnistTrainer:
         params_cubo_var = filter(
             lambda p: p.requires_grad,
             list(self.model.classifier["CUBO"].parameters())
-            + list(self.model.encoder_z1["CUBO"].parameters()),
-            +list(self.model.encoder_z2_z1["CUBO"].parameters()),
+            + list(self.model.encoder_z1["CUBO"].parameters())
+            + list(self.model.encoder_z2_z1["CUBO"].parameters())
         )
         optim_cubo_var = Adam(params_cubo_var, lr=lr)
 
         params_eubo_var = filter(
             lambda p: p.requires_grad,
             list(self.model.classifier["EUBO"].parameters())
-            + list(self.model.encoder_z1["EUBO"].parameters()),
-            +list(self.model.encoder_z2_z1["EUBO"].parameters()),
+            + list(self.model.encoder_z1["EUBO"].parameters())
+            + list(self.model.encoder_z2_z1["EUBO"].parameters())
         )
         optim_eubo_var = Adam(params_eubo_var, lr=lr)
 
@@ -284,6 +276,9 @@ class MnistTrainer:
                     n_samples=n_samples_theta,
                     reparam=True,
                     classification_ratio=classification_ratio,
+                    encoder_key="defensive",
+                    counts=counts,
+
                 )
                 optim_gen.zero_grad()
                 theta_loss.backward()
@@ -336,6 +331,7 @@ class MnistTrainer:
         classification_ratio=50.0,
         mode="all",
         encoder_key="default",
+        counts=None
     ):
 
         labelled_fraction = self.dataset.labelled_fraction
@@ -348,6 +344,7 @@ class MnistTrainer:
                 n_samples=n_samples,
                 reparam=reparam,
                 encoder_key=encoder_key,
+                counts=counts,
             )
             l_s = self.model.forward(
                 x_s,
@@ -356,6 +353,7 @@ class MnistTrainer:
                 n_samples=n_samples,
                 reparam=reparam,
                 encoder_key=encoder_key,
+                counts=counts,
             )
             l_s = labelled_fraction * l_s
             j = l_u.mean() + l_s.mean()
@@ -368,6 +366,7 @@ class MnistTrainer:
                     n_samples=n_samples,
                     reparam=reparam,
                     encoder_key=encoder_key,
+                    counts=counts,
                 )
                 j = l_s.mean()
             else:
@@ -377,13 +376,18 @@ class MnistTrainer:
                     n_samples=n_samples,
                     reparam=reparam,
                     encoder_key=encoder_key,
+                    counts=counts,
                 )
                 j = l_u.mean()
         else:
             raise ValueError("Mode {} not recognized".format(mode))
 
-        y_pred = self.model.classify(x_s)
-        l_class = self.cross_entropy_fn(y_pred, target=y_s)
+        if encoder_key == "defensive":
+            # Classifiers' gradients are null wrt theta
+            l_class = 0.0
+        else:
+            y_pred = self.model.classify(x_s, encoder_key=encoder_key)
+            l_class = self.cross_entropy_fn(y_pred, target=y_s)
         loss = j + classification_ratio * l_class
 
         if self.save_metrics:
