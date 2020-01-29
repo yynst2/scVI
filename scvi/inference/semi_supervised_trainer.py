@@ -218,6 +218,113 @@ class MnistTrainer:
 
                 self.iterate += 1
 
+    def train_defensive(
+        self,
+        n_epochs,
+        lr=1e-3,
+        overall_loss: str = None,
+        wake_theta: str = "ELBO",
+        wake_psi: str = "ELBO",
+        n_samples_phi: int = None,
+        n_samples_theta: int = None,
+        classification_ratio: float = 50.0,
+        update_mode: str = "all",
+        reparam_wphi: bool = True,
+        z2_with_elbo: bool = False,
+    ):
+        assert update_mode in ["all", "alternate"]
+
+        logger.info(
+            "Using {n_samples_theta} and {n_samples_phi} samples for theta wake / phi wake".format(
+                n_samples_theta=n_samples_theta, n_samples_phi=n_samples_phi,
+            )
+        )
+
+        params_gen = filter(
+            lambda p: p.requires_grad,
+            list(self.model.decoder_z1_z2.parameters())
+            + list(self.model.x_decoder.parameters()),
+        )
+        optim_gen = Adam(params_gen, lr=lr)
+
+        params_cubo_var = filter(
+            lambda p: p.requires_grad,
+            list(self.model.classifier["CUBO"].parameters())
+            + list(self.model.encoder_z1["CUBO"].parameters()),
+            +list(self.model.encoder_z2_z1["CUBO"].parameters()),
+        )
+        optim_cubo_var = Adam(params_cubo_var, lr=lr)
+
+        params_eubo_var = filter(
+            lambda p: p.requires_grad,
+            list(self.model.classifier["EUBO"].parameters())
+            + list(self.model.encoder_z1["EUBO"].parameters()),
+            +list(self.model.encoder_z2_z1["EUBO"].parameters()),
+        )
+        optim_eubo_var = Adam(params_eubo_var, lr=lr)
+
+        for epoch in tqdm(range(n_epochs)):
+            for (tensor_all, tensor_superv) in zip(
+                self.train_loader, cycle(self.train_annotated_loader)
+            ):
+
+                x_u, _ = tensor_all
+                x_s, y_s = tensor_superv
+
+                x_u = x_u.to("cuda")
+                x_s = x_s.to("cuda")
+                y_s = y_s.to("cuda")
+
+                # Wake theta
+                theta_loss = self.loss(
+                    x_u=x_u,
+                    x_s=x_s,
+                    y_s=y_s,
+                    loss_type=wake_theta,
+                    n_samples=n_samples_theta,
+                    reparam=True,
+                    classification_ratio=classification_ratio,
+                )
+                optim_gen.zero_grad()
+                theta_loss.backward()
+                optim_gen.step()
+                torch.cuda.synchronize()
+
+                if self.iterate % 100 == 0:
+                    self.metrics["train_theta_wake"].append(theta_loss.item())
+
+                psi_cubo_loss = self.loss(
+                    x_u=x_u,
+                    x_s=x_s,
+                    y_s=y_s,
+                    loss_type="CUBO",
+                    n_samples=n_samples_phi,
+                    reparam=True,
+                    classification_ratio=classification_ratio,
+                    encoder_key="CUBO",
+                )
+                optim_cubo_var.zero_grad()
+                psi_cubo_loss.backward()
+                optim_cubo_var.step()
+                torch.cuda.synchronize()
+
+                psi_eubo_loss = self.loss(
+                    x_u=x_u,
+                    x_s=x_s,
+                    y_s=y_s,
+                    loss_type="REVKL",
+                    n_samples=n_samples_phi,
+                    reparam=False,
+                    classification_ratio=classification_ratio,
+                    encoder_key="EUBO",
+                )
+                optim_eubo_var.zero_grad()
+                psi_eubo_loss.backward()
+                optim_eubo_var.step()
+                torch.cuda.synchronize()
+
+            self.iterate += 1
+
     def loss(
         self,
         x_u,
@@ -228,6 +335,7 @@ class MnistTrainer:
         reparam=True,
         classification_ratio=50.0,
         mode="all",
+        encoder_key="default",
     ):
 
         labelled_fraction = self.dataset.labelled_fraction
@@ -235,10 +343,19 @@ class MnistTrainer:
 
         if mode == "all":
             l_u = self.model.forward(
-                x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
+                x_u,
+                loss_type=loss_type,
+                n_samples=n_samples,
+                reparam=reparam,
+                encoder_key=encoder_key,
             )
             l_s = self.model.forward(
-                x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
+                x_s,
+                loss_type=loss_type,
+                y=y_s,
+                n_samples=n_samples,
+                reparam=reparam,
+                encoder_key=encoder_key,
             )
             l_s = labelled_fraction * l_s
             j = l_u.mean() + l_s.mean()
@@ -250,11 +367,16 @@ class MnistTrainer:
                     y=y_s,
                     n_samples=n_samples,
                     reparam=reparam,
+                    encoder_key=encoder_key,
                 )
                 j = l_s.mean()
             else:
                 l_u = self.model.forward(
-                    x_u, loss_type=loss_type, n_samples=n_samples, reparam=reparam
+                    x_u,
+                    loss_type=loss_type,
+                    n_samples=n_samples,
+                    reparam=reparam,
+                    encoder_key=encoder_key,
                 )
                 j = l_u.mean()
         else:
