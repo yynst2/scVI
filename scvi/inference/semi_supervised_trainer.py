@@ -283,7 +283,7 @@ class MnistTrainer:
                 optim_gen.zero_grad()
                 theta_loss.backward()
                 optim_gen.step()
-                torch.cuda.synchronize()
+                # torch.cuda.synchronize()
 
                 if self.iterate % 100 == 0:
                     self.metrics["train_theta_wake"].append(theta_loss.item())
@@ -301,7 +301,7 @@ class MnistTrainer:
                 optim_cubo_var.zero_grad()
                 psi_cubo_loss.backward()
                 optim_cubo_var.step()
-                torch.cuda.synchronize()
+                # torch.cuda.synchronize()
 
                 psi_eubo_loss = self.loss(
                     x_u=x_u,
@@ -316,7 +316,7 @@ class MnistTrainer:
                 optim_eubo_var.zero_grad()
                 psi_eubo_loss.backward()
                 optim_eubo_var.step()
-                torch.cuda.synchronize()
+                # torch.cuda.synchronize()
 
             self.iterate += 1
 
