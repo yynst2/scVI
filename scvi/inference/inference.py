@@ -329,7 +329,7 @@ class UnsupervisedTrainer(Trainer):
                         local_l_mean,
                         local_l_var,
                         batch_index,
-                        loss_type="IWELBO",
+                        loss_type=wake_theta,
                         n_samples=n_samples_theta,
                         do_observed_library=True,
                         encoder_key="defensive",
