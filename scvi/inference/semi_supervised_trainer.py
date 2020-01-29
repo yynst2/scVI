@@ -21,7 +21,7 @@ class MnistTrainer:
         model: SemiSupervisedVAE,
         batch_size: int = 128,
         use_cuda=True,
-        save_metrics=False
+        save_metrics=False,
     ):
         self.dataset = dataset
         self.model = model
@@ -44,7 +44,7 @@ class MnistTrainer:
             pin_memory=use_cuda,
         )
         self.cross_entropy_fn = CrossEntropyLoss()
-        
+
         self.save_metrics = save_metrics
         self.iterate = 0
         self.metrics = dict(
@@ -118,7 +118,7 @@ class MnistTrainer:
                 params_var = filter(
                     lambda p: p.requires_grad,
                     list(self.model.classifier.parameters())
-                    + list(self.model.encoder_z1.parameters())
+                    + list(self.model.encoder_z1.parameters()),
                 )
 
             optim_var_wake = Adam(params_var, lr=lr)
@@ -245,7 +245,11 @@ class MnistTrainer:
         elif mode == "alternate":
             if self.iterate % s_every == 0:
                 l_s = self.model.forward(
-                    x_s, loss_type=loss_type, y=y_s, n_samples=n_samples, reparam=reparam
+                    x_s,
+                    loss_type=loss_type,
+                    y=y_s,
+                    n_samples=n_samples,
+                    reparam=reparam,
                 )
                 j = l_s.mean()
             else:
@@ -273,7 +277,12 @@ class MnistTrainer:
 
     @torch.no_grad()
     def inference(
-        self, data_loader, do_supervised=False, keys=None, n_samples: int = 10, eval_mode=True
+        self,
+        data_loader,
+        do_supervised=False,
+        keys=None,
+        n_samples: int = 10,
+        eval_mode=True,
     ) -> dict:
         all_res = dict()
         if eval_mode:
