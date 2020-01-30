@@ -243,7 +243,7 @@ class MnistTrainer:
             lambda p: p.requires_grad,
             list(self.model.classifier["CUBO"].parameters())
             + list(self.model.encoder_z1["CUBO"].parameters())
-            + list(self.model.encoder_z2_z1["CUBO"].parameters())
+            + list(self.model.encoder_z2_z1["CUBO"].parameters()),
         )
         optim_cubo_var = Adam(params_cubo_var, lr=lr)
 
@@ -251,7 +251,7 @@ class MnistTrainer:
             lambda p: p.requires_grad,
             list(self.model.classifier["EUBO"].parameters())
             + list(self.model.encoder_z1["EUBO"].parameters())
-            + list(self.model.encoder_z2_z1["EUBO"].parameters())
+            + list(self.model.encoder_z2_z1["EUBO"].parameters()),
         )
         optim_eubo_var = Adam(params_eubo_var, lr=lr)
 
@@ -278,7 +278,6 @@ class MnistTrainer:
                     classification_ratio=classification_ratio,
                     encoder_key="defensive",
                     counts=counts,
-
                 )
                 optim_gen.zero_grad()
                 theta_loss.backward()
@@ -331,7 +330,7 @@ class MnistTrainer:
         classification_ratio=50.0,
         mode="all",
         encoder_key="default",
-        counts=None
+        counts=None,
     ):
 
         labelled_fraction = self.dataset.labelled_fraction
@@ -409,6 +408,8 @@ class MnistTrainer:
         keys=None,
         n_samples: int = 10,
         eval_mode=True,
+        encoder_key="default",
+        counts=None,
     ) -> dict:
         all_res = dict()
         if eval_mode:
@@ -420,9 +421,14 @@ class MnistTrainer:
             x = x.to("cuda")
             y = y.to("cuda")
             if not do_supervised:
-                res = self.model.inference(x, n_samples=n_samples)
+                res = self.model.inference(
+                    x, n_samples=n_samples, encoder_key=encoder_key, counts=counts
+                )
             else:
-                res = self.model.inference(x, y=y, n_samples=n_samples)
+                raise ValueError("Not sure")
+                res = self.model.inference(
+                    x, y=y, n_samples=n_samples, encoder_key=encoder_key, counts=counts
+                )
             res["y"] = y
             if keys is not None:
                 filtered_res = {key: val for (key, val) in res.items() if key in keys}
@@ -430,15 +436,18 @@ class MnistTrainer:
                 filtered_res = res
 
             is_labelled = False
-            log_ratios = (
-                res["log_pz2"]
-                + res["log_pc"]
-                + res["log_pz1_z2"]
-                + res["log_px_z"]
-                - res["log_qz1_x"]
-                - res["log_qz2_z1"]
-                - res["log_qc_z1"]
-            )
+            if encoder_key != "defensive":
+                log_ratios = (
+                    res["log_pz2"]
+                    + res["log_pc"]
+                    + res["log_pz1_z2"]
+                    + res["log_px_z"]
+                    - res["log_qz1_x"]
+                    - res["log_qz2_z1"]
+                    - res["log_qc_z1"]
+                )
+            else:
+                log_ratios = res["log_ratio"]
 
             if "CUBO" in keys:
                 filtered_res["CUBO"] = self.model.cubo(
