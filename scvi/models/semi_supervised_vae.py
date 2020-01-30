@@ -138,37 +138,52 @@ class SemiSupervisedVAE(nn.Module):
         # Encoder part
         with torch.no_grad():
             # z sampling
-            post_cubo = self.inference(
-                x, y=None, n_samples=counts[0], reparam=False, encoder_key="CUBO"
-            )
-            z_cubo = (
-                post_cubo["z1"]
-                .view(1, counts[0], n_batch, n_latent)
-                .expand(n_labels, counts[0], n_batch, n_latent)
-            )
-            u_cubo = post_cubo["z2"]
+            ct = counts[0]
+            if ct >= 1:
+                post_cubo = self.inference(x, n_samples=ct, encoder_key="CUBO")
+                z_cubo = (
+                    post_cubo["z1"]
+                    .view(1, counts[0], n_batch, n_latent)
+                    .expand(n_labels, counts[0], n_batch, n_latent)
+                )
+                u_cubo = post_cubo["z2"]
+                ys_cubo = post_cubo["ys"]
+            else:
+                z_cubo = torch.tensor([], device="cuda")
+                u_cubo = torch.tensor([], device="cuda")
+                ys_cubo = torch.tensor([], device="cuda")
 
-            post_eubo = self.inference(
-                x, y=None, n_samples=counts[1], reparam=False, encoder_key="EUBO"
-            )
-            z_eubo = (
-                post_eubo["z1"]
-                .view(1, counts[1], n_batch, n_latent)
-                .expand(n_labels, counts[1], n_batch, n_latent)
-            )
-            u_eubo = post_eubo["z2"]
-
+            ct = counts[1]
+            if ct >= 1:
+                post_eubo = self.inference(x, n_samples=ct, encoder_key="EUBO")
+                z_eubo = (
+                    post_eubo["z1"]
+                    .view(1, counts[1], n_batch, n_latent)
+                    .expand(n_labels, counts[1], n_batch, n_latent)
+                )
+                u_eubo = post_eubo["z2"]
+                ys_eubo = post_eubo["ys"]
+            else:
+                z_eubo = torch.tensor([], device="cuda")
+                u_eubo = torch.tensor([], device="cuda")
+                ys_eubo = torch.tensor([], device="cuda")
             # Sampling prior
-            latents_prior = self.latent_prior_sample(
-                n_batch=n_batch, n_samples=counts[2]
-            )
+            ct = counts[2]
+            if ct >= 1:
+                latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
+                
+                z1_prior = latents_prior["z1"]
+                z2_prior = latents_prior["z2"]
+                ys_prior = latents_prior["ys"]
+            else:
+                z1_prior = torch.tensor([], device="cuda")
+                z2_prior = torch.tensor([], device="cuda")
+                ys_prior = torch.tensor([], device="cuda")
 
             # Concatenating latent variables
-            z_all = torch.cat([z_cubo, z_eubo, latents_prior["z1"]], dim=1)
-            u_all = torch.cat([u_cubo, u_eubo, latents_prior["z2"]], dim=1)
-            y_all = torch.cat(
-                [post_cubo["ys"], post_eubo["ys"], latents_prior["ys"]], dim=1
-            )
+            z_all = torch.cat([z_cubo, z_eubo, z1_prior], dim=1)
+            u_all = torch.cat([u_cubo, u_eubo, z2_prior], dim=1)
+            y_all = torch.cat([ys_cubo, ys_eubo, ys_prior], dim=1)
 
             log_p_alpha = (1.0 * counts / counts.sum()).log()
             log_p_alpha = log_p_alpha
@@ -208,10 +223,8 @@ class SemiSupervisedVAE(nn.Module):
         if y is not None:
             one_hot = torch.cuda.FloatTensor(n_batch, n_labels).zero_()
             mask = (
-                one_hot
-                .scatter_(1, y.view(-1, 1), 1)
-                .T
-                .view(n_labels, 1, n_batch)
+                one_hot.scatter_(1, y.view(-1, 1), 1)
+                .T.view(n_labels, 1, n_batch)
                 .expand(n_labels, n_samples_total, n_batch)
             )
             log_ratio = (log_ratio * mask).sum(0)
@@ -226,6 +239,7 @@ class SemiSupervisedVAE(nn.Module):
             log_ratio=log_ratio,
             log_qc_z1=log_qc_z1,
             qc_z1=qc_z1,
+            qc_z1_all_probas=qc_z1_all_probas,
             z1=z_all,
             z2=u_all,
         )
@@ -439,11 +453,12 @@ class SemiSupervisedVAE(nn.Module):
         if encoder_key == "defensive":
             log_ratio = vars["log_ratio"]
         else:
-            log_ratio = vars["generative_density"] - vars["log_qz1_x"] - vars["log_qz2_z1"]
+            log_ratio = (
+                vars["generative_density"] - vars["log_qz1_x"] - vars["log_qz2_z1"]
+            )
             if not is_labelled:
                 # Unlabelled case: c latent variable
                 log_ratio -= vars["log_qc_z1"]
-
 
         everything_ok = log_ratio.ndim == 2 if is_labelled else log_ratio.ndim == 3
         assert everything_ok

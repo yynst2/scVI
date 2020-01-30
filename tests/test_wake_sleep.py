@@ -1,9 +1,9 @@
 import torch
 import logging
 
-from scvi.dataset import CortexDataset, MnistDataset
+from scvi.dataset import CortexDataset, MnistDataset, GeneExpressionDataset
 from scvi.inference import MnistTrainer
-from scvi.models import VAE, SemiSupervisedVAE, PSIS
+from scvi.models import VAE, SemiSupervisedVAE
 from scvi.inference import UnsupervisedTrainer
 
 logging.basicConfig(level=logging.DEBUG)
@@ -77,7 +77,13 @@ def test_mnist():
     n_input = 20
     n_batch = 100
     device = "cuda"
-    mdl = SemiSupervisedVAE(n_input=n_input, n_labels=n_labels)
+    mdl = SemiSupervisedVAE(
+        n_input=n_input,
+        n_labels=n_labels,
+        n_latent=5,
+        n_hidden=64,
+        prevent_saturation=False,
+    )
     mdl = mdl.cuda()
 
     x = torch.rand(n_batch, n_input, device=device)
@@ -97,25 +103,27 @@ def test_mnist():
     assert everything_ok
     ##
     n_input = 28 * 28
-    n_labels = 9
+    n_labels = 10
     dataset = MnistDataset(
         labelled_fraction=0.05,
         labelled_proportions=[0.1] * 10,
         root="/home/pierre/scVI/tests/mnist",
         download=True,
         do_1d=True,
-        test_size=0.0,
+        test_size=0.95,
     )
 
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
     mdl = SemiSupervisedVAE(
-        n_input=n_input, n_labels=n_labels, n_latent=50, n_hidden=500, prevent_saturation=False,
+        n_input=n_input,
+        n_labels=n_labels,
+        n_latent=5,
+        n_hidden=64,
+        prevent_saturation=False,
     )
     mdl = mdl.cuda()
     trainer = MnistTrainer(dataset=dataset, model=mdl, use_cuda=True)
-    # trainer.train(n_epochs=2, lr=1e-4, n_samples=1, overall_loss="ELBO")
-
     trainer.train(
         n_epochs=5,
         lr=1e-4,
@@ -128,20 +136,108 @@ def test_mnist():
     trainer.train(
         n_epochs=5,
         lr=1e-4,
-        n_samples,
-        overall_loss=,
-        wake_theta=,
-        wake_psi=""
+        n_samples=3,
+        overall_loss=None,
+        wake_theta="ELBO",
+        wake_psi="REVKL",
     )
 
-    trainer.inference(trainer.test_loader, n_samples=2)
+
+def test_mnist_defensive():
+    n_labels = 5
+    n_input = 20
+    n_batch = 100
+    device = "cuda"
+    mdl = SemiSupervisedVAE(
+        n_input=n_input,
+        n_labels=n_labels,
+        n_latent=5,
+        n_hidden=25,
+        prevent_saturation=False,
+        multi_encoder_keys=["CUBO", "EUBO"],
+    )
+    mdl = mdl.cuda()
+
+    x = torch.rand(n_batch, n_input, device=device)
+    variables = mdl.inference_defensive_sampling(
+        x, y=None, counts=torch.tensor([2, 3, 3])
+    )
+
+    dataset = MnistDataset(
+        labelled_fraction=0.05,
+        labelled_proportions=[0.1] * 10,
+        root="/home/pierre/scVI/tests/mnist",
+        download=True,
+        do_1d=True,
+        test_size=0.95,
+    )
+
+    n_input = 28 * 28
+    n_labels = 10
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    mdl = SemiSupervisedVAE(
+        n_input=n_input,
+        n_labels=10,
+        n_latent=5,
+        n_hidden=64,
+        prevent_saturation=False,
+        multi_encoder_keys=["CUBO", "EUBO"],
+    )
+    mdl = mdl.cuda()
+    trainer = MnistTrainer(dataset=dataset, model=mdl, use_cuda=True)
+    trainer.train_defensive(
+        n_epochs=1,
+        lr=1e-4,
+        n_samples_theta=15,
+        n_samples_phi=10,
+        wake_theta="ELBO",
+        cubo_wake_psi="CUBO",
+        counts=torch.tensor([1, 1, 1]),
+    )
+
+    trainer.train_defensive(
+        n_epochs=1,
+        lr=1e-4,
+        n_samples_theta=15,
+        n_samples_phi=10,
+        wake_theta="ELBO",
+        cubo_wake_psi="CUBO",
+        counts=torch.tensor([1, 0, 1]),
+    )
+
+    trainer.train_defensive(
+        n_epochs=1,
+        lr=1e-4,
+        n_samples_theta=15,
+        n_samples_phi=10,
+        wake_theta="ELBO",
+        cubo_wake_psi="CUBO",
+        counts=torch.tensor([1, 1, 0]),
+    )
 
 
-def test_psis():
-    a = torch.rand(150,)
+def test_defensive(save_path):
+    # dataset = CortexDataset(save_path=save_path)
 
-    from scipy.stats import genpareto
-    genpareto.fit(data=a.numpy())
+    X_obs = torch.randint(high=1000, size=(700, 25))
+    dataset = GeneExpressionDataset(
+        *GeneExpressionDataset.get_attributes_from_matrix(X=X_obs.numpy())
+    )
 
-    psis = PSIS(num_samples=150, lr=1e-3, n_iter=100)
-    psis.fit(a)
+    mdl = VAE(
+        n_input=dataset.nb_genes,
+        n_batch=dataset.n_batches,
+        multi_encoder_keys=["CUBO", "EUBO"],
+    )
+    trainer = UnsupervisedTrainer(model=mdl, gene_dataset=dataset, batch_size=128)
+    trainer.train_defensive(
+        n_epochs=20,
+        lr_theta=1e-3,
+        lr_phi=1e-3,
+        wake_theta="IWELBO",
+        wake_psi="defensive",
+        n_samples_theta=15,
+        n_samples_phi=10,
+        counts=torch.tensor([2, 10, 0]),
+    )
