@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 """Main module."""
 
+from typing import Union
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import torch.nn.functional as F
-from torch.distributions import Normal, kl_divergence as kl, MultivariateNormal
 from scipy.linalg import sqrtm
-from scvi.models.modules import Encoder, Decoder
-from scvi.models.regular_modules import LinearEncoder
-from scvi.models.utils import one_hot
+from torch.distributions import MultivariateNormal, Normal
 
-from typing import Union
+from scvi.models.modules import Encoder
+from scvi.models.regular_modules import LinearEncoder
 
 torch.backends.cudnn.benchmark = True
 
@@ -28,33 +27,56 @@ class LinearGaussian(nn.Module):
 
     """
 
-    def __init__(self, A_param, pxz_log_det, pxz_inv_sqrt, gamma, n_input: int, learn_var: bool = False,
-                 n_hidden: int = 128,
-                 n_latent: int = 10,
-                 n_layers: int = 1, dropout_rate: float = 0.1, linear_encoder: bool = False):
+    def __init__(
+        self,
+        A_param,
+        pxz_log_det,
+        pxz_inv_sqrt,
+        gamma,
+        n_input: int,
+        learn_var: bool = False,
+        n_hidden: int = 128,
+        n_latent: int = 10,
+        n_layers: int = 1,
+        dropout_rate: float = 0.1,
+        linear_encoder: bool = False,
+    ):
         super().__init__()
 
         self.n_latent = n_latent
         self.linear_encoder = linear_encoder
         if not linear_encoder:
-            self.encoder = Encoder(n_input, n_latent, n_layers=n_layers, n_hidden=n_hidden,
-                               dropout_rate=dropout_rate)
+            self.encoder = Encoder(
+                n_input,
+                n_latent,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+            )
         else:
             self.encoder = LinearEncoder(n_input, n_latent)
 
         self.A = torch.from_numpy(np.array(A_param, dtype=np.float32)).cuda()
 
-        self.log_det_pxz = torch.tensor(pxz_log_det, requires_grad=False, dtype=torch.float).cuda()
-        self.inv_sqrt_pxz = torch.from_numpy(np.array(pxz_inv_sqrt, dtype=np.float32)).cuda()
+        self.log_det_pxz = torch.tensor(
+            pxz_log_det, requires_grad=False, dtype=torch.float
+        ).cuda()
+        self.inv_sqrt_pxz = torch.from_numpy(
+            np.array(pxz_inv_sqrt, dtype=np.float32)
+        ).cuda()
 
         self.learn_var = learn_var
         self.px_log_diag_var = torch.nn.Parameter(torch.randn(1, n_input))
 
         self.gamma = torch.from_numpy(np.array(np.diag(gamma), dtype=np.float32)).cuda()
         log_det = np.log(np.linalg.det(gamma))
-        self.log_det_px_z = torch.tensor(log_det, requires_grad=False, dtype=torch.float).cuda()
+        self.log_det_px_z = torch.tensor(
+            log_det, requires_grad=False, dtype=torch.float
+        ).cuda()
         inv_sqrt = sqrtm(np.linalg.inv(gamma))
-        self.inv_sqrt_px_z = torch.from_numpy(np.array(inv_sqrt, dtype=np.float32)).cuda()
+        self.inv_sqrt_px_z = torch.from_numpy(
+            np.array(inv_sqrt, dtype=np.float32)
+        ).cuda()
 
     def get_std(self):
         return torch.sqrt(torch.exp(self.px_log_diag_var))
@@ -111,13 +133,23 @@ class LinearGaussian(nn.Module):
 
     def log_ratio(self, x, px_mean, px_var, qz_m, qz_v, z, return_full=False):
         if self.learn_var:
-            log_px_z = Normal(px_mean, torch.sqrt(px_var)).\
-                log_prob(x.repeat(px_mean.shape[0], 1, 1)).sum(dim=-1).view((px_mean.shape[0], -1))
-            log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_m)).log_prob(z).sum(dim=-1)
+            log_px_z = (
+                Normal(px_mean, torch.sqrt(px_var))
+                .log_prob(x.repeat(px_mean.shape[0], 1, 1))
+                .sum(dim=-1)
+                .view((px_mean.shape[0], -1))
+            )
+            log_pz = (
+                Normal(torch.zeros_like(qz_m), torch.ones_like(qz_m))
+                .log_prob(z)
+                .sum(dim=-1)
+            )
             if not self.linear_encoder:
                 log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
             else:
-                log_qz_given_x = MultivariateNormal(qz_m, qz_v).log_prob(z)  # No need to sum over latent dim
+                log_qz_given_x = MultivariateNormal(qz_m, qz_v).log_prob(
+                    z
+                )  # No need to sum over latent dim
             log_pxz = log_px_z + log_pz
 
         else:
@@ -128,9 +160,12 @@ class LinearGaussian(nn.Module):
                 log_qz_given_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
             else:
                 log_qz_given_x = MultivariateNormal(qz_m, qz_v).log_prob(z)
-            log_pxz = self.log_normal_full(zx.view((-1, reshape_dim)), torch.zeros_like(zx.view((-1, reshape_dim))),
-                                           self.log_det_pxz, self.inv_sqrt_pxz
-                                           ).view((px_mean.shape[0], -1))
+            log_pxz = self.log_normal_full(
+                zx.view((-1, reshape_dim)),
+                torch.zeros_like(zx.view((-1, reshape_dim))),
+                self.log_det_pxz,
+                self.inv_sqrt_pxz,
+            ).view((px_mean.shape[0], -1))
 
         log_ratio = log_pxz - log_qz_given_x
         if return_full:
@@ -140,28 +175,34 @@ class LinearGaussian(nn.Module):
 
     def neg_iwelbo(self, x, n_samples_mc):
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=True
+        )
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         iwelbo = torch.logsumexp(log_ratio, dim=0) - np.log(n_samples_mc)
-        return - iwelbo
+        return -iwelbo
 
     def neg_iwelbo_grad(self, x, n_samples_mc):
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=True
+        )
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         iwelbo = torch.softmax(log_ratio, dim=0).detach() * log_ratio
-        return - iwelbo.sum(dim=0)
+        return -iwelbo.sum(dim=0)
 
     def neg_elbo(self, x):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=2, reparam=True)
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
-        neg_elbo = - log_ratio.mean(dim=0)
+        neg_elbo = -log_ratio.mean(dim=0)
         return neg_elbo
 
     def cubo(self, x, n_samples_mc):
         # computes the naive cubo from chi2 upper bound
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=False
+        )
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         cubo = torch.logsumexp(2 * log_ratio, dim=0) - np.log(n_samples_mc)
         return 0.5 * cubo
@@ -169,18 +210,26 @@ class LinearGaussian(nn.Module):
     def cubo_grad(self, x, n_samples_mc):
         # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
-        log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=True
+        )
+        log_ratio, _, log_qz_given_x = self.log_ratio(
+            x, px_mean, px_var, qz_m, qz_v, z, return_full=True
+        )
         ws = torch.softmax(2 * log_ratio, dim=0)
-        cubo = ws.detach() * (- 1) * log_ratio
+        cubo = ws.detach() * (-1) * log_ratio
         # print(ws[:, 0])
         return cubo.sum(dim=0)
 
     def iwrevkl_obj(self, x, n_samples_mc):
         # computes the importance sampled objective for reverse KL EP (revisited reweighted wake-sleep)
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=False)
-        log_ratio, _, log_qz_given_x = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z, return_full=True)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=False
+        )
+        log_ratio, _, log_qz_given_x = self.log_ratio(
+            x, px_mean, px_var, qz_m, qz_v, z, return_full=True
+        )
         ws = torch.softmax(log_ratio, dim=0)
         rev_kl = ws.detach() * (-1) * log_qz_given_x
         return rev_kl.sum(dim=0)
@@ -188,7 +237,9 @@ class LinearGaussian(nn.Module):
     def vr_max(self, x, n_samples_mc):
         # computes the naive MC from VR-max bound
         # tile vectors from (B, d) to (n_samples_mc, B, d)
-        px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc, reparam=True)
+        px_mean, px_var, qz_m, qz_v, z = self.inference(
+            x, n_samples=n_samples_mc, reparam=True
+        )
         log_ratio = self.log_ratio(x, px_mean, px_var, qz_m, qz_v, z)
         return -log_ratio.max(dim=0)[0]
 
@@ -232,7 +283,9 @@ class LinearGaussian(nn.Module):
         if self.learn_var:
             return Normal(pxz_mean, torch.sqrt(pxz_var)).log_prob(xz).sum(dim=1)
         else:
-            return self.log_normal_full(xz, pxz_mean, self.log_det_pxz, self.inv_sqrt_pxz)
+            return self.log_normal_full(
+                xz, pxz_mean, self.log_det_pxz, self.inv_sqrt_pxz
+            )
 
     @staticmethod
     def log_normal_full(x, mean, log_det, inv_sqrt):
@@ -247,7 +300,7 @@ class LinearGaussian(nn.Module):
         return -0.5 * log_lik
 
     @torch.no_grad()
-    def prob_event(self, x, n_samples_mc, nu: Union[float, list, np.ndarray] = 0.):
+    def prob_event(self, x, n_samples_mc, nu: Union[float, list, np.ndarray] = 0.0):
         px_mean, px_var, qz_m, qz_v, z = self.inference(x, n_samples=n_samples_mc)
 
         # compute for importance sampling
@@ -258,14 +311,15 @@ class LinearGaussian(nn.Module):
         if hasattr(nu, "__len__"):
             res = []
             for nu_item in nu:
-                res_item = (
-                    torch.sum(ratio * (z[:, :, 0] <= nu_item).float(), dim=0)
-                    / torch.sum(ratio, dim=0)
-                )
+                res_item = torch.sum(
+                    ratio * (z[:, :, 0] <= nu_item).float(), dim=0
+                ) / torch.sum(ratio, dim=0)
                 res.append(res_item.view(-1, 1))
             res = torch.cat(res, dim=-1)
         else:
-            res = torch.sum(ratio * (z[:, :, 0] <= nu).float(), dim=0) / torch.sum(ratio, dim=0)
+            res = torch.sum(ratio * (z[:, :, 0] <= nu).float(), dim=0) / torch.sum(
+                ratio, dim=0
+            )
 
         # get ESS
         ess = torch.sum(ratio, dim=0) ** 2 / torch.sum(ratio ** 2, dim=0)
