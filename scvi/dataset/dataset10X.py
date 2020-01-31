@@ -30,6 +30,7 @@ available_datasets = {
         "memory_t",
         "cytotoxic_t",
         "naive_cytotoxic",
+        "293t",
     ],
     "2.1.0": ["pbmc8k", "pbmc4k", "t_3k", "t_4k", "neuron_9k"],
     "3.0.0": [
