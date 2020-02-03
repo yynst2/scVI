@@ -158,8 +158,8 @@ class DecoderA(nn.Module):
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
-        
-        p_m = torch.clamp(p_m, min=-100, max=100)
+
+        p_m = torch.clamp(p_m, min=-1000, max=1000)
         p_v = torch.clamp(p_v, min=-17.0, max=5)
         # p_v = torch.clamp(p_v, min=-17.0, max=14.0)
         # p_v = 16. * self.tanh(p_v)
