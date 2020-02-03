@@ -68,6 +68,8 @@ class EncoderA(nn.Module):
 
         # q_v = 16.0 * self.tanh(q_v)
         # q_v = torch.clamp(q_v, min=-17., max=14.)
+        q_m = torch.clamp(q_m, min=-1000, max=1000)
+
         q_v = torch.clamp(q_v, min=-17.0, max=8.0)
         q_v = q_v.exp()
         # q_v = 1e-16 + q_v.exp()
