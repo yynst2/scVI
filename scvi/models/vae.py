@@ -347,6 +347,26 @@ class VAE(nn.Module):
             log_ql_x=log_ql_x,
         )
 
+    def log_px_z(self, tensors, z):
+        """
+            Only works in the specific case where the library is observed and there are no batch indices
+        """
+        (x, _, _, batch_index, _,) = tensors
+        library = x.sum(1, keepdim=True)
+
+        px_scale, px_r, px_rate, px_dropout = self.decoder(
+            self.dispersion, z, library, batch_index
+        )
+        if self.dispersion == "gene-label":
+            raise ValueError
+        elif self.dispersion == "gene-batch":
+            px_r = F.linear(one_hot(batch_index, self.n_batch), self.px_r)
+        elif self.dispersion == "gene":
+            px_r = self.px_r
+        px_r = torch.exp(px_r)
+        res = (-1) * self._reconstruction_loss(x, px_rate, px_r, px_dropout)
+        return res
+
     @torch.no_grad()
     def generate_joint(
         self, x, local_l_mean, local_l_var, batch_index, y=None, zero_inflated=True,
