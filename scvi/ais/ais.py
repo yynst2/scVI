@@ -162,7 +162,7 @@ def ais_trajectory_sample(
     current_z = torch.randn(B, n_latent).cuda()
     current_z = current_z.requires_grad_()
 
-    for j, (t0, t1) in enumerate(zip(schedule[:-1], schedule[1:]), 1):
+    for j, (t0, t1) in enumerate(zip(tqdm(schedule[:-1]), schedule[1:]), 1):
         # update log importance weight
         log_int_1 = log_f_i(current_z, tensors, t0)
         log_int_2 = log_f_i(current_z, tensors, t1)
