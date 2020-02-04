@@ -35,28 +35,53 @@ N_GENES = DATASET.nb_genes
 
 
 # Training model
-mdl = VAE(n_input=N_GENES, prevent_library_saturation=False, n_latent=10,)
-
-PATH = "baseline.pt"
-if os.path.exists(PATH):
-    mdl.load_state_dict(torch.load(PATH))
-    mdl.cuda()
+mdl = VAE(
+    n_input=N_GENES,
+    n_hidden=128,
+    n_latent=10,
+    n_layers=1,
+    prevent_library_saturation=False,  # Maybe this parameter is better set to False
+    iaf_t=0,
+    multi_encoder_keys=["CUBO", "EUBO"],
+)
 
 trainer = UnsupervisedTrainer(
-    model=mdl, gene_dataset=DATASET, frequency=10, batch_size=128
+    model=mdl, gene_dataset=DATASET, batch_size=128,
 )
-if not os.path.exists(PATH):
-    trainer.train(
-        n_epochs=200,
-        # n_epochs=300,
-        lr=1e-3,
-        eps=0.01,
-        wake_theta="ELBO",
-        wake_psi="ELBO",
-        n_samples_theta=1,
-        n_samples_phi=1,
-        do_observed_library=True,
-    )
+print("Training using defensive sampling with counts: ", counts)
+trainer.train_defensive(
+    n_epochs=200,
+    lr=1e-3,
+    wake_theta="loss_gen",
+    wake_psi="CUBO",
+    n_samples_theta=25,
+    n_samples_phi=25,
+    counts=torch.tensor([1, 1, 0]),
+)
+
+
+# mdl = VAE(n_input=N_GENES, prevent_library_saturation=False, n_latent=10,)
+
+# PATH = "baseline.pt"
+# if os.path.exists(PATH):
+#     mdl.load_state_dict(torch.load(PATH))
+#     mdl.cuda()
+
+# trainer = UnsupervisedTrainer(
+#     model=mdl, gene_dataset=DATASET, frequency=10, batch_size=128
+# )
+# if not os.path.exists(PATH):
+#     trainer.train(
+#         n_epochs=200,
+#         # n_epochs=300,
+#         lr=1e-3,
+#         eps=0.01,
+#         wake_theta="ELBO",
+#         wake_psi="ELBO",
+#         n_samples_theta=1,
+#         n_samples_phi=1,
+#         do_observed_library=True,
+#     )
 
 # Khat
 post = trainer.create_posterior(
