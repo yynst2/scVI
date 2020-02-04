@@ -48,7 +48,7 @@ mdl = VAE(
 trainer = UnsupervisedTrainer(
     model=mdl, gene_dataset=DATASET, batch_size=128,
 )
-print("Training using defensive sampling with counts: ", counts)
+counts = torch.tensor([1, 1, 0])
 trainer.train_defensive(
     n_epochs=200,
     lr=1e-3,
@@ -56,8 +56,9 @@ trainer.train_defensive(
     wake_psi="CUBO",
     n_samples_theta=25,
     n_samples_phi=25,
-    counts=torch.tensor([1, 1, 0]),
+    counts=counts,
 )
+print("Training using defensive sampling with counts: ", counts)
 
 
 # mdl = VAE(n_input=N_GENES, prevent_library_saturation=False, n_latent=10,)
