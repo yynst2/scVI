@@ -10,7 +10,7 @@ from scvi.ais import ais_trajectory, ais_trajectory_sample
 from scvi.inference import UnsupervisedTrainer
 from scvi.models import VAE
 
-from .fdr_experiment_symsim import (
+from fdr_experiment_symsim import (
     DATASET,
     IS_SIGNIFICANT_DE,
     SAMPLE_IDX,
