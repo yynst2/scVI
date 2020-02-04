@@ -52,7 +52,7 @@ counts = torch.tensor([1, 1, 0])
 trainer.train_defensive(
     n_epochs=200,
     lr=1e-3,
-    wake_theta="loss_gen",
+    wake_theta="ELBO",
     wake_psi="CUBO",
     n_samples_theta=25,
     n_samples_phi=25,
