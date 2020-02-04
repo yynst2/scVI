@@ -169,6 +169,7 @@ class SemiSupervisedVAE(nn.Module):
                 ys_eubo = torch.tensor([], device="cuda")
             # Sampling prior
             ct = counts[2]
+            self.use_classifier = ct == 0
             if ct >= 1:
                 latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
 
@@ -289,14 +290,21 @@ class SemiSupervisedVAE(nn.Module):
         log_qz = Normal(post_z["q_m"], post_z["q_v"].sqrt()).log_prob(z1).sum(-1)
 
         # C
-        probas_c = self.classifier[encoder_key](z1)
-        mask = (
-            torch.eye(n_cat, device="cuda")
-            .view(n_cat, 1, 1, n_cat)
-            .expand(n_cat, n_samples, n_batch, n_cat)
-        )
-        q_c = (probas_c * mask).sum(-1)
-        log_qc = q_c.log()
+        if self.use_classifier:
+            # z1 all the same along categorical axis in this case
+            probas_c = self.classifier[encoder_key](z1[0])
+            q_c = probas_c.permute(2, 0, 1)
+            # n_cat, n_samples, n_latent
+            log_qc = q_c.log()
+        else:
+            probas_c = self.classifier[encoder_key](z1)
+            mask = (
+                torch.eye(n_cat, device="cuda")
+                .view(n_cat, 1, 1, n_cat)
+                .expand(n_cat, n_samples, n_batch, n_cat)
+            )
+            q_c = (probas_c * mask).sum(-1)
+            log_qc = q_c.log()
 
         # U
         z1_y = torch.cat([z1, y], dim=-1)
