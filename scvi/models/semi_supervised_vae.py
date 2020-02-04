@@ -171,7 +171,7 @@ class SemiSupervisedVAE(nn.Module):
             ct = counts[2]
             if ct >= 1:
                 latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
-                
+
                 z1_prior = latents_prior["z1"]
                 z2_prior = latents_prior["z2"]
                 ys_prior = latents_prior["ys"]
