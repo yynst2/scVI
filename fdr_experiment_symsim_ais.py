@@ -150,5 +150,5 @@ res = {
     "fdr_controlled_fdr10": decision_rule_fdr10,
     "fdr_controlled_tpr10": decision_rule_tpr10,
 }
-df = pd.dataframe(res)
+df = pd.DataFrame(res)
 df.to_pickle("IAS_symsim.pkl")
