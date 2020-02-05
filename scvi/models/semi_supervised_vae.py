@@ -480,7 +480,7 @@ class SemiSupervisedVAE(nn.Module):
         elif loss_type == "REVKL":
             loss = self.forward_kl(log_ratio, is_labelled=is_labelled, **vars)
         elif loss_type == "IWELBO":
-            loss = None
+            loss = self.iwelbo(log_ratio, is_labelled=is_labelled, **vars)
         else:
             raise ValueError("Mode {} not recognized".format(loss_type))
         if torch.isnan(loss).any() or not torch.isfinite(loss).any():
@@ -517,7 +517,13 @@ class SemiSupervisedVAE(nn.Module):
                 res = res - np.log(n_samples)
                 return res
             # loss =
-            raise NotImplementedError
+            categorical_weights = kwargs["qc_z1"]
+            # n_cat, n_samples, n_batch
+            weights = torch.softmax(log_ratios, 1).detach()
+            loss = categorical_weights * weights * log_ratios
+            loss = loss.mean(dim=1)  # samples
+            loss = loss.sum(dim=0)  # cats
+            loss = -loss.mean()
         return loss
 
     @staticmethod
