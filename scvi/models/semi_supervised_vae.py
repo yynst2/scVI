@@ -538,7 +538,8 @@ class SemiSupervisedVAE(nn.Module):
             ws = torch.softmax(log_ratios, dim=0)
             sum_log_q = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
             rev_kl = ws.detach() * (-1) * sum_log_q
-            return rev_kl.sum(dim=0)
+            rev_kl = rev_kl.sum(dim=0)
+            return rev_kl.mean()
         else:
             log_pz1z2x_c = kwargs["log_pz1_z2"] + kwargs["log_pz2"] + kwargs["log_px_z"]
             log_qz1z2_xc = kwargs["log_qz1_x"] + kwargs["log_qz2_z1"]
@@ -557,7 +558,7 @@ class SemiSupervisedVAE(nn.Module):
             # assert (categorical_weights[:, 0] == categorical_weights[:, 1]).all()
             categorical_weights = categorical_weights.mean(1)
             rev_kl = (categorical_weights * rev_kl).sum(0)
-            return rev_kl
+            return rev_kl.mean()
 
     @staticmethod
     def cubo(log_ratios, is_labelled, evaluate=False, **kwargs):
@@ -565,7 +566,7 @@ class SemiSupervisedVAE(nn.Module):
             assert not evaluate
             ws = torch.softmax(2 * log_ratios, dim=0)  # Corresponds to squaring
             cubo_loss = ws.detach() * (-1) * log_ratios
-            return cubo_loss.mean(dim=0)
+            return cubo_loss.mean()
         else:
             # Prefer to deal this case separately to avoid mistakes
             if evaluate:
@@ -586,7 +587,7 @@ class SemiSupervisedVAE(nn.Module):
             cubo_loss = ws.detach() * (-1) * log_ratios
             cubo_loss = cubo_loss.mean(dim=1)  # samples
             cubo_loss = cubo_loss.sum(dim=0)  # cats
-            return cubo_loss
+            return cubo_loss.mean()
 
     @staticmethod
     def cubob(log_ratios, is_labelled, evaluate=False, **kwargs):
@@ -594,7 +595,7 @@ class SemiSupervisedVAE(nn.Module):
             assert not evaluate
             ws = torch.softmax(2 * log_ratios, dim=0)  # Corresponds to squaring
             cubo_loss = ws.detach() * (-1) * log_ratios
-            return cubo_loss.mean(dim=0)
+            return cubo_loss.mean()
         else:
             assert log_ratios.dim() == 3
             log_qc_z1 = kwargs["log_qc_z1"]
@@ -605,4 +606,4 @@ class SemiSupervisedVAE(nn.Module):
             cubo_loss = -(qc_z1_d * ws_d * (log_qc_z1 + 2.0 * log_ratios))
             cubo_loss = cubo_loss.mean(dim=1)  # samples
             cubo_loss = cubo_loss.sum(dim=0)  # cats
-            return cubo_loss
+            return cubo_loss.mean()
