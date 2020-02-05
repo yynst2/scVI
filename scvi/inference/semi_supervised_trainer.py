@@ -224,28 +224,46 @@ class MnistTrainer:
         lr=1e-3,
         wake_theta: str = "ELBO",
         cubo_wake_psi: str = "CUBOB",
+        eubo_wake_psi: str = "REVKL",
         n_samples_phi: int = None,
         n_samples_theta: int = None,
         classification_ratio: float = 50.0,
         update_mode: str = "all",
         counts=torch.tensor([8, 8, 2]),
+        cubo_z2_with_elbo=False,
     ):
         assert update_mode in ["all", "alternate"]
 
-        params_gen = filter(
-            lambda p: p.requires_grad,
-            list(self.model.decoder_z1_z2.parameters())
-            + list(self.model.x_decoder.parameters()),
-        )
-        optim_gen = Adam(params_gen, lr=lr)
+        if cubo_z2_with_elbo:
+            params_gen = filter(
+                lambda p: p.requires_grad,
+                list(self.model.decoder_z1_z2.parameters())
+                + list(self.model.x_decoder.parameters())
+                + list(self.model.encoder_z2_z1["CUBO"].parameters()),
+            )
+            optim_gen = Adam(params_gen, lr=lr)
 
-        params_cubo_var = filter(
-            lambda p: p.requires_grad,
-            list(self.model.classifier["CUBO"].parameters())
-            + list(self.model.encoder_z1["CUBO"].parameters())
-            + list(self.model.encoder_z2_z1["CUBO"].parameters()),
-        )
-        optim_cubo_var = Adam(params_cubo_var, lr=lr)
+            params_cubo_var = filter(
+                lambda p: p.requires_grad,
+                list(self.model.classifier["CUBO"].parameters())
+                + list(self.model.encoder_z1["CUBO"].parameters())
+            )
+            optim_cubo_var = Adam(params_cubo_var, lr=lr)
+        else:
+            params_gen = filter(
+                lambda p: p.requires_grad,
+                list(self.model.decoder_z1_z2.parameters())
+                + list(self.model.x_decoder.parameters()),
+            )
+            optim_gen = Adam(params_gen, lr=lr)
+
+            params_cubo_var = filter(
+                lambda p: p.requires_grad,
+                list(self.model.classifier["CUBO"].parameters())
+                + list(self.model.encoder_z1["CUBO"].parameters())
+                + list(self.model.encoder_z2_z1["CUBO"].parameters()),
+            )
+            optim_cubo_var = Adam(params_cubo_var, lr=lr)
 
         params_eubo_var = filter(
             lambda p: p.requires_grad,
@@ -306,7 +324,7 @@ class MnistTrainer:
                     x_u=x_u,
                     x_s=x_s,
                     y_s=y_s,
-                    loss_type="REVKL",
+                    loss_type=eubo_wake_psi,
                     n_samples=n_samples_phi,
                     reparam=False,
                     classification_ratio=classification_ratio,
