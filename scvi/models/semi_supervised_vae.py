@@ -137,84 +137,82 @@ class SemiSupervisedVAE(nn.Module):
         n_labels = self.n_labels
         sum_key = "sum_supervised" if y is not None else "sum_unsupervised"
 
-        # Encoder part
-        with torch.no_grad():
-            # z sampling
-            ct = counts[0]
-            if ct >= 1:
-                post_cubo = self.inference(x, n_samples=ct, encoder_key="CUBO")
-                z_cubo = (
-                    post_cubo["z1"]
-                    .view(1, counts[0], n_batch, n_latent)
-                    .expand(n_labels, counts[0], n_batch, n_latent)
+        # z sampling
+        ct = counts[0]
+        if ct >= 1:
+            post_cubo = self.inference(x, n_samples=ct, encoder_key="CUBO")
+            z_cubo = (
+                post_cubo["z1"]
+                .view(1, counts[0], n_batch, n_latent)
+                .expand(n_labels, counts[0], n_batch, n_latent)
+            )
+            u_cubo = post_cubo["z2"]
+            ys_cubo = post_cubo["ys"]
+        else:
+            z_cubo = torch.tensor([], device="cuda")
+            u_cubo = torch.tensor([], device="cuda")
+            ys_cubo = torch.tensor([], device="cuda")
+
+        ct = counts[1]
+        if ct >= 1:
+            post_eubo = self.inference(x, n_samples=ct, encoder_key="EUBO")
+            z_eubo = (
+                post_eubo["z1"]
+                .view(1, counts[1], n_batch, n_latent)
+                .expand(n_labels, counts[1], n_batch, n_latent)
+            )
+            u_eubo = post_eubo["z2"]
+            ys_eubo = post_eubo["ys"]
+        else:
+            z_eubo = torch.tensor([], device="cuda")
+            u_eubo = torch.tensor([], device="cuda")
+            ys_eubo = torch.tensor([], device="cuda")
+        # Sampling prior
+        ct = counts[2]
+        if ct >= 1:
+            latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
+
+            z1_prior = latents_prior["z1"]
+            z2_prior = latents_prior["z2"]
+            ys_prior = latents_prior["ys"]
+        else:
+            z1_prior = torch.tensor([], device="cuda")
+            z2_prior = torch.tensor([], device="cuda")
+            ys_prior = torch.tensor([], device="cuda")
+
+        # Concatenating latent variables
+        z_all = torch.cat([z_cubo, z_eubo, z1_prior], dim=1)
+        u_all = torch.cat([u_cubo, u_eubo, z2_prior], dim=1)
+        y_all = torch.cat([ys_cubo, ys_eubo, ys_prior], dim=1)
+
+        log_p_alpha = (1.0 * counts / counts.sum()).log()
+        log_p_alpha = log_p_alpha
+        counts = counts
+        distribs_all = ["CUBO", "EUBO", "PRIOR"]
+
+        log_contribs = []
+        classifier_contribs = []
+        for count, encoder_key, log_p_a in zip(counts, distribs_all, log_p_alpha):
+            if encoder_key == "PRIOR":
+                res = self.latent_prior_log_proba(z1=z_all, z2=u_all, y=y_all)
+                log_proba_c = res["log_pc"]
+                log_proba_prior = res["sum_unsupervised"]
+            else:
+                res = self.variational_log_proba(
+                    z1=z_all, z2=u_all, y=y_all, x=x, encoder_key=encoder_key
                 )
-                u_cubo = post_cubo["z2"]
-                ys_cubo = post_cubo["ys"]
-            else:
-                z_cubo = torch.tensor([], device="cuda")
-                u_cubo = torch.tensor([], device="cuda")
-                ys_cubo = torch.tensor([], device="cuda")
+                log_proba_c = res["log_qc_z1"]
+            if count >= 1:
+                log_contribs.append(res[sum_key].unsqueeze(-1) + log_p_a)
+                classifier_contribs.append(log_proba_c.unsqueeze(-1) + log_p_a)
 
-            ct = counts[1]
-            if ct >= 1:
-                post_eubo = self.inference(x, n_samples=ct, encoder_key="EUBO")
-                z_eubo = (
-                    post_eubo["z1"]
-                    .view(1, counts[1], n_batch, n_latent)
-                    .expand(n_labels, counts[1], n_batch, n_latent)
-                )
-                u_eubo = post_eubo["z2"]
-                ys_eubo = post_eubo["ys"]
-            else:
-                z_eubo = torch.tensor([], device="cuda")
-                u_eubo = torch.tensor([], device="cuda")
-                ys_eubo = torch.tensor([], device="cuda")
-            # Sampling prior
-            ct = counts[2]
-            if ct >= 1:
-                latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
-
-                z1_prior = latents_prior["z1"]
-                z2_prior = latents_prior["z2"]
-                ys_prior = latents_prior["ys"]
-            else:
-                z1_prior = torch.tensor([], device="cuda")
-                z2_prior = torch.tensor([], device="cuda")
-                ys_prior = torch.tensor([], device="cuda")
-
-            # Concatenating latent variables
-            z_all = torch.cat([z_cubo, z_eubo, z1_prior], dim=1)
-            u_all = torch.cat([u_cubo, u_eubo, z2_prior], dim=1)
-            y_all = torch.cat([ys_cubo, ys_eubo, ys_prior], dim=1)
-
-            log_p_alpha = (1.0 * counts / counts.sum()).log()
-            log_p_alpha = log_p_alpha
-            counts = counts
-            distribs_all = ["CUBO", "EUBO", "PRIOR"]
-
-            log_contribs = []
-            classifier_contribs = []
-            for count, encoder_key, log_p_a in zip(counts, distribs_all, log_p_alpha):
-                if encoder_key == "PRIOR":
-                    res = self.latent_prior_log_proba(z1=z_all, z2=u_all, y=y_all)
-                    log_proba_c = res["log_pc"]
-                    log_proba_prior = res["sum_unsupervised"]
-                else:
-                    res = self.variational_log_proba(
-                        z1=z_all, z2=u_all, y=y_all, x=x, encoder_key=encoder_key
-                    )
-                    log_proba_c = res["log_qc_z1"]
-                if count >= 1:
-                    log_contribs.append(res[sum_key].unsqueeze(-1) + log_p_a)
-                    classifier_contribs.append(log_proba_c.unsqueeze(-1) + log_p_a)
-
-            log_contribs = torch.cat(log_contribs, dim=-1)
-            sum_log_q = torch.logsumexp(log_contribs, dim=-1)
-            classifier_contribs = torch.cat(classifier_contribs, dim=-1)
-            log_qc_z1 = torch.logsumexp(classifier_contribs, dim=-1)
-            # n_cat, n_samples, n_batch
-            qc_z1 = log_qc_z1.exp()
-            qc_z1_all_probas = log_qc_z1.exp().permute(1, 2, 0)
+        log_contribs = torch.cat(log_contribs, dim=-1)
+        sum_log_q = torch.logsumexp(log_contribs, dim=-1)
+        classifier_contribs = torch.cat(classifier_contribs, dim=-1)
+        log_qc_z1 = torch.logsumexp(classifier_contribs, dim=-1)
+        # n_cat, n_samples, n_batch
+        qc_z1 = log_qc_z1.exp()
+        qc_z1_all_probas = log_qc_z1.exp().permute(1, 2, 0)
         # Decoder part
         px_z_loc = self.x_decoder(z_all)
         log_px_z = Bernoulli(px_z_loc).log_prob(x).sum(-1)
