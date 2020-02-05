@@ -34,6 +34,7 @@ class SemiSupervisedVAE(nn.Module):
         iaf_t=0,
         do_batch_norm=False,
         multi_encoder_keys=["default"],
+        use_classifier=False
     ):
         # TODO: change architecture so that it match something existing
         super().__init__()
@@ -110,6 +111,7 @@ class SemiSupervisedVAE(nn.Module):
         )
 
         self.all_params = filter(lambda p: p.requires_grad, list(self.parameters()))
+        self.use_classifier = use_classifier
 
     def classify(self, x, n_samples=1, encoder_key="default"):
         # n_cat = self.n_labels
@@ -169,7 +171,6 @@ class SemiSupervisedVAE(nn.Module):
                 ys_eubo = torch.tensor([], device="cuda")
             # Sampling prior
             ct = counts[2]
-            self.use_classifier = ct == 0
             if ct >= 1:
                 latents_prior = self.latent_prior_sample(n_batch=n_batch, n_samples=ct)
 
