@@ -68,7 +68,9 @@ class EncoderA(nn.Module):
 
         # q_v = 16.0 * self.tanh(q_v)
         # q_v = torch.clamp(q_v, min=-17., max=14.)
-        q_m = torch.clamp(q_m, min=-1000, max=1000)
+        
+        # PREVIOUS TO KEEP
+        # q_m = torch.clamp(q_m, min=-1000, max=1000)
 
         # q_v = torch.clamp(q_v, min=-17.0, max=8.0)
         q_v = torch.clamp(q_v, min=-17.0, max=10.0)
@@ -160,8 +162,11 @@ class DecoderA(nn.Module):
         p_m = self.mean_decoder(p)
         p_v = self.var_decoder(p)
 
-        p_m = torch.clamp(p_m, min=-1000, max=1000)
-        p_v = torch.clamp(p_v, min=-17.0, max=7)
+        # PREVIOUS TO KEEP
+        # p_m = torch.clamp(p_m, min=-1000, max=1000)
+        
+        p_v = torch.clamp(p_v, min=-17.0, max=10)
+        
         # p_v = torch.clamp(p_v, min=-17.0, max=14.0)
         # p_v = 16. * self.tanh(p_v)
         return p_m, p_v.exp()
