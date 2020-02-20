@@ -922,8 +922,8 @@ class TotalPosterior(Posterior):
                 **kwargs,
             )
             all_info_reverse = {}
-            all_info_reverse["proba_m1_reverse"] = all_info_reverse_temp["proba_m2"]
-            all_info_reverse["proba_m2_reverse"] = all_info_reverse_temp["proba_m1"]
+            all_info_reverse["proba_m1_reverse"] = all_info_reverse_temp["proba_m1"]
+            all_info_reverse["proba_m2_reverse"] = all_info_reverse_temp["proba_m2"]
             all_info_reverse["bayes_factor_reverse"] = all_info_reverse_temp[
                 "bayes_factor"
             ]
