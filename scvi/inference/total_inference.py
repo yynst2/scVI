@@ -905,6 +905,33 @@ class TotalPosterior(Posterior):
             delta=delta,
             **kwargs,
         )
+        if mode == "vanilla":
+            all_info_reverse_temp = self.get_bayes_factors(
+                idx1=idx2,
+                idx2=idx1,
+                mode=mode,
+                batchid1=batchid2,
+                batchid2=batchid1,
+                use_observed_batches=use_observed_batches,
+                n_samples=n_samples,
+                use_permutation=use_permutation,
+                M_permutation=M_permutation,
+                change_fn=change_fn,
+                m1_domain_fn=m1_domain_fn,
+                delta=delta,
+                **kwargs,
+            )
+            all_info_reverse = {}
+            all_info_reverse["proba_m1_reverse"] = all_info_reverse_temp["proba_m2"]
+            all_info_reverse["proba_m2_reverse"] = all_info_reverse_temp["proba_m1"]
+            all_info_reverse["bayes_factor_reverse"] = all_info_reverse_temp[
+                "bayes_factor"
+            ]
+
+        if mode == "vanilla":
+            all_info["lfc"] = np.log2(all_info["scale1"]) - np.log2(all_info["scale2"])
+            all_info = {**all_info, **all_info_reverse}
+
         col_names = np.concatenate(
             [self.gene_dataset.gene_names, self.gene_dataset.protein_names]
         )
