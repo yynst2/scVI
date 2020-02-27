@@ -38,6 +38,7 @@ class SCANVI(VAE):
     :param y_prior: If None, initialized to uniform probability over cell types
     :param labels_groups: Label group designations
     :param use_labels_groups: Whether to use the label groups
+    :param kl_symmetric: Whether to use symmetric KL distance
 
     Examples:
         >>> gene_dataset = CortexDataset()
@@ -65,6 +66,7 @@ class SCANVI(VAE):
         labels_groups: Sequence[int] = None,
         use_labels_groups: bool = False,
         classifier_parameters: dict = dict(),
+        symmetric_kl: bool = False,
     ):
         super().__init__(
             n_input,
@@ -79,6 +81,7 @@ class SCANVI(VAE):
         )
 
         self.n_labels = n_labels
+        self.symmetric_kl = symmetric_kl
         # Classifier takes n_latent as input
         cls_parameters = {
             "n_layers": n_layers,
@@ -210,10 +213,19 @@ class SCANVI(VAE):
         kl_divergence = (kl_divergence_z2.view(self.n_labels, -1).t() * probs).sum(
             dim=1
         )
-        kl_divergence += kl(
+        kl_c = kl(
             Categorical(probs=probs),
             Categorical(probs=self.y_prior.repeat(probs.size(0), 1)),
         )
+
+        if self.symmetric_kl:
+            kl_c = 0.5 * kl_c + 0.5 * kl(
+                Categorical(probs=self.y_prior.repeat(probs.size(0), 1)),
+                Categorical(probs=probs),
+            )
+
+        kl_divergence += kl_c
+
         kl_divergence += kl_divergence_l
 
         return reconst_loss, kl_divergence, 0.0
