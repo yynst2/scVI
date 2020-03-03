@@ -188,9 +188,9 @@ class Posterior:
                 )
                 norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
                 scale_batch = []
+                new_log_probas = []
                 if other is not None:
                     for bio_batch in range(n_bio_batches):
-                        new_log_probas = []
                         new_log_probas.append(log_probas_batch)
 
                         batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
