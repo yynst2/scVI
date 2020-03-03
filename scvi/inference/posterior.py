@@ -190,12 +190,16 @@ class Posterior:
                 scale_batch = []
                 if other is not None:
                     for bio_batch in range(n_bio_batches):
+                        new_log_probas = []
+                        new_log_probas.append(log_probas_batch)
+
                         batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
                         scale_batch.append(
                             self.model.decoder.forward('gene', z, norm_library, batch_index)[0]
                         )
                     # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
                     scale_batch = torch.cat(scale_batch, dim=0)
+                    log_probas_batch = torch.cat(new_log_probas, dim=0)
 
                 if device == 'cpu':
                     label = label.cpu()
