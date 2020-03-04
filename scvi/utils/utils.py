@@ -130,7 +130,7 @@ def predict_de_genes(posterior_probas: np.ndarray, desired_fdr: float):
     sorted_genes = np.argsort(-posterior_probas)
     sorted_pgs = posterior_probas[sorted_genes]
     cumulative_fdr = (1.0 - sorted_pgs).cumsum() / (1.0 + np.arange(len(sorted_pgs)))
-    d = (cumulative_fdr <= desired_fdr).sum() - 1
+    d = (cumulative_fdr <= desired_fdr).sum()
     pred_de_genes = sorted_genes[:d]
     is_pred_de = np.zeros_like(cumulative_fdr).astype(bool)
     is_pred_de[pred_de_genes] = True
