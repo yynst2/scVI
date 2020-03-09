@@ -394,7 +394,7 @@ class VAE(NormalEncoderVAE):
         #     print('TOTOTATA')
 
         if not train_library:
-            library = torch.tensor(1.0, requires_grad=False)
+            library = x.sum(1, keepdim=True).log()
         px_scale, px_r, px_rate, px_dropout = self.decoder(
             self.dispersion, z, library, batch_index, y
         )
