@@ -5,7 +5,7 @@ import torch
 import logging
 from scvi.inference import Trainer
 
-plt.switch_backend('agg')
+plt.switch_backend("agg")
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +40,7 @@ class UnsupervisedTrainer(Trainer):
         test_size=None,
         n_epochs_kl_warmup=400,
         ratio_loss: bool = False,
+        train_library=True,
         k_importance_weighted: int = 0,
         single_backward=None,
         test_indices=None,
@@ -47,6 +48,7 @@ class UnsupervisedTrainer(Trainer):
         **kwargs
     ):
         super().__init__(model, gene_dataset, **kwargs)
+        self.train_library = train_library
         self.n_epochs_kl_warmup = n_epochs_kl_warmup
         self.ratio_loss = ratio_loss
         self.k_importance_weighted = k_importance_weighted
@@ -58,22 +60,30 @@ class UnsupervisedTrainer(Trainer):
                 gene_dataset,
                 train_size=train_size,
                 test_size=test_size,
-                test_indices=test_indices
+                test_indices=test_indices,
             )
             self.train_set.to_monitor = metrics
             self.test_set.to_monitor = metrics
 
     @property
     def posteriors_loop(self):
-        return ['train_set']
+        return ["train_set"]
 
     def loss(self, tensors):
         sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
         if self.ratio_loss and self.k_importance_weighted == 0:
-            loss = self.model.ratio_loss(sample_batch, local_l_mean, local_l_var, batch_index)
+            loss = self.model.ratio_loss(
+                sample_batch,
+                local_l_mean,
+                local_l_var,
+                batch_index,
+                train_library=self.train_library,
+            )
         elif self.ratio_loss and self.k_importance_weighted > 0:
-            assert self.single_backward in [True, False], \
-                'Please precise how backward pass is performed'
+            assert self.single_backward in [
+                True,
+                False,
+            ], "Please precise how backward pass is performed"
             k = self.k_importance_weighted
             loss = self.model.iwelbo(
                 sample_batch,
@@ -82,15 +92,12 @@ class UnsupervisedTrainer(Trainer):
                 batch_index=batch_index,
                 y=None,
                 k=k,
-                single_backward=self.single_backward
+                single_backward=self.single_backward,
             )
         else:
             assert self.k_importance_weighted == 0
             reconst_loss, kl_divergence = self.model(
-                sample_batch,
-                local_l_mean,
-                local_l_var,
-                batch_index
+                sample_batch, local_l_mean, local_l_var, batch_index
             )
             loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
         return loss
@@ -108,14 +115,16 @@ class AdapterTrainer(UnsupervisedTrainer):
     def __init__(self, model, gene_dataset, posterior_test, frequency=5):
         super().__init__(model, gene_dataset, frequency=frequency)
         self.test_set = posterior_test
-        self.test_set.to_monitor = ['elbo']
-        self.params = list(self.model.z_encoder.parameters()) + list(self.model.l_encoder.parameters())
+        self.test_set.to_monitor = ["elbo"]
+        self.params = list(self.model.z_encoder.parameters()) + list(
+            self.model.l_encoder.parameters()
+        )
         self.z_encoder_state = copy.deepcopy(model.z_encoder.state_dict())
         self.l_encoder_state = copy.deepcopy(model.l_encoder.state_dict())
 
     @property
     def posteriors_loop(self):
-        return ['test_set']
+        return ["test_set"]
 
     def train(self, n_path=10, n_epochs=50, **kwargs):
         for i in range(n_path):
