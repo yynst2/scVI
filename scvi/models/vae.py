@@ -501,16 +501,17 @@ class VAE(NormalEncoderVAE):
         #     log_qz_x = log_qz_x.sum(dim=1)
 
         log_ql_x = Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
-        assert (
-            log_px_zl.shape
-            == log_pl.shape
-            == log_pz.shape
-            == log_qz_x.shape
-            == log_ql_x.shape
-        )
         if train_library:
+            assert (
+                log_px_zl.shape
+                == log_pl.shape
+                == log_pz.shape
+                == log_qz_x.shape
+                == log_ql_x.shape
+            )
             log_ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
         else:
+            assert log_px_zl.shape == log_pz.shape == log_qz_x.shape
             log_ratio = (log_px_zl + log_pz) - log_qz_x
 
         # if torch.isnan(log_ratio).any():
