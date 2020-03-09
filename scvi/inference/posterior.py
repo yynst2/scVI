@@ -22,12 +22,20 @@ from sklearn.mixture import GaussianMixture as GMM
 from sklearn.neighbors import NearestNeighbors, KNeighborsRegressor
 from sklearn.utils.linear_assignment_ import linear_assignment
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import SequentialSampler, SubsetRandomSampler, RandomSampler
+from torch.utils.data.sampler import (
+    SequentialSampler,
+    SubsetRandomSampler,
+    RandomSampler,
+)
 from scipy.special import betainc
 from torch.distributions import Normal
 
 from scvi.dataset import GeneExpressionDataset
-from scvi.models.log_likelihood import compute_elbo, compute_reconstruction_error, compute_marginal_log_likelihood
+from scvi.models.log_likelihood import (
+    compute_elbo,
+    compute_reconstruction_error,
+    compute_marginal_log_likelihood,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +146,18 @@ class Posterior:
         posterior = copy.copy(self)
         posterior.data_loader_kwargs = copy.copy(self.data_loader_kwargs)
         posterior.data_loader_kwargs.update(data_loader_kwargs)
-        posterior.data_loader = DataLoader(self.gene_dataset, **posterior.data_loader_kwargs)
+        posterior.data_loader = DataLoader(
+            self.gene_dataset, **posterior.data_loader_kwargs
+        )
         return posterior
 
     def sequential(self, batch_size=128):
-        return self.update({"batch_size": batch_size, "sampler": SequentialSubsetSampler(indices=self.indices)})
+        return self.update(
+            {
+                "batch_size": batch_size,
+                "sampler": SequentialSubsetSampler(indices=self.indices),
+            }
+        )
 
     def corrupted(self):
         return self.update(
@@ -153,7 +168,7 @@ class Posterior:
         return self.update({"collate_fn": self.gene_dataset.collate_fn_builder()})
 
     @torch.no_grad()
-    def get_latents(self, n_samples=1, other=None, device='gpu', ignore_library=True):
+    def get_latents(self, n_samples=1, other=None, device="cuda", train_library=None):
         """
         Computes all quantities of interest for DE in a sequential order
 
@@ -172,41 +187,40 @@ class Posterior:
         with torch.no_grad():
             for tensors in self.sequential():
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-                outputs = self.model.inference(sample_batch, batch_index, n_samples=n_samples)
-                z = outputs['z']
-
-                if ignore_library:
-                    outputs["library"][:] = 4.0
+                outputs = self.model.inference(
+                    sample_batch,
+                    batch_index,
+                    n_samples=n_samples,
+                    train_library=train_library,
+                )
+                z = outputs["z"]
+                library = outputs["library"]
 
                 log_probas_batch = self.model.ratio_loss(
                     sample_batch,
                     local_l_mean,
                     local_l_var,
                     return_mean=False,
-                    train_library=(not ignore_library),
-                    outputs=outputs
+                    train_library=train_library,
+                    outputs=outputs,
                 )
-                norm_library = 4. * torch.ones_like(sample_batch[:, [0]])
                 scale_batch = []
                 new_log_probas = []
-                if other is not None:
-                    for bio_batch in range(n_bio_batches):
-                        new_log_probas.append(log_probas_batch)
+                for bio_batch in range(n_bio_batches):
+                    new_log_probas.append(log_probas_batch)
 
-                        batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
-                        scale_batch.append(
-                            self.model.decoder.forward('gene', z, norm_library, batch_index)[0]
-                        )
-                    # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
-                    scale_batch = torch.cat(scale_batch, dim=0)
-                    log_probas_batch = torch.cat(new_log_probas, dim=0)
+                    batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
+                    scale_batch.append(
+                        self.model.decoder.forward("gene", z, library, batch_index)[0]
+                    )
+                # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
+                scale_batch = torch.cat(scale_batch, dim=0)
+                log_probas_batch = torch.cat(new_log_probas, dim=0)
 
-                if device == 'cpu':
-                    label = label.cpu()
-                    z = z.cpu()
-                    log_probas_batch = log_probas_batch.cpu()
-                    if other is not None:
-                        scale_batch = scale_batch.cpu()
+                label = label.to(device=device)
+                z = z.to(device=device)
+                log_probas_batch = log_probas_batch.to(device=device)
+                scale_batch = scale_batch.to(device=device)
 
                 # print(label.device, z.device, scale_batch.device)
                 labels.append(label)
@@ -218,8 +232,7 @@ class Posterior:
             # Then each z element has shape (n_samples, n_batch, n_latent)
             # Hence we concatenate on dimension 1
             zs = torch.cat(zs, dim=1)
-            if other is not None:
-                scales = torch.cat(scales, dim=1)
+            scales = torch.cat(scales, dim=1)
 
             # zs = zs.transpose(0, 1)
             # zs = zs.transpose(1, 2)
@@ -260,7 +273,9 @@ class Posterior:
         n_samples = 0
         for i_batch, tensors in enumerate(self):
             n_samples += 1
-            sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[:5]  # general fish case
+            sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[
+                :5
+            ]  # general fish case
             elbo_batch = self.model.ratio_loss(
                 sample_batch,
                 local_l_mean,
@@ -289,7 +304,9 @@ class Posterior:
 
     @torch.no_grad()
     def marginal_ll(self, n_mc_samples=1000, ratio_loss=False):
-        ll = compute_marginal_log_likelihood(self.model, self, n_mc_samples, ratio_loss=ratio_loss)
+        ll = compute_marginal_log_likelihood(
+            self.model, self, n_mc_samples, ratio_loss=ratio_loss
+        )
         logger.debug("True LL : %.4f" % ll)
         return ll
 
@@ -306,10 +323,18 @@ class Posterior:
         for tensors in self:
             sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
             give_mean = not sample
-            latent += [self.model.sample_from_posterior_z(sample_batch, give_mean=give_mean).cpu()]
+            latent += [
+                self.model.sample_from_posterior_z(
+                    sample_batch, give_mean=give_mean
+                ).cpu()
+            ]
             batch_indices += [batch_index.cpu()]
             labels += [label.cpu()]
-        return np.array(torch.cat(latent)), np.array(torch.cat(batch_indices)), np.array(torch.cat(labels)).ravel()
+        return (
+            np.array(torch.cat(latent)),
+            np.array(torch.cat(batch_indices)),
+            np.array(torch.cat(labels)).ravel(),
+        )
 
     @torch.no_grad()
     def entropy_batch_mixing(self, **kwargs):
@@ -333,7 +358,9 @@ class Posterior:
         """
         px_scales = []
         all_labels = []
-        batch_size = max(self.data_loader_kwargs["batch_size"] // M_sampling, 2)  # Reduce batch_size on GPU
+        batch_size = max(
+            self.data_loader_kwargs["batch_size"] // M_sampling, 2
+        )  # Reduce batch_size on GPU
         if len(self.gene_dataset) % batch_size == 1:
             batch_size += 1
         for tensors in self.update({"batch_size": batch_size}):
@@ -342,7 +369,10 @@ class Posterior:
                 np.array(
                     (
                         self.model.get_sample_scale(
-                            sample_batch, batch_index=batch_index, y=labels, n_samples=M_sampling
+                            sample_batch,
+                            batch_index=batch_index,
+                            y=labels,
+                            n_samples=M_sampling,
                         )
                     ).cpu()
                 )
@@ -350,7 +380,9 @@ class Posterior:
 
             # Align the sampling
             if M_sampling > 1:
-                px_scales[-1] = (px_scales[-1].transpose((1, 0, 2))).reshape(-1, px_scales[-1].shape[-1])
+                px_scales[-1] = (px_scales[-1].transpose((1, 0, 2))).reshape(
+                    -1, px_scales[-1].shape[-1]
+                )
             all_labels += [np.array((labels.repeat(1, M_sampling).view(-1, 1)).cpu())]
 
         px_scales = np.concatenate(px_scales)
@@ -360,7 +392,7 @@ class Posterior:
 
     @torch.no_grad()
     def sample_scale_from_batch(self, n_samples, batchid=None, selection=None):
-        #TODO: Implement log probas
+        # TODO: Implement log probas
         px_scales = []
         if selection is None:
             raise ValueError("selections should be a list of cell subsets indices")
@@ -369,7 +401,9 @@ class Posterior:
                 selection = np.asarray(np.where(selection)[0].ravel())
         old_loader = self.data_loader
         for i in batchid:
-            idx = np.random.choice(np.arange(len(self.gene_dataset))[selection], n_samples)
+            idx = np.random.choice(
+                np.arange(len(self.gene_dataset))[selection], n_samples
+            )
             sampler = SubsetRandomSampler(idx)
             self.data_loader_kwargs.update({"sampler": sampler})
             self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
@@ -386,19 +420,31 @@ class Posterior:
         if selection is None:
             raise ValueError("selections should be a list of cell subsets indices")
         else:
-            if selection.dtype is np.dtype('bool'):
+            if selection.dtype is np.dtype("bool"):
                 selection = np.asarray(np.where(selection)[0].ravel())
         old_loader = self.data_loader
         for i in batchid:
-            idx = np.random.choice(np.arange(len(self.gene_dataset))[selection], n_samples)
+            idx = np.random.choice(
+                np.arange(len(self.gene_dataset))[selection], n_samples
+            )
             sampler = SubsetRandomSampler(idx)
-            self.data_loader_kwargs.update({'sampler': sampler})
+            self.data_loader_kwargs.update({"sampler": sampler})
             self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
 
             for tensors in self:
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-                px_scale, px_dispersion, px_rate, px_dropout, qz_m, qz_v, z, ql_m, ql_v, library = \
-                    self.model.inference(sample_batch, batch_index, label)
+                (
+                    px_scale,
+                    px_dispersion,
+                    px_rate,
+                    px_dropout,
+                    qz_m,
+                    qz_v,
+                    z,
+                    ql_m,
+                    ql_v,
+                    library,
+                ) = self.model.inference(sample_batch, batch_index, label)
 
                 # px_rate = self.get_harmonized_scale(i)
                 # p = px_rate / (px_rate + px_dispersion.cpu().numpy())
@@ -411,10 +457,14 @@ class Posterior:
                 l_train = np.random.gamma(r, p / (1 - p))
                 px_scales.append(l_train)
 
-                log_px_z = self.model._reconstruction_loss(sample_batch, px_rate, px_dispersion,
-                                                           px_dropout)
-                log_pz = Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v)).log_prob(z).sum(
-                    dim=-1)
+                log_px_z = self.model._reconstruction_loss(
+                    sample_batch, px_rate, px_dispersion, px_dropout
+                )
+                log_pz = (
+                    Normal(torch.zeros_like(qz_m), torch.ones_like(qz_v))
+                    .log_prob(z)
+                    .sum(dim=-1)
+                )
                 log_qz_x = Normal(qz_m, qz_v.sqrt()).log_prob(z).sum(dim=-1)
                 log_p = log_pz + log_px_z - log_qz_x
                 log_probas.append(log_p.cpu().numpy())
@@ -427,23 +477,26 @@ class Posterior:
     @torch.no_grad()
     def sample_gamma_params_from_batch(self, n_samples, batchid=None, selection=None):
         shapes_res, scales_res = [], []
-        dispersions = []
         if selection is None:
             raise ValueError("selections should be a list of cell subsets indices")
         else:
-            if selection.dtype is np.dtype('bool'):
+            if selection.dtype is np.dtype("bool"):
                 selection = np.asarray(np.where(selection)[0].ravel())
         old_loader = self.data_loader
         for i in batchid:
-            idx = np.random.choice(np.arange(len(self.gene_dataset))[selection], n_samples)
+            idx = np.random.choice(
+                np.arange(len(self.gene_dataset))[selection], n_samples
+            )
             sampler = SubsetRandomSampler(idx)
-            self.data_loader_kwargs.update({'sampler': sampler})
+            self.data_loader_kwargs.update({"sampler": sampler})
             self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
-        #
-        #     # fixed_batch = float(i)
+            #
+            #     # fixed_batch = float(i)
             for tensors in self:
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-                px_scale, px_dispersion, px_rate = self.model.inference(sample_batch, batch_index, label)[0:3]
+                px_scale, px_dispersion, px_rate = self.model.inference(
+                    sample_batch, batch_index, label
+                )[0:3]
 
                 # px_rate = self.get_harmonized_scale(i)
                 # p = px_rate / (px_rate + px_dispersion.cpu().numpy())
@@ -457,8 +510,11 @@ class Posterior:
                 scales_batch = p / (1.0 - p)
 
                 if len(shapes_batch.shape) == 1:
-                    shapes_batch = np.repeat(shapes_batch.reshape((1, -1)),
-                                             repeats=scales_batch.shape[0], axis=0)
+                    shapes_batch = np.repeat(
+                        shapes_batch.reshape((1, -1)),
+                        repeats=scales_batch.shape[0],
+                        axis=0,
+                    )
 
                 shapes_res.append(shapes_batch)
                 scales_res.append(scales_batch)
@@ -466,13 +522,25 @@ class Posterior:
         shapes_res = np.concatenate(shapes_res)
         scales_res = np.concatenate(scales_res)
 
-        assert shapes_res.shape == scales_res.shape, (shapes_res.shape, scales_res.shape)
+        assert shapes_res.shape == scales_res.shape, (
+            shapes_res.shape,
+            scales_res.shape,
+        )
         return shapes_res, scales_res
 
     @torch.no_grad()
-    def differential_expression_gamma(self, idx1, idx2, batchid1=None, batchid2=None,
-                                      genes=None, n_samples=None, M_permutation=None, all_stats=True,
-                                      sample_pairs=True):
+    def differential_expression_gamma(
+        self,
+        idx1,
+        idx2,
+        batchid1=None,
+        batchid2=None,
+        genes=None,
+        n_samples=None,
+        M_permutation=None,
+        all_stats=True,
+        sample_pairs=True,
+    ):
         n_samples = 5000 if n_samples is None else n_samples
         M_permutation = 10000 if M_permutation is None else M_permutation
         if batchid1 is None:
@@ -480,13 +548,16 @@ class Posterior:
         if batchid2 is None:
             batchid2 = np.arange(self.gene_dataset.n_batches)
 
-        shapes1, scales1 = self.sample_gamma_params_from_batch(selection=idx1, batchid=batchid1,
-                                                               n_samples=n_samples)
-        shapes2, scales2 = self.sample_gamma_params_from_batch(selection=idx2, batchid=batchid2,
-                                                               n_samples=n_samples)
+        shapes1, scales1 = self.sample_gamma_params_from_batch(
+            selection=idx1, batchid=batchid1, n_samples=n_samples
+        )
+        shapes2, scales2 = self.sample_gamma_params_from_batch(
+            selection=idx2, batchid=batchid2, n_samples=n_samples
+        )
         print(shapes1.shape, scales1.shape, shapes2.shape, scales2.shape)
-        all_labels = np.concatenate((np.repeat(0, len(shapes1)), np.repeat(1, len(shapes2))),
-                                    axis=0)
+        all_labels = np.concatenate(
+            (np.repeat(0, len(shapes1)), np.repeat(1, len(shapes2))), axis=0
+        )
 
         if genes is not None:
             shapes1 = shapes1[:, self.gene_dataset._gene_idx(genes)]
@@ -500,8 +571,14 @@ class Posterior:
         assert shapes.shape == scales.shape, (shapes.shape, scales.shape)
         data = (shapes, scales)
 
-        bayes1 = get_bayes_gamma(data, all_labels, cell_idx=0, M_permutation=M_permutation,
-                                 permutation=False, sample_pairs=sample_pairs)
+        bayes1 = get_bayes_gamma(
+            data,
+            all_labels,
+            cell_idx=0,
+            M_permutation=M_permutation,
+            permutation=False,
+            sample_pairs=sample_pairs,
+        )
         bayes1 = pd.Series(data=bayes1, index=self.gene_dataset.gene_names)
         return bayes1
 
@@ -518,7 +595,7 @@ class Posterior:
         M_permutation: int = None,
         all_stats: bool = True,
         sample_gamma: bool = False,
-        importance_sampling: bool = False
+        importance_sampling: bool = False,
     ):
         """Computes gene specific Bayes factors using masks idx1 and idx2
 
@@ -564,17 +641,19 @@ class Posterior:
             batchid2 = np.arange(self.gene_dataset.n_batches)
 
         if sample_gamma:
-            px_scale1, log_probas1 = self.sample_poisson_from_batch(selection=idx1,
-                                                                    batchid=batchid1,
-                                                                    n_samples=n_samples)
-            px_scale2, log_probas2 = self.sample_poisson_from_batch(selection=idx2,
-                                                                    batchid=batchid2,
-                                                                    n_samples=n_samples)
+            px_scale1, log_probas1 = self.sample_poisson_from_batch(
+                selection=idx1, batchid=batchid1, n_samples=n_samples
+            )
+            px_scale2, log_probas2 = self.sample_poisson_from_batch(
+                selection=idx2, batchid=batchid2, n_samples=n_samples
+            )
         else:
-            px_scale1, log_probas1 = self.sample_scale_from_batch(selection=idx1, batchid=batchid1,
-                                                                  n_samples=n_samples)
-            px_scale2, log_probas2 = self.sample_scale_from_batch(selection=idx2, batchid=batchid2,
-                                                                  n_samples=n_samples)
+            px_scale1, log_probas1 = self.sample_scale_from_batch(
+                selection=idx1, batchid=batchid1, n_samples=n_samples
+            )
+            px_scale2, log_probas2 = self.sample_scale_from_batch(
+                selection=idx2, batchid=batchid2, n_samples=n_samples
+            )
         px_scale_mean1 = px_scale1.mean(axis=0)
         px_scale_mean2 = px_scale2.mean(axis=0)
         px_scale = np.concatenate((px_scale1, px_scale2), axis=0)
@@ -584,39 +663,91 @@ class Posterior:
             log_probas = None
         # print('px_scales1 shapes', px_scale1.shape)
         # print('px_scales2 shapes', px_scale2.shape)
-        all_labels = np.concatenate((np.repeat(0, len(px_scale1)), np.repeat(1, len(px_scale2))),
-                                    axis=0)
+        all_labels = np.concatenate(
+            (np.repeat(0, len(px_scale1)), np.repeat(1, len(px_scale2))), axis=0
+        )
         if genes is not None:
             px_scale = px_scale[:, self.gene_dataset.genes_to_index(genes)]
-        bayes1 = get_bayes_factors(px_scale, all_labels, cell_idx=0, M_permutation=M_permutation,
-                                   permutation=False, sample_pairs=sample_pairs,
-                                   importance_sampling=importance_sampling,
-                                   log_ratios=log_probas)
+        bayes1 = get_bayes_factors(
+            px_scale,
+            all_labels,
+            cell_idx=0,
+            M_permutation=M_permutation,
+            permutation=False,
+            sample_pairs=sample_pairs,
+            importance_sampling=importance_sampling,
+            log_ratios=log_probas,
+        )
         if all_stats is True:
-            bayes1_permuted = get_bayes_factors(px_scale, all_labels, cell_idx=0,
-                                                M_permutation=M_permutation,
-                                                permutation=True, sample_pairs=sample_pairs,
-                                                importance_sampling=importance_sampling,
-                                                log_ratios=log_probas)
-            bayes2 = get_bayes_factors(px_scale, all_labels, cell_idx=1,
-                                       M_permutation=M_permutation,
-                                       permutation=False, sample_pairs=sample_pairs,
-                                       importance_sampling=importance_sampling,
-                                       log_ratios=log_probas)
-            bayes2_permuted = get_bayes_factors(px_scale, all_labels, cell_idx=1,
-                                                M_permutation=M_permutation,
-                                                permutation=True, sample_pairs=sample_pairs,
-                                                importance_sampling=importance_sampling,
-                                                log_ratios=log_probas)
-            mean1, mean2, nonz1, nonz2, norm_mean1, norm_mean2 = \
-                self.gene_dataset.raw_counts_properties(idx1, idx2)
-            res = pd.DataFrame([bayes1, bayes1_permuted, bayes2, bayes2_permuted,
-                                mean1, mean2, nonz1, nonz2, norm_mean1, norm_mean2,
-                                px_scale_mean1, px_scale_mean2],
-                               index=["bayes1", "bayes1_permuted", "bayes2", "bayes2_permuted",
-                                      "mean1", "mean2", "nonz1", "nonz2", "norm_mean1", "norm_mean2",
-                                      "scale1", "scale2"],
-                               columns=self.gene_dataset.gene_names).T
+            bayes1_permuted = get_bayes_factors(
+                px_scale,
+                all_labels,
+                cell_idx=0,
+                M_permutation=M_permutation,
+                permutation=True,
+                sample_pairs=sample_pairs,
+                importance_sampling=importance_sampling,
+                log_ratios=log_probas,
+            )
+            bayes2 = get_bayes_factors(
+                px_scale,
+                all_labels,
+                cell_idx=1,
+                M_permutation=M_permutation,
+                permutation=False,
+                sample_pairs=sample_pairs,
+                importance_sampling=importance_sampling,
+                log_ratios=log_probas,
+            )
+            bayes2_permuted = get_bayes_factors(
+                px_scale,
+                all_labels,
+                cell_idx=1,
+                M_permutation=M_permutation,
+                permutation=True,
+                sample_pairs=sample_pairs,
+                importance_sampling=importance_sampling,
+                log_ratios=log_probas,
+            )
+            (
+                mean1,
+                mean2,
+                nonz1,
+                nonz2,
+                norm_mean1,
+                norm_mean2,
+            ) = self.gene_dataset.raw_counts_properties(idx1, idx2)
+            res = pd.DataFrame(
+                [
+                    bayes1,
+                    bayes1_permuted,
+                    bayes2,
+                    bayes2_permuted,
+                    mean1,
+                    mean2,
+                    nonz1,
+                    nonz2,
+                    norm_mean1,
+                    norm_mean2,
+                    px_scale_mean1,
+                    px_scale_mean2,
+                ],
+                index=[
+                    "bayes1",
+                    "bayes1_permuted",
+                    "bayes2",
+                    "bayes2_permuted",
+                    "mean1",
+                    "mean2",
+                    "nonz1",
+                    "nonz2",
+                    "norm_mean1",
+                    "norm_mean2",
+                    "scale1",
+                    "scale2",
+                ],
+                columns=self.gene_dataset.gene_names,
+            ).T
             res = res.sort_values(by=["bayes1"], ascending=False)
             return res
         else:
@@ -666,12 +797,16 @@ class Posterior:
         """
         if cell_labels is not None:
             if len(cell_labels) != len(self.gene_dataset):
-                raise ValueError(" the length of cell_labels have to be "
-                                 "the same as the number of cells")
+                raise ValueError(
+                    " the length of cell_labels have to be "
+                    "the same as the number of cells"
+                )
 
-        if (cell_labels is None) and not hasattr(self.gene_dataset, 'cell_types'):
-            raise ValueError("If gene_dataset is not annotated with labels and cell types,"
-                             " then must provide cell_labels")
+        if (cell_labels is None) and not hasattr(self.gene_dataset, "cell_types"):
+            raise ValueError(
+                "If gene_dataset is not annotated with labels and cell types,"
+                " then must provide cell_labels"
+            )
         # Input cell_labels take precedence over cell type label annotation in dataset
         elif cell_labels is not None:
             cluster_id = np.unique(cell_labels[cell_labels >= 0])
@@ -684,23 +819,28 @@ class Posterior:
         de_cluster = []
         for i, x in enumerate(cluster_id):
             if subset is None:
-                idx1 = (cell_labels == i)
-                idx2 = (cell_labels != i)
+                idx1 = cell_labels == i
+                idx2 = cell_labels != i
             else:
                 idx1 = (cell_labels == i) * subset
                 idx2 = (cell_labels != i) * subset
             if np.sum(idx1) > min_cells and np.sum(idx2) > min_cells:
                 de_cluster.append(x)
                 # TODO: Understand issue when Sample_pairs=True
-                res = self.differential_expression_score(idx1=idx1, idx2=idx2,
-                                                         M_permutation=M_permutation,
-                                                         n_samples=n_samples,
-                                                         sample_pairs=sample_pairs)
+                res = self.differential_expression_score(
+                    idx1=idx1,
+                    idx2=idx2,
+                    M_permutation=M_permutation,
+                    n_samples=n_samples,
+                    sample_pairs=sample_pairs,
+                )
                 res["clusters"] = np.repeat(x, len(res.index))
                 de_res.append(res)
         if output_file:  # store as an excel spreadsheet
-            writer = pd.ExcelWriter(save_dir + "differential_expression.%s.xlsx" % filename,
-                                    engine="xlsxwriter")
+            writer = pd.ExcelWriter(
+                save_dir + "differential_expression.%s.xlsx" % filename,
+                engine="xlsxwriter",
+            )
             for i, x in enumerate(de_cluster):
                 de_res[i].to_excel(writer, sheet_name=str(x))
             writer.close()
@@ -751,11 +891,15 @@ class Posterior:
             elements to compute predicted Bayes Factors
         """
         if len(self.gene_dataset) != len(states):
-            raise ValueError(" the length of states have to be the same as the number of cells")
+            raise ValueError(
+                " the length of states have to be the same as the number of cells"
+            )
 
         if (cell_labels is None) and not hasattr(self.gene_dataset, "cell_types"):
-            raise ValueError("If gene_dataset is not annotated with labels and cell types,"
-                             " then must provide cell_labels")
+            raise ValueError(
+                "If gene_dataset is not annotated with labels and cell types,"
+                " then must provide cell_labels"
+            )
         # Input cell_labels take precedence over cell type label annotation in dataset
         elif cell_labels is not None:
             cluster_id = np.unique(cell_labels[cell_labels >= 0])
@@ -777,16 +921,22 @@ class Posterior:
                 idx2 = (cell_labels == i) * subset * nstates
             if np.sum(idx1) > min_cells and np.sum(idx2) > min_cells:
                 de_cluster.append(x)
-                res = self.differential_expression_score(idx1=idx1, idx2=idx2,
-                                                         batchid1=batch1, batchid2=batch2,
-                                                         M_permutation=M_permutation,
-                                                         n_samples=n_samples,
-                                                         sample_pairs=sample_pairs)
+                res = self.differential_expression_score(
+                    idx1=idx1,
+                    idx2=idx2,
+                    batchid1=batch1,
+                    batchid2=batch2,
+                    M_permutation=M_permutation,
+                    n_samples=n_samples,
+                    sample_pairs=sample_pairs,
+                )
                 res["clusters"] = np.repeat(x, len(res.index))
                 de_res.append(res)
         if output_file:  # store as an excel spreadsheet
-            writer = pd.ExcelWriter(save_dir + "differential_expression.%s.xlsx" % filename,
-                                    engine="xlsxwriter")
+            writer = pd.ExcelWriter(
+                save_dir + "differential_expression.%s.xlsx" % filename,
+                engine="xlsxwriter",
+            )
             for i, x in enumerate(de_cluster):
                 de_res[i].to_excel(writer, sheet_name=str(x))
             writer.close()
@@ -797,7 +947,9 @@ class Posterior:
         imputed_list = []
         for tensors in self:
             sample_batch, _, _, batch_index, labels = tensors
-            px_rate = self.model.get_sample_rate(sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples)
+            px_rate = self.model.get_sample_rate(
+                sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
+            )
             imputed_list += [np.array(px_rate.cpu())]
         imputed_list = np.concatenate(imputed_list)
         return imputed_list.squeeze()
@@ -807,7 +959,7 @@ class Posterior:
         self,
         n_samples: int = 100,
         genes: Union[list, np.ndarray] = None,
-        batch_size: int = 128
+        batch_size: int = 128,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Create observation samples from the Posterior Predictive distribution
@@ -820,21 +972,18 @@ class Posterior:
             Where x_old has shape (n_cells, n_genes)
             Where x_new has shape (n_cells, n_genes, n_samples)
         """
-        assert self.model.reconstruction_loss in ['zinb', 'nb']
-        zero_inflated = self.model.reconstruction_loss == 'zinb'
+        assert self.model.reconstruction_loss in ["zinb", "nb"]
+        zero_inflated = self.model.reconstruction_loss == "zinb"
         x_old = []
         x_new = []
         for tensors in self.update({"batch_size": batch_size}):
             sample_batch, _, _, batch_index, labels = tensors
             outputs = self.model.inference(
-                sample_batch,
-                batch_index=batch_index,
-                y=labels,
-                n_samples=n_samples
+                sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
-            px_dispersion = outputs['px_r']
-            px_rate = outputs['px_rate']
-            px_dropout = outputs['px_dropout']
+            px_dispersion = outputs["px_r"]
+            px_rate = outputs["px_rate"]
+            px_dropout = outputs["px_dropout"]
 
             p = px_rate / (px_rate + px_dispersion)
             r = px_dispersion
@@ -843,13 +992,17 @@ class Posterior:
             # Clamping as distributions objects can have buggy behaviors when
             # their parameters are too high
             l_train = torch.clamp(l_train, max=1e8)
-            gene_expressions = distributions.Poisson(l_train).sample()  # Shape : (n_samples, n_cells_batch, n_genes)
+            gene_expressions = distributions.Poisson(
+                l_train
+            ).sample()  # Shape : (n_samples, n_cells_batch, n_genes)
             if zero_inflated:
                 p_zero = (1.0 + torch.exp(-px_dropout)).pow(-1)
                 random_prob = torch.rand_like(p_zero)
                 gene_expressions[random_prob <= p_zero] = 0
 
-            gene_expressions = gene_expressions.permute([1, 2, 0])  # Shape : (n_cells_batch, n_genes, n_samples)
+            gene_expressions = gene_expressions.permute(
+                [1, 2, 0]
+            )  # Shape : (n_cells_batch, n_genes, n_samples)
 
             x_old.append(sample_batch)
             x_new.append(gene_expressions)
@@ -871,27 +1024,34 @@ class Posterior:
             sample_batch, _, _, batch_index, labels = tensors
 
             outputs = self.model.inference(
-                sample_batch,
-                batch_index=batch_index,
-                y=labels,
-                n_samples=1
+                sample_batch, batch_index=batch_index, y=labels, n_samples=1
             )
-            px_dispersion = outputs['px_r']
-            px_rate = outputs['px_rate']
-            px_dropout = outputs['px_dropout']
+            px_dispersion = outputs["px_r"]
+            px_rate = outputs["px_rate"]
+            px_dropout = outputs["px_dropout"]
 
-            dispersion_list += [np.repeat(np.array(px_dispersion.cpu())[np.newaxis, :], px_rate.size(0), axis=0)]
+            dispersion_list += [
+                np.repeat(
+                    np.array(px_dispersion.cpu())[np.newaxis, :],
+                    px_rate.size(0),
+                    axis=0,
+                )
+            ]
             mean_list += [np.array(px_rate.cpu())]
             dropout_list += [np.array(px_dropout.cpu())]
 
-        return np.concatenate(dropout_list), np.concatenate(mean_list), np.concatenate(dispersion_list)
+        return (
+            np.concatenate(dropout_list),
+            np.concatenate(mean_list),
+            np.concatenate(dispersion_list),
+        )
 
     @torch.no_grad()
     def get_stats(self):
         libraries = []
         for tensors in self.sequential(batch_size=128):
             x, local_l_mean, local_l_var, batch_index, y = tensors
-            library = self.model.inference(x, batch_index, y)['library']
+            library = self.model.inference(x, batch_index, y)["library"]
             libraries += [np.array(library.cpu())]
         libraries = np.concatenate(libraries)
         return libraries.ravel()
@@ -926,26 +1086,36 @@ class Posterior:
         original_list = []
         imputed_list = []
         batch_size = 10000  # self.data_loader_kwargs["batch_size"] // n_samples
-        for tensors, corrupted_tensors in zip(self.uncorrupted().sequential(batch_size=batch_size),
-                                              self.corrupted().sequential(batch_size=batch_size)):
+        for tensors, corrupted_tensors in zip(
+            self.uncorrupted().sequential(batch_size=batch_size),
+            self.corrupted().sequential(batch_size=batch_size),
+        ):
             batch = tensors[0]
             actual_batch_size = batch.size(0)
             dropout_batch, _, _, batch_index, labels = corrupted_tensors
-            px_rate = self.model.get_sample_rate(dropout_batch, batch_index=batch_index, y=labels, n_samples=n_samples)
+            px_rate = self.model.get_sample_rate(
+                dropout_batch, batch_index=batch_index, y=labels, n_samples=n_samples
+            )
 
             indices_dropout = torch.nonzero(batch - dropout_batch)
             if indices_dropout.size() != torch.Size([0]):
                 i = indices_dropout[:, 0]
                 j = indices_dropout[:, 1]
 
-                batch = batch.unsqueeze(0).expand((n_samples, batch.size(0), batch.size(1)))
+                batch = batch.unsqueeze(0).expand(
+                    (n_samples, batch.size(0), batch.size(1))
+                )
                 original = np.array(batch[:, i, j].view(-1).cpu())
                 imputed = np.array(px_rate[..., i, j].view(-1).cpu())
 
                 cells_index = np.tile(np.array(i.cpu()), n_samples)
 
-                original_list += [original[cells_index == i] for i in range(actual_batch_size)]
-                imputed_list += [imputed[cells_index == i] for i in range(actual_batch_size)]
+                original_list += [
+                    original[cells_index == i] for i in range(actual_batch_size)
+                ]
+                imputed_list += [
+                    imputed[cells_index == i] for i in range(actual_batch_size)
+                ]
             else:
                 original_list = np.array([])
                 imputed_list = np.array([])
@@ -958,30 +1128,47 @@ class Posterior:
 
         original_list_concat = np.concatenate(original_list)
         imputed_list_concat = np.concatenate(imputed_list)
-        are_lists_empty = (len(original_list_concat) == 0) and (len(imputed_list_concat) == 0)
+        are_lists_empty = (len(original_list_concat) == 0) and (
+            len(imputed_list_concat) == 0
+        )
         if are_lists_empty:
-            logger.info("No difference between corrupted dataset and uncorrupted dataset")
+            logger.info(
+                "No difference between corrupted dataset and uncorrupted dataset"
+            )
             return 0.0
         else:
             return np.median(np.abs(original_list_concat - imputed_list_concat))
 
     @torch.no_grad()
-    def imputation_benchmark(self, n_samples=8, show_plot=True, title_plot="imputation", save_path=""):
+    def imputation_benchmark(
+        self, n_samples=8, show_plot=True, title_plot="imputation", save_path=""
+    ):
         original_list, imputed_list = self.imputation_list(n_samples=n_samples)
         # Median of medians for all distances
-        median_score = self.imputation_score(original_list=original_list, imputed_list=imputed_list)
+        median_score = self.imputation_score(
+            original_list=original_list, imputed_list=imputed_list
+        )
 
         # Mean of medians for each cell
         imputation_cells = []
         for original, imputed in zip(original_list, imputed_list):
             has_imputation = len(original) and len(imputed)
-            imputation_cells += [np.median(np.abs(original - imputed)) if has_imputation else 0]
+            imputation_cells += [
+                np.median(np.abs(original - imputed)) if has_imputation else 0
+            ]
         mean_score = np.mean(imputation_cells)
 
-        logger.debug("\nMedian of Median: %.4f\nMean of Median for each cell: %.4f" % (median_score, mean_score))
+        logger.debug(
+            "\nMedian of Median: %.4f\nMean of Median for each cell: %.4f"
+            % (median_score, mean_score)
+        )
 
-        plot_imputation(np.concatenate(original_list), np.concatenate(imputed_list), show_plot=show_plot,
-                        title=os.path.join(save_path, title_plot))
+        plot_imputation(
+            np.concatenate(original_list),
+            np.concatenate(imputed_list),
+            show_plot=show_plot,
+            title=os.path.join(save_path, title_plot),
+        )
         return original_list, imputed_list
 
     @torch.no_grad()
@@ -998,7 +1185,11 @@ class Posterior:
         if self.gene_dataset.n_labels > 1:
             latent, _, labels = self.get_latent()
             if prediction_algorithm == "knn":
-                labels_pred = KMeans(self.gene_dataset.n_labels, n_init=200).fit_predict(latent)  # n_jobs>1 ?
+                labels_pred = KMeans(
+                    self.gene_dataset.n_labels, n_init=200
+                ).fit_predict(
+                    latent
+                )  # n_jobs>1 ?
             elif prediction_algorithm == "gmm":
                 gmm = GMM(self.gene_dataset.n_labels)
                 gmm.fit(latent)
@@ -1008,8 +1199,10 @@ class Posterior:
             nmi_score = NMI(labels, labels_pred)
             ari_score = ARI(labels, labels_pred)
             uca_score = unsupervised_clustering_accuracy(labels, labels_pred)[0]
-            logger.debug("Clustering Scores:\nSilhouette: %.4f\nNMI: %.4f\nARI: %.4f\nUCA: %.4f" %
-                         (asw_score, nmi_score, ari_score, uca_score))
+            logger.debug(
+                "Clustering Scores:\nSilhouette: %.4f\nNMI: %.4f\nARI: %.4f\nUCA: %.4f"
+                % (asw_score, nmi_score, ari_score, uca_score)
+            )
             return asw_score, nmi_score, ari_score, uca_score
 
     @torch.no_grad()
@@ -1022,14 +1215,26 @@ class Posterior:
         if hasattr(self.gene_dataset, "protein_expression_clr"):
             latent, _, _ = self.sequential().get_latent()
             protein_data = self.gene_dataset.protein_expression_clr[self.indices]
-            spearman_correlation, fold_enrichment = nn_overlap(latent, protein_data, **kwargs)
-            logger.debug("Overlap Scores:\nSpearman Correlation: %.4f\nFold Enrichment: %.4f" %
-                         (spearman_correlation, fold_enrichment))
+            spearman_correlation, fold_enrichment = nn_overlap(
+                latent, protein_data, **kwargs
+            )
+            logger.debug(
+                "Overlap Scores:\nSpearman Correlation: %.4f\nFold Enrichment: %.4f"
+                % (spearman_correlation, fold_enrichment)
+            )
             return spearman_correlation, fold_enrichment
 
     @torch.no_grad()
-    def show_t_sne(self, n_samples=1000, color_by="", save_name="", latent=None, batch_indices=None,
-                   labels=None, n_batch=None):
+    def show_t_sne(
+        self,
+        n_samples=1000,
+        color_by="",
+        save_name="",
+        latent=None,
+        batch_indices=None,
+        labels=None,
+        n_batch=None,
+    ):
         # If no latent representation is given
         if latent is None:
             latent, batch_indices, labels = self.get_latent(sample=True)
@@ -1046,7 +1251,9 @@ class Posterior:
             if n_batch is None:
                 n_batch = self.gene_dataset.n_batches
             if color_by == "batches" or color_by == "labels":
-                indices = batch_indices.ravel() if color_by == "batches" else labels.ravel()
+                indices = (
+                    batch_indices.ravel() if color_by == "batches" else labels.ravel()
+                )
                 n = n_batch if color_by == "batches" else self.gene_dataset.n_labels
                 if self.gene_dataset.cell_types is not None and color_by == "labels":
                     plt_labels = self.gene_dataset.cell_types
@@ -1054,13 +1261,19 @@ class Posterior:
                     plt_labels = [str(i) for i in range(len(np.unique(indices)))]
                 plt.figure(figsize=(10, 10))
                 for i, label in zip(range(n), plt_labels):
-                    plt.scatter(latent[indices == i, 0], latent[indices == i, 1], label=label)
+                    plt.scatter(
+                        latent[indices == i, 0], latent[indices == i, 1], label=label
+                    )
                 plt.legend()
             elif color_by == "batches and labels":
                 fig, axes = plt.subplots(1, 2, figsize=(14, 7))
                 batch_indices = batch_indices.ravel()
                 for i in range(n_batch):
-                    axes[0].scatter(latent[batch_indices == i, 0], latent[batch_indices == i, 1], label=str(i))
+                    axes[0].scatter(
+                        latent[batch_indices == i, 0],
+                        latent[batch_indices == i, 1],
+                        label=str(i),
+                    )
                 axes[0].set_title("batch coloring")
                 axes[0].axis("off")
                 axes[0].legend()
@@ -1071,7 +1284,11 @@ class Posterior:
                 else:
                     plt_labels = [str(i) for i in range(len(np.unique(indices)))]
                 for i, cell_type in zip(range(self.gene_dataset.n_labels), plt_labels):
-                    axes[1].scatter(latent[indices == i, 0], latent[indices == i, 1], label=cell_type)
+                    axes[1].scatter(
+                        latent[indices == i, 0],
+                        latent[indices == i, 1],
+                        label=cell_type,
+                    )
                 axes[1].set_title("label coloring")
                 axes[1].axis("off")
                 axes[1].legend()
@@ -1082,7 +1299,11 @@ class Posterior:
 
     @staticmethod
     def apply_t_sne(latent, n_samples=1000):
-        idx_t_sne = np.random.permutation(len(latent))[:n_samples] if n_samples else np.arange(len(latent))
+        idx_t_sne = (
+            np.random.permutation(len(latent))[:n_samples]
+            if n_samples
+            else np.arange(len(latent))
+        )
         if latent.shape[1] != 2:
             latent = TSNE().fit_transform(latent[idx_t_sne])
         return latent, idx_t_sne
@@ -1091,14 +1312,19 @@ class Posterior:
         """
         Returns raw data for classification
         """
-        return self.gene_dataset.X[self.indices], self.gene_dataset.labels[self.indices].ravel()
+        return (
+            self.gene_dataset.X[self.indices],
+            self.gene_dataset.labels[self.indices].ravel(),
+        )
 
 
 def entropy_from_indices(indices):
     return entropy(np.array(np.unique(indices, return_counts=True)[1].astype(np.int32)))
 
 
-def entropy_batch_mixing(latent_space, batches, n_neighbors=50, n_pools=50, n_samples_per_pool=100):
+def entropy_batch_mixing(
+    latent_space, batches, n_neighbors=50, n_pools=50, n_samples_per_pool=100
+):
     def entropy(hist_data):
         n_batches = len(np.unique(hist_data))
         if n_batches > 2:
@@ -1111,18 +1337,39 @@ def entropy_batch_mixing(latent_space, batches, n_neighbors=50, n_pools=50, n_sa
     n_neighbors = min(n_neighbors, len(latent_space) - 1)
     nne = NearestNeighbors(n_neighbors=1 + n_neighbors, n_jobs=8)
     nne.fit(latent_space)
-    kmatrix = nne.kneighbors_graph(latent_space) - scipy.sparse.identity(latent_space.shape[0])
+    kmatrix = nne.kneighbors_graph(latent_space) - scipy.sparse.identity(
+        latent_space.shape[0]
+    )
 
     score = 0
     for t in range(n_pools):
-        indices = np.random.choice(np.arange(latent_space.shape[0]), size=n_samples_per_pool)
-        score += np.mean([entropy(batches[kmatrix[indices].nonzero()[1][kmatrix[indices].nonzero()[0] == i]])
-                          for i in range(n_samples_per_pool)])
+        indices = np.random.choice(
+            np.arange(latent_space.shape[0]), size=n_samples_per_pool
+        )
+        score += np.mean(
+            [
+                entropy(
+                    batches[
+                        kmatrix[indices].nonzero()[1][
+                            kmatrix[indices].nonzero()[0] == i
+                        ]
+                    ]
+                )
+                for i in range(n_samples_per_pool)
+            ]
+        )
     return score / float(n_pools)
 
 
-def get_sampling_pair_idx(list_1, list_2, do_sample=True, permutation=False, M_permutation=10000,
-                          probas_a=None, probas_b=None):
+def get_sampling_pair_idx(
+    list_1,
+    list_2,
+    do_sample=True,
+    permutation=False,
+    M_permutation=10000,
+    probas_a=None,
+    probas_b=None,
+):
     """
     Returns the indices of the sampled quantities of populations 1 and 2
     that will be compared.
@@ -1149,16 +1396,20 @@ def get_sampling_pair_idx(list_1, list_2, do_sample=True, permutation=False, M_p
     if do_sample:
         if not permutation:
             # case1: no permutation, sample from A and then from B
-            u, v = np.random.choice(list_1, size=M_permutation, p=probas_a), \
-                   np.random.choice(list_2, size=M_permutation, p=probas_b)
+            u, v = (
+                np.random.choice(list_1, size=M_permutation, p=probas_a),
+                np.random.choice(list_2, size=M_permutation, p=probas_b),
+            )
         else:
             # case2: permutation, sample from A+B twice
-            u, v = (np.random.choice(list_1 + list_2, size=M_permutation),
-                    np.random.choice(list_1 + list_2, size=M_permutation))
+            u, v = (
+                np.random.choice(list_1 + list_2, size=M_permutation),
+                np.random.choice(list_1 + list_2, size=M_permutation),
+            )
     else:
         # TODO: Assert good behavior
         u, v = list_1, list_2
-    assert len(u) == len(v), 'Inconsistent number of indices used for pairs'
+    assert len(u) == len(v), "Inconsistent number of indices used for pairs"
     return u, v
 
 
@@ -1169,7 +1420,7 @@ def get_bayes_factors(
     other_cell_idx: Optional[Union[int, str]] = None,
     genes_idx: Union[List[int], np.ndarray] = None,
     log_ratios: Union[List[int], np.ndarray] = None,
-    importance_sampling : bool = False,
+    importance_sampling: bool = False,
     M_permutation: int = 10000,
     permutation: bool = False,
     sample_pairs: bool = True,
@@ -1195,9 +1446,12 @@ def get_bayes_factors(
     :return:
     """
 
-    idx = (all_labels == cell_idx)
-    idx_other = (all_labels == other_cell_idx) if other_cell_idx is not None else (
-            all_labels != cell_idx)
+    idx = all_labels == cell_idx
+    idx_other = (
+        (all_labels == other_cell_idx)
+        if other_cell_idx is not None
+        else (all_labels != cell_idx)
+    )
     if genes_idx is not None:
         px_scale = px_scale[:, genes_idx]
 
@@ -1216,7 +1470,7 @@ def get_bayes_factors(
     list_2 = list(sample_rate_a.shape[0] + np.arange(sample_rate_b.shape[0]))
 
     if importance_sampling:
-        print('Importance Sampling')
+        print("Importance Sampling")
         # weight_a = log_ratios[:, idx]
         # weight_b = log_ratios[:, idx_other]
         print(log_ratios.shape)
@@ -1236,12 +1490,16 @@ def get_bayes_factors(
         probas_a = weight_a
         probas_b = weight_b
 
-
-
-        print('IS A MAX', probas_a.max(), 'IS B MAX', probas_b.max())
-        u, v = get_sampling_pair_idx(list_1, list_2, do_sample=sample_pairs,
-                                     permutation=permutation, M_permutation=M_permutation,
-                                     probas_a=probas_a, probas_b=probas_b)
+        print("IS A MAX", probas_a.max(), "IS B MAX", probas_b.max())
+        u, v = get_sampling_pair_idx(
+            list_1,
+            list_2,
+            do_sample=sample_pairs,
+            permutation=permutation,
+            M_permutation=M_permutation,
+            probas_a=probas_a,
+            probas_b=probas_b,
+        )
 
         # then constitutes the pairs
         first_samples = samples[u]
@@ -1251,17 +1509,26 @@ def get_bayes_factors(
 
         # print('u v shapes', u.shape, v.shape)
 
-        to_sum = first_weights[:, np.newaxis] * second_weights[:, np.newaxis] * (
-                first_samples >= second_samples)
+        to_sum = (
+            first_weights[:, np.newaxis]
+            * second_weights[:, np.newaxis]
+            * (first_samples >= second_samples)
+        )
         incomplete_weights = first_weights * second_weights
         res = np.sum(to_sum, axis=0) / np.sum(incomplete_weights, axis=0)
     else:
         probas_a = None
         probas_b = None
 
-        u, v = get_sampling_pair_idx(list_1, list_2, do_sample=sample_pairs,
-                                     permutation=permutation, M_permutation=M_permutation,
-                                     probas_a=probas_a, probas_b=probas_b)
+        u, v = get_sampling_pair_idx(
+            list_1,
+            list_2,
+            do_sample=sample_pairs,
+            permutation=permutation,
+            M_permutation=M_permutation,
+            probas_a=probas_a,
+            probas_b=probas_b,
+        )
 
         # then constitutes the pairs
         first_samples = samples[u]
@@ -1286,8 +1553,16 @@ def _p_wa_higher_wb(k1, k2, theta1, theta2):
     return betainc(a, b, x)
 
 
-def get_bayes_gamma(data, all_labels, cell_idx, other_cell_idx=None, genes_idx=None,
-                    M_permutation=10000, permutation=False, sample_pairs=True):
+def get_bayes_gamma(
+    data,
+    all_labels,
+    cell_idx,
+    other_cell_idx=None,
+    genes_idx=None,
+    M_permutation=10000,
+    permutation=False,
+    sample_pairs=True,
+):
     """
     Returns a list of bayes factor for all genes
     :param px_scale: The gene frequency array for all cells (might contain multiple samples per cells)
@@ -1299,8 +1574,12 @@ def get_bayes_gamma(data, all_labels, cell_idx, other_cell_idx=None, genes_idx=N
     :return:
     """
     res = []
-    idx = (all_labels == cell_idx)
-    idx_other = (all_labels == other_cell_idx) if other_cell_idx is not None else (all_labels != cell_idx)
+    idx = all_labels == cell_idx
+    idx_other = (
+        (all_labels == other_cell_idx)
+        if other_cell_idx is not None
+        else (all_labels != cell_idx)
+    )
 
     shapes, scales = data
 
@@ -1324,9 +1603,15 @@ def get_bayes_gamma(data, all_labels, cell_idx, other_cell_idx=None, genes_idx=N
     list_1 = list(np.arange(sample_shape_a.shape[0]))
     list_2 = list(sample_shape_a.shape[0] + np.arange(sample_shape_b.shape[0]))
 
-    u, v = get_sampling_pair_idx(list_1, list_2, permutation=permutation,
-                                 M_permutation=M_permutation,
-                                 probas_a=None, probas_b=None, do_sample=sample_pairs)
+    u, v = get_sampling_pair_idx(
+        list_1,
+        list_2,
+        permutation=permutation,
+        M_permutation=M_permutation,
+        probas_a=None,
+        probas_b=None,
+        do_sample=sample_pairs,
+    )
 
     # then constitutes the pairs
     first_set = (samples_shape[u], samples_scales[u])
@@ -1334,7 +1619,9 @@ def get_bayes_gamma(data, all_labels, cell_idx, other_cell_idx=None, genes_idx=N
 
     shapes_a, scales_a = first_set
     shapes_b, scales_b = second_set
-    for shape_a, scale_a, shape_b, scale_b in zip(shapes_a, scales_a, shapes_b, scales_b):
+    for shape_a, scale_a, shape_b, scale_b in zip(
+        shapes_a, scales_a, shapes_b, scales_b
+    ):
         res.append(_p_wa_higher_wb(shape_a, shape_b, scale_a, scale_b))
     res = np.array(res)
     res = np.mean(res, axis=0)
@@ -1373,7 +1660,7 @@ def plot_imputation(original, imputed, show_plot=True, title="Imputation"):
 
     # Evaluate a gaussian kde on a regular grid of nbins x nbins over data extents
     k = kde.gaussian_kde(data)
-    xi, yi = np.mgrid[0:ymax:nbins * 1j, 0:ymax:nbins * 1j]
+    xi, yi = np.mgrid[0 : ymax : nbins * 1j, 0 : ymax : nbins * 1j]
     zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
     plt.title(title, fontsize=12)
@@ -1407,11 +1694,17 @@ def nn_overlap(X1, X2, k=100):
     kmatrix_2 = nne.kneighbors_graph(X2) - scipy.sparse.identity(n_samples)
 
     # 1 - spearman correlation from knn graphs
-    spearman_correlation = scipy.stats.spearmanr(kmatrix_1.A.flatten(), kmatrix_2.A.flatten())[0]
+    spearman_correlation = scipy.stats.spearmanr(
+        kmatrix_1.A.flatten(), kmatrix_2.A.flatten()
+    )[0]
     # 2 - fold enrichment
     set_1 = set(np.where(kmatrix_1.A.flatten() == 1)[0])
     set_2 = set(np.where(kmatrix_2.A.flatten() == 1)[0])
-    fold_enrichment = len(set_1.intersection(set_2)) * n_samples ** 2 / (float(len(set_1)) * len(set_2))
+    fold_enrichment = (
+        len(set_1.intersection(set_2))
+        * n_samples ** 2
+        / (float(len(set_1)) * len(set_2))
+    )
     return spearman_correlation, fold_enrichment
 
 
@@ -1439,7 +1732,9 @@ def knn_purity(latent, label, n_neighbors=30):
 
     # pre cell purity scores
     scores = ((neighbors_labels - label.reshape(-1, 1)) == 0).mean(axis=1)
-    res = [np.mean(scores[label == i]) for i in np.unique(label)]  # per cell-type purity
+    res = [
+        np.mean(scores[label == i]) for i in np.unique(label)
+    ]  # per cell-type purity
 
     return np.mean(res)
 
