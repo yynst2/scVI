@@ -5,7 +5,7 @@ import torch.distributions as dist
 import torch.nn.functional as F
 
 from .log_likelihood import log_zinb_positive, log_nb_positive
-from .modules import DecoderSCVI, Encoder, DecoderPoisson, DenseResNet
+from .modules import DecoderSCVI, Encoder, DecoderPoisson  # , DenseResNet
 from .iaf_encoder import EncoderIAF
 from .utils import one_hot
 import logging
@@ -93,11 +93,10 @@ class IAVAE(nn.Module):
             prevent_saturation=True,
         )
 
-
         # decoder goes from n_latent-dimensional space to n_input-d data
         n_latent_size = n_latent
         if res_connection_decoder:
-            size_skip = 2*n_latent if do_h else n_latent
+            size_skip = 2 * n_latent if do_h else n_latent
             n_latent_size = n_latent + size_skip
         self.decoder = DecoderSCVI(
             n_latent_size,
@@ -106,10 +105,10 @@ class IAVAE(nn.Module):
             n_layers=n_layers,
             n_hidden=n_hidden,
             n_blocks=n_blocks,
-            do_last_skip=decoder_do_last_skip
+            do_last_skip=decoder_do_last_skip,
         )
 
-    def inference(self, x, batch_index=None, y=None, n_samples=1):
+    def inference(self, x, batch_index=None, y=None, n_samples=1, train_library=True):
         """
 
         :param x:
@@ -147,11 +146,17 @@ class IAVAE(nn.Module):
                 log_qz_x[idx, :] = log_qz_x_i
         else:
             outputs = self.z_encoder(x_, y)
-            z, log_qz_x, last_inputs = outputs["z"], outputs["qz_x"], outputs["last_inp"]
+            z, log_qz_x, last_inputs = (
+                outputs["z"],
+                outputs["qz_x"],
+                outputs["last_inp"],
+            )
 
         assert z.shape[0] == library.shape[0], (z.shape, library.shape)
         # library = torch.clamp(library, max=13)
 
+        if not train_library:
+            library = x.sum(1, keepdim=True).log()
         decoder_inp = z
         if self.res_connection_decoder:
             assert last_inputs is not None
@@ -182,10 +187,24 @@ class IAVAE(nn.Module):
         )
 
     def ratio_loss(
-        self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True, outputs=None, train_library=True
+        self,
+        x,
+        local_l_mean,
+        local_l_var,
+        batch_index=None,
+        y=None,
+        return_mean=True,
+        outputs=None,
+        train_library=True,
     ):
         if outputs is None:
-            outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
+            outputs = self.inference(
+                x,
+                batch_index=batch_index,
+                y=y,
+                n_samples=1,
+                train_library=train_library,
+            )
         ql_m = outputs["ql_m"]
         ql_v = outputs["ql_v"]
         library = outputs["library"]
@@ -211,17 +230,17 @@ class IAVAE(nn.Module):
         # reconstruction proba computation
         log_px_zl = -self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
-        assert (
-            log_px_zl.shape
-            == log_pl.shape
-            == log_pz.shape
-            == log_qz_x.shape
-            == log_ql_x.shape
-        )
-
         if train_library:
+            assert (
+                log_px_zl.shape
+                == log_pl.shape
+                == log_pz.shape
+                == log_qz_x.shape
+                == log_ql_x.shape
+            )
             ratio = (log_px_zl + log_pz + log_pl) - (log_qz_x + log_ql_x)
         else:
+            assert log_px_zl.shape == log_pz.shape == log_qz_x.shape
             ratio = (log_px_zl + log_pz) - log_qz_x
 
         if not return_mean:
@@ -386,25 +405,25 @@ class IALogNormalPoissonVAE(nn.Module):
         self, x, local_l_mean, local_l_var, batch_index=None, y=None, return_mean=True
     ):
         outputs = self.inference(x, batch_index=batch_index, y=y, n_samples=1)
-        ql_m = outputs["ql_m"]
-        ql_v = outputs["ql_v"]
-        library = outputs["library"]
+        # ql_m = outputs["ql_m"]
+        # ql_v = outputs["ql_v"]
+        # library = outputs["library"]
         px_rate = outputs["px_rate"]
         z = outputs["z"]
         log_qz_x = outputs["log_qz_x"]
 
         # variationnal probas computation
-        log_ql_x = dist.Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
+        # log_ql_x = dist.Normal(ql_m, torch.sqrt(ql_v)).log_prob(library).sum(dim=-1)
 
         # priors computation
         log_pz = (
             dist.Normal(torch.zeros_like(z), torch.ones_like(z)).log_prob(z).sum(dim=-1)
         )
-        log_pl = (
-            dist.Normal(local_l_mean, torch.sqrt(local_l_var))
-            .log_prob(library)
-            .sum(dim=-1)
-        )
+        # log_pl = (
+        #     dist.Normal(local_l_mean, torch.sqrt(local_l_var))
+        #     .log_prob(library)
+        #     .sum(dim=-1)
+        # )
 
         # reconstruction proba computation
         log_px_zl = -self.get_reconstruction_loss(x, px_rate)
