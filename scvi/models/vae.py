@@ -421,7 +421,9 @@ class VAE(NormalEncoderVAE):
             library=library,
         )
 
-    def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
+    def forward(
+        self, x, local_l_mean, local_l_var, batch_index=None, y=None, train_library=True
+    ):
         r""" Returns the reconstruction loss and the Kullback divergences
 
         :param x: tensor of values with shape (batch_size, n_input)
@@ -452,15 +454,17 @@ class VAE(NormalEncoderVAE):
         )
         if len(kl_divergence_z.size()) == 2:
             kl_divergence_z = kl_divergence_z.sum(dim=1)
-        kl_divergence_l = kl(
-            Normal(ql_m, torch.sqrt(ql_v)),
-            Normal(local_l_mean, torch.sqrt(local_l_var)),
-        ).sum(dim=1)
         kl_divergence = kl_divergence_z
-
         reconst_loss = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
-        return reconst_loss + kl_divergence_l, kl_divergence
+        if train_library:
+            kl_divergence_l = kl(
+                Normal(ql_m, torch.sqrt(ql_v)),
+                Normal(local_l_mean, torch.sqrt(local_l_var)),
+            ).sum(dim=1)
+            return reconst_loss + kl_divergence_l, kl_divergence
+        else:
+            return reconst_loss, kl_divergence
 
     def ratio_loss(
         self,

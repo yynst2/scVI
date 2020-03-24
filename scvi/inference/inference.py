@@ -97,7 +97,11 @@ class UnsupervisedTrainer(Trainer):
         else:
             assert self.k_importance_weighted == 0
             reconst_loss, kl_divergence = self.model(
-                sample_batch, local_l_mean, local_l_var, batch_index
+                sample_batch,
+                local_l_mean,
+                local_l_var,
+                batch_index,
+                train_library=self.train_library,
             )
             loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
         return loss
