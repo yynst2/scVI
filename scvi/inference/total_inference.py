@@ -676,6 +676,7 @@ class TotalPosterior(Posterior):
         rna_size_factor: int = 1000,
         transform_batch: Optional[Union[int, List[int]]] = None,
         correlation_mode: str = "pearson",
+        log_transform: bool = False,
     ):
         """ Wrapper of `generate_denoised_samples()` to create a gene-protein gene-protein corr matrix
         :param n_samples: How may samples per cell
@@ -705,6 +706,13 @@ class TotalPosterior(Posterior):
                 flattened[
                     denoised_data.shape[0] * (i) : denoised_data.shape[0] * (i + 1)
                 ] = denoised_data[:, :, i]
+            if log_transform is True:
+                flattened[:, : self.gene_dataset.nb_genes] = np.log(
+                    flattened[:, : self.gene_dataset.nb_genes] + 1e-8
+                )
+                flattened[:, : self.gene_dataset.nb_genes] = np.log1p(
+                    flattened[:, self.gene_dataset.nb_genes :]
+                )
             if correlation_mode == "pearson":
                 corr_matrix = np.corrcoef(flattened, rowvar=False)
             else:
