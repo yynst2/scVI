@@ -462,9 +462,19 @@ class VAE(NormalEncoderVAE):
                 Normal(ql_m, torch.sqrt(ql_v)),
                 Normal(local_l_mean, torch.sqrt(local_l_var)),
             ).sum(dim=1)
-            return reconst_loss + kl_divergence_l, kl_divergence
-        else:
-            return reconst_loss, kl_divergence
+            reconst_loss += kl_divergence_l
+        nan_issues = (
+            torch.isnan(reconst_loss).any()
+            or torch.isinf(reconst_loss).any()
+            or torch.isnan(kl_divergence).any()
+            or torch.isinf(kl_divergence).any()
+        )
+        if nan_issues:
+            for key in outputs:
+                vals = outputs[key]
+                print("{}: ({}, {})".format(key, vals.min().item(), vals.max().item()))
+            raise ValueError
+        return reconst_loss, kl_divergence
 
     def ratio_loss(
         self,
@@ -524,6 +534,12 @@ class VAE(NormalEncoderVAE):
         if not return_mean:
             return log_ratio
         elbo = log_ratio.mean(dim=0)
+
+        if torch.isnan(elbo).any() or torch.isinf(elbo).any():
+            for key in outputs:
+                vals = outputs[key]
+                print("{}: ({}, {})".format(key, vals.min().item(), vals.max().item()))
+            raise ValueError
         return -elbo
 
 
