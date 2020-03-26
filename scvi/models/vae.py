@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Main module."""
-
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,6 +9,8 @@ from torch.distributions import Normal, kl_divergence as kl
 from scvi.models.log_likelihood import log_zinb_positive, log_nb_positive
 from scvi.models.modules import Encoder, DecoderSCVI, LinearDecoderSCVI
 from scvi.models.utils import one_hot
+
+logger = logging.getLogger(__name__)
 
 torch.backends.cudnn.benchmark = True
 
@@ -62,6 +64,7 @@ class NormalEncoderVAE(nn.Module):
         self.n_input = n_input
         # l encoder goes from n_input-dimensional data to 1-d library size
         n_cat_list = [n_batch] if n_batch is not None else None
+        logger.info("Defining l encoder with cats {}".format(n_cat_list))
         self.l_encoder = Encoder(
             n_input,
             1,
@@ -275,6 +278,7 @@ class VAE(NormalEncoderVAE):
             log_p_z=log_p_z,
             n_batch=n_batch_library,
         )
+        self.library_batch = library_batch
         self.decoder = DecoderSCVI(
             n_latent,
             n_input,
@@ -386,7 +390,10 @@ class VAE(NormalEncoderVAE):
 
         # Sampling
         qz_m, qz_v, z = self.z_encoder(x_, y)
-        ql_m, ql_v, library = self.l_encoder(x_)
+        if self.library_batch:
+            ql_m, ql_v, library = self.l_encoder(x_, batch_index)
+        else:
+            ql_m, ql_v, library = self.l_encoder(x_)
 
         if n_samples > 1:
             assert not self.z_full_cov
