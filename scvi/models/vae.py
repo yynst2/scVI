@@ -437,7 +437,7 @@ class VAE(NormalEncoderVAE):
         :rtype: 2-tuple of :py:class:`torch.FloatTensor`
         """
         # Parameters for z latent distribution
-        outputs = self.inference(x, batch_index, y)
+        outputs = self.inference(x, batch_index, y, train_library=train_library)
         qz_m = outputs["qz_m"]
         qz_v = outputs["qz_v"]
         ql_m = outputs["ql_m"]
@@ -470,6 +470,7 @@ class VAE(NormalEncoderVAE):
             or torch.isinf(kl_divergence).any()
         )
         if nan_issues:
+            print("train_library ?", train_library)
             for key in outputs:
                 vals = outputs[key]
                 print("{}: ({}, {})".format(key, vals.min().item(), vals.max().item()))
@@ -536,6 +537,7 @@ class VAE(NormalEncoderVAE):
         elbo = log_ratio.mean(dim=0)
 
         if torch.isnan(elbo).any() or torch.isinf(elbo).any():
+            print("train_library ?", train_library)
             for key in outputs:
                 vals = outputs[key]
                 print("{}: ({}, {})".format(key, vals.min().item(), vals.max().item()))
