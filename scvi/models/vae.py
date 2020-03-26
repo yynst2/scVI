@@ -27,6 +27,7 @@ class NormalEncoderVAE(nn.Module):
         log_p_z=None,
         learn_prior_scale: bool = False,
         prevent_library_saturation: bool = True,
+        n_batch: int = None,
     ):
         """
         Serves as model class for any VAE with Gaussian latent variables for scVI
@@ -60,9 +61,11 @@ class NormalEncoderVAE(nn.Module):
         )
         self.n_input = n_input
         # l encoder goes from n_input-dimensional data to 1-d library size
+        n_cat_list = [n_batch] if n_batch is not None else None
         self.l_encoder = Encoder(
             n_input,
             1,
+            n_cat_list=n_cat_list,
             n_layers=1,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
@@ -257,7 +260,9 @@ class VAE(NormalEncoderVAE):
         n_blocks=0,
         decoder_do_last_skip=False,
         prevent_library_saturation: bool = False,
+        library_batch: bool = False,
     ):
+        n_batch_library = n_batch if library_batch else None
         super().__init__(
             n_input=n_input,
             n_hidden=n_hidden,
@@ -268,6 +273,7 @@ class VAE(NormalEncoderVAE):
             autoregresssive=autoregresssive,
             prevent_library_saturation=prevent_library_saturation,
             log_p_z=log_p_z,
+            n_batch=n_batch_library,
         )
         self.decoder = DecoderSCVI(
             n_latent,
