@@ -710,7 +710,7 @@ class TotalPosterior(Posterior):
                 flattened[:, : self.gene_dataset.nb_genes] = np.log(
                     flattened[:, : self.gene_dataset.nb_genes] + 1e-8
                 )
-                flattened[:, : self.gene_dataset.nb_genes] = np.log1p(
+                flattened[:, self.gene_dataset.nb_genes :] = np.log1p(
                     flattened[:, self.gene_dataset.nb_genes :]
                 )
             if correlation_mode == "pearson":
