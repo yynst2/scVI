@@ -169,7 +169,7 @@ class Posterior:
         """Determines if the object dataloader indices were modified at some point.
 
         """
-        return np.array_equal(self.indices, self.original_indices)
+        return not np.array_equal(self.indices, self.original_indices)
 
     @property
     def nb_cells(self) -> int:

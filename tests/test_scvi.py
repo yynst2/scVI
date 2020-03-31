@@ -21,6 +21,7 @@ from scvi.inference import (
     AdapterTrainer,
     TotalTrainer,
     TotalPosterior,
+    Posterior,
 )
 from scvi.inference.posterior import unsupervised_clustering_accuracy, load_posterior
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -315,6 +316,11 @@ def test_sampling_zl(save_path):
     )
     trainer_cortex_cls.train(n_epochs=2)
     trainer_cortex_cls.test_set.accuracy()
+
+    post = Posterior(model=cortex_vae, gene_dataset=cortex_dataset, indices=[0, 1])
+    assert not post.are_indices_modified
+    post.update_sampler_indices(idx=[1])
+    assert post.are_indices_modified
 
 
 def test_annealing_procedures(save_path):
