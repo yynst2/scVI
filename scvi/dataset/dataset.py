@@ -807,8 +807,7 @@ class GeneExpressionDataset(Dataset):
         attributes_and_types.update(add_attributes_and_types)
 
         if cuda_dataset is True:
-            copy_attrs = [attr for attr, _ in attributes_and_types.items()]
-            self.copy_to_cuda(copy_attrs)
+            self.copy_to_cuda(attributes_and_types)
 
             attributes_and_types = [
                 attr + "_cuda" for attr, _ in attributes_and_types.items()
@@ -839,12 +838,16 @@ class GeneExpressionDataset(Dataset):
             )
         return data_torch
 
-    def copy_to_cuda(self, attributes: List[str] = None):
-        for attr in attributes:
+    def copy_to_cuda(self, attributes_and_types: Dict[str, type] = None):
+        for attr, dtype in attributes_and_types.items():
             try:
                 getattr(self, attr + "_cuda")
             except AttributeError:
                 data = getattr(self, attr)
+                if isinstance(getattr(self, attr), np.ndarray):
+                    data = getattr(self, attr).astype(dtype)
+                else:
+                    data = getattr(self, attr).toarray().astype(dtype)
                 torch_data = torch.from_numpy(data)
                 torch_data = torch_data.cuda()
                 setattr(self, attr + "_cuda", torch_data)
