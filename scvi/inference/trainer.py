@@ -309,6 +309,10 @@ class Trainer:
         for name_, posterior in self._posteriors.items():
             self.register_posterior(name_, posterior.uncorrupted())
 
+    def posteriors_to_cuda(self):
+        for name_, posterior in self._posteriors.items():
+            self.register_posterior(name_, posterior.cuda_dataset())
+
     def __getattr__(self, name):
         if "_posteriors" in self.__dict__:
             _posteriors = self.__dict__["_posteriors"]
