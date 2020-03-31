@@ -807,7 +807,7 @@ class GeneExpressionDataset(Dataset):
         attributes_and_types.update(add_attributes_and_types)
 
         if cuda_dataset is True:
-            copy_attrs = [attr for attr in attributes_and_types.items()]
+            copy_attrs = [attr for attr, _ in attributes_and_types.items()]
             self.copy_to_cuda(copy_attrs)
 
             attributes_and_types = [
