@@ -786,6 +786,7 @@ class GeneExpressionDataset(Dataset):
         add_attributes_and_types: Dict[str, type] = None,
         override: bool = False,
         corrupted=False,
+        cuda_dataset: bool = False,
     ) -> Callable[[Union[List[int], np.ndarray]], Tuple[torch.Tensor, ...]]:
         """Returns a collate_fn with the requested shape/attributes"""
 
@@ -801,26 +802,52 @@ class GeneExpressionDataset(Dataset):
                     ("labels", np.int64),
                 ]
             )
-
         if add_attributes_and_types is None:
             add_attributes_and_types = dict()
         attributes_and_types.update(add_attributes_and_types)
-        return partial(self.collate_fn_base, attributes_and_types)
+
+        if cuda_dataset is True:
+            copy_attrs = [attr for attr in attributes_and_types.items()]
+            self.copy_to_cuda(copy_attrs)
+
+            attributes_and_types = [
+                attr + "_cuda" for attr, _ in attributes_and_types.items()
+            ]
+
+        return partial(self.collate_fn_base, attributes_and_types, cuda_dataset)
 
     def collate_fn_base(
-        self, attributes_and_types: Dict[str, type], batch: Union[List[int], np.ndarray]
+        self,
+        attributes_and_types: Dict[str, type],
+        cuda_dataset: bool,
+        batch: Union[List[int], np.ndarray],
     ) -> Tuple[torch.Tensor, ...]:
         """Given indices and attributes to batch, returns a full batch of ``Torch.Tensor``"""
         indices = np.asarray(batch)
-        data_numpy = [
-            getattr(self, attr)[indices].astype(dtype)
-            if isinstance(getattr(self, attr), np.ndarray)
-            else getattr(self, attr)[indices].toarray().astype(dtype)
-            for attr, dtype in attributes_and_types.items()
-        ]
+        if not cuda_dataset:
+            data_numpy = [
+                getattr(self, attr)[indices].astype(dtype)
+                if isinstance(getattr(self, attr), np.ndarray)
+                else getattr(self, attr)[indices].toarray().astype(dtype)
+                for attr, dtype in attributes_and_types.items()
+            ]
 
-        data_torch = tuple(torch.from_numpy(d) for d in data_numpy)
+            data_torch = tuple(torch.from_numpy(d) for d in data_numpy)
+        else:
+            data_torch = tuple(
+                getattr(self, attr)[indices] for attr in attributes_and_types
+            )
         return data_torch
+
+    def copy_to_cuda(self, attributes: List[str] = None):
+        for attr in attributes:
+            try:
+                getattr(self, attr + "_cuda")
+            except AttributeError:
+                data = getattr(self, attr)
+                torch_data = torch.from_numpy(data)
+                torch_data = torch_data.cuda()
+                setattr(self, attr + "_cuda", torch_data)
 
     #############################
     #                           #

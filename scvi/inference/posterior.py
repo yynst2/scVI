@@ -216,6 +216,13 @@ class Posterior:
             }
         )
 
+    def cuda_dataset(self) -> "Posterior":
+        """Uses cuda data tensors
+        """
+        return self.update(
+            {"collate_fn": self.gene_dataset.collate_fn_builder(cuda_dataset=True)}
+        )
+
     def corrupted(self) -> "Posterior":
         """Corrupts gene counts.
 
@@ -1210,7 +1217,7 @@ class Posterior:
                     l_train
                 )  # Shape : (n_samples, n_cells_batch, n_genes)
             elif self.model.reconstruction_loss == "nb":
-                dist = NegativeBinomial(mu=px_rate, theta=px_r,)
+                dist = NegativeBinomial(mu=px_rate, theta=px_r)
             elif self.model.reconstruction_loss == "zinb":
                 dist = ZeroInflatedNegativeBinomial(
                     mu=px_rate, theta=px_r, zi_logits=px_dropout
