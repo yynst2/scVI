@@ -317,10 +317,14 @@ def test_sampling_zl(save_path):
     trainer_cortex_cls.train(n_epochs=2)
     trainer_cortex_cls.test_set.accuracy()
 
-    post = Posterior(model=cortex_vae, gene_dataset=cortex_dataset, indices=[0, 1])
-    assert not post.are_indices_modified
-    post.update_sampler_indices(idx=[1])
-    assert post.are_indices_modified
+    post = Posterior(
+        model=cortex_vae, gene_dataset=cortex_dataset, indices=[0, 1, 2, 3]
+    )
+    post.get_bayes_factors(idx1=[0, 1], idx2=[2], n_samples=3)
+    post.get_latent()
+    post.update_sampler_indices(idx=[1, 2])
+    with pytest.warns(UserWarning):
+        post.get_latent()
 
 
 def test_annealing_procedures(save_path):

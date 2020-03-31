@@ -165,11 +165,15 @@ class Posterior:
             return np.arange(len(self.gene_dataset))
 
     @property
-    def are_indices_modified(self) -> bool:
+    def warn_if_indices_modified(self) -> bool:
         """Determines if the object dataloader indices were modified at some point.
 
         """
-        return not np.array_equal(self.indices, self.original_indices)
+        if not np.array_equal(self.indices, self.original_indices):
+            warnings.warn(
+                "Posterior indices were modified at some point. Please ensure that provided indices correspond to the current posterior indices.",
+                UserWarning,
+            )
 
     @property
     def nb_cells(self) -> int:
@@ -235,6 +239,7 @@ class Posterior:
         """Returns the Evidence Lower Bound associated to the object.
 
         """
+        self.warn_if_indices_modified
         elbo = compute_elbo(self.model, self)
         logger.debug("ELBO : %.4f" % elbo)
         return elbo
@@ -246,6 +251,7 @@ class Posterior:
         """Returns the reconstruction error associated to the object.
 
         """
+        self.warn_if_indices_modified
         reconstruction_error = compute_reconstruction_error(self.model, self)
         logger.debug("Reconstruction Error : %.4f" % reconstruction_error)
         return reconstruction_error
@@ -258,6 +264,7 @@ class Posterior:
 
         :param n_mc_samples: Number of MC estimates to use
         """
+        self.warn_if_indices_modified
         if (
             hasattr(self.model, "reconstruction_loss")
             and self.model.reconstruction_loss == "autozinb"
@@ -275,6 +282,7 @@ class Posterior:
         :param sample: z mean or z sample
         :return: three np.ndarrays, latent, batch_indices, labels
         """
+        self.warn_if_indices_modified
         latent = []
         batch_indices = []
         labels = []
@@ -298,6 +306,7 @@ class Posterior:
         """Returns the object's entropy batch mixing.
 
         """
+        self.warn_if_indices_modified
         if self.gene_dataset.n_batches == 2:
             latent, batch_indices, labels = self.get_latent()
             be_score = entropy_batch_mixing(latent, batch_indices, **kwargs)
@@ -416,11 +425,6 @@ class Posterior:
 
         """
         # Get overall number of desired samples and desired batches
-        if self.are_indices_modified:
-            logger.warning(
-                "Posterior indices were modified at some point. Please ensure that provided indices correspond to the current posterior indices."
-            )
-
         if batchid is None and not use_observed_batches:
             batchid = np.arange(self.gene_dataset.n_batches)
         if use_observed_batches:
@@ -1153,6 +1157,7 @@ class Posterior:
             - list of int, then px_rates are averaged over provided batches.
         :return: (n_samples, n_cells, n_genes) px_rates squeezed array
         """
+        self.warn_if_indices_modified
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         imputed_arr = []
