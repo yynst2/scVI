@@ -248,6 +248,7 @@ class Posterior:
         log_probas = torch.cat(log_probas, dim=1)
         # Final log_probas shape (n_samples, n_cells)
         labels = torch.cat(labels)
+        batch_indices = torch.cat(batch_indices)
         return dict(
             z=zs,
             label=labels,
