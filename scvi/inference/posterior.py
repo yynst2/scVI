@@ -183,6 +183,7 @@ class Posterior:
         labels = []
         scales = []
         log_probas = []
+        batch_indices = []
         n_bio_batches = self.gene_dataset.n_batches
         with torch.no_grad():
             for tensors in self.sequential():
@@ -206,6 +207,7 @@ class Posterior:
                 )
                 scale_batch = []
                 new_log_probas = []
+                batch_indices_batch = []
                 for bio_batch in range(n_bio_batches):
                     new_log_probas.append(log_probas_batch)
 
@@ -213,7 +215,9 @@ class Posterior:
                     scale_batch.append(
                         self.model.decoder.forward("gene", z, library, batch_index)[0]
                     )
+                    batch_indices_batch.append(batch_index)
                 # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
+                batch_indices_batch = torch.cat(batch_indices_batch, dim=0)
                 scale_batch = torch.cat(scale_batch, dim=0)
                 log_probas_batch = torch.cat(new_log_probas, dim=0)
 
@@ -221,11 +225,13 @@ class Posterior:
                 z = z.to(device=device)
                 log_probas_batch = log_probas_batch.to(device=device)
                 scale_batch = scale_batch.to(device=device)
+                batch_indices_batch = batch_indices_batch.to(device=device)
 
                 # print(label.device, z.device, scale_batch.device)
                 labels.append(label)
                 zs.append(z)
                 scales.append(scale_batch)
+                batch_indices.append(batch_indices_batch)
                 log_probas.append(log_probas_batch)
 
         if n_samples > 1:
@@ -242,7 +248,13 @@ class Posterior:
         log_probas = torch.cat(log_probas, dim=1)
         # Final log_probas shape (n_samples, n_cells)
         labels = torch.cat(labels)
-        return dict(z=zs, label=labels, scale=scales, log_probas=log_probas)
+        return dict(
+            z=zs,
+            label=labels,
+            scale=scales,
+            log_probas=log_probas,
+            batch_index=batch_indices,
+        )
 
     @torch.no_grad()
     def get_data(self):
