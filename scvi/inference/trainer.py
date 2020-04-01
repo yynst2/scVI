@@ -155,6 +155,8 @@ class Trainer:
                 loss_mean = []
                 for tensors_list in self.data_loaders_loop():
                     loss = self.loss(*tensors_list)
+                    if torch.isnan(loss).any():
+                        raise ValueError("NaN in Loss!")
                     optimizer.zero_grad()
                     loss_mean.append(loss.item())
                     self.debug_loss = loss
