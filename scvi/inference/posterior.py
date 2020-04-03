@@ -211,7 +211,7 @@ class Posterior:
                 for bio_batch in range(n_bio_batches):
                     new_log_probas.append(log_probas_batch)
 
-                    batch_index = bio_batch * torch.ones_like(sample_batch[:, [0]])
+                    batch_index = bio_batch * torch.ones_like(sample_batch[..., [0]])
                     scale_batch.append(
                         self.model.decoder.forward("gene", z, library, batch_index)[0]
                     )
