@@ -39,20 +39,18 @@ class UnsupervisedTrainer(Trainer):
         train_size=0.8,
         test_size=None,
         n_epochs_kl_warmup=400,
-        ratio_loss: bool = False,
         train_library=True,
-        k_importance_weighted: int = 0,
-        single_backward=None,
+        k: int = 1,
+        loss_type="ELBO",
         test_indices=None,
         metrics: list = [],
         **kwargs
     ):
         super().__init__(model, gene_dataset, **kwargs)
-        self.train_library = train_library
         self.n_epochs_kl_warmup = n_epochs_kl_warmup
-        self.ratio_loss = ratio_loss
-        self.k_importance_weighted = k_importance_weighted
-        self.single_backward = single_backward
+        self.loss_type = loss_type
+        self.k = k
+        self.train_library = train_library
 
         if type(self) is UnsupervisedTrainer:
             self.train_set, self.test_set = self.train_test(
@@ -71,40 +69,17 @@ class UnsupervisedTrainer(Trainer):
 
     def loss(self, tensors):
         sample_batch, local_l_mean, local_l_var, batch_index, _ = tensors
-        if self.ratio_loss and self.k_importance_weighted == 0:
-            loss = self.model.ratio_loss(
-                sample_batch,
-                local_l_mean,
-                local_l_var,
-                batch_index,
-                train_library=self.train_library,
-            )
-        elif self.ratio_loss and self.k_importance_weighted > 0:
-            assert self.single_backward in [
-                True,
-                False,
-            ], "Please precise how backward pass is performed"
-            k = self.k_importance_weighted
-            loss = self.model.iwelbo(
-                sample_batch,
-                local_l_mean,
-                local_l_var,
-                batch_index=batch_index,
-                y=None,
-                k=k,
-                single_backward=self.single_backward,
-            )
-        else:
-            assert self.k_importance_weighted == 0
-            reconst_loss, kl_divergence = self.model(
-                sample_batch,
-                local_l_mean,
-                local_l_var,
-                batch_index,
-                train_library=self.train_library,
-            )
-            loss = torch.mean(reconst_loss + self.kl_weight * kl_divergence)
-        return loss
+        # print(batch_index)
+        loss = self.model(
+            x=sample_batch,
+            local_l_mean=local_l_mean,
+            local_l_var=local_l_var,
+            batch_index=batch_index,
+            loss=self.loss_type,
+            n_samples=self.k,
+            train_library=self.train_library,
+        )
+        return loss.mean()
 
     def on_epoch_begin(self):
         if self.n_epochs_kl_warmup is not None:

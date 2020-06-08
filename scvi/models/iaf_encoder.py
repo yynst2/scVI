@@ -54,7 +54,7 @@ class EncoderH(nn.Module):
                 n_cat_list=n_cat_list,
                 n_hidden=n_hidden,
                 n_blocks=n_blocks,
-                dropout_rate=dropout_rate
+                dropout_rate=dropout_rate,
             )
         # with torch.no_grad():
         #     encoder0 =
@@ -91,8 +91,20 @@ class EncoderH(nn.Module):
 
     @staticmethod
     def init_weights(m, bias_val=1.5):
-        torch.nn.init.normal_(m.weight, mean=0., std=1e-8)
+        torch.nn.init.normal_(m.weight, mean=0.0, std=1e-8)
         torch.nn.init.constant_(m.bias, val=bias_val)
+
+
+#         n_in,
+#         n_latent,
+#         n_cat_list,
+#         n_hidden,
+#         n_layers,
+#         t,
+#         dropout_rate=0.05,
+#         n_blocks=0,
+#         use_batch_norm=True,
+#         do_h=True,
 
 
 class EncoderIAF(nn.Module):
@@ -105,13 +117,11 @@ class EncoderIAF(nn.Module):
         n_layers,
         t,
         dropout_rate=0.05,
-        n_blocks=0,
         use_batch_norm=True,
         do_h=True,
     ):
         """
         Encoder using h representation as described in IAF paper
-
         :param n_in:
         :param n_latent:
         :param n_cat_list:
@@ -123,10 +133,8 @@ class EncoderIAF(nn.Module):
         """
         super().__init__()
         self.do_h = do_h
-        msg = '' if do_h else 'Not '
-        logger.info(msg='{}Using Hidden State'.format(msg))
-        if n_blocks > 0:
-            logger.info(msg="Resnet structure used for IAF encoder")
+        msg = "" if do_h else "Not "
+        logger.info(msg="{}Using Hidden State".format(msg))
         self.n_latent = n_latent
         self.encoders = torch.nn.ModuleList()
         self.encoders.append(
@@ -139,12 +147,11 @@ class EncoderIAF(nn.Module):
                 do_h=do_h,
                 dropout_rate=dropout_rate,
                 use_batch_norm=use_batch_norm,
-                n_blocks=n_blocks,
-                do_sigmoid=False
+                do_sigmoid=False,
             )
         )
 
-        n_in = 2*n_latent if do_h else n_latent
+        n_in = 2 * n_latent if do_h else n_latent
         for _ in range(t - 1):
             self.encoders.append(
                 EncoderH(
@@ -156,8 +163,7 @@ class EncoderIAF(nn.Module):
                     do_h=False,
                     dropout_rate=dropout_rate,
                     use_batch_norm=use_batch_norm,
-                    n_blocks=n_blocks,
-                    do_sigmoid=True
+                    do_sigmoid=True,
                 )
             )
 
@@ -166,9 +172,8 @@ class EncoderIAF(nn.Module):
             scale=torch.ones(n_latent, device="cuda"),
         )
 
-    def forward(self, x, *cat_list: int):
+    def forward(self, x, *cat_list: int, n_samples=1, reparam=True):
         """
-
         :param x:
         :param cat_list:
         :return:
@@ -181,18 +186,154 @@ class EncoderIAF(nn.Module):
 
         # Big issue when x is 3d !!!
         # Should stay 2d!!
-        eps = self.dist0.rsample((len(x),))
-        assert eps.shape == (len(x), self.n_latent)
+        sampler = self.dist0.rsample if reparam else self.dist0.sample
+        if n_samples == 1:
+            eps = sampler((len(x),))
+            assert eps.shape == (len(x), self.n_latent)
+        else:
+            eps = sampler((n_samples, len(x)))
+            assert eps.shape == (n_samples, len(x), self.n_latent)
 
         z = mu + eps * sigma
         qz_x = sigma.log() + 0.5 * (eps ** 2) + 0.5 * np.log(2.0 * np.pi)
         qz_x = -qz_x.sum(dim=-1)
 
         # z shape (n_samples, n_batch, n_latent)
+        if (z.dim() == 3) & (h.dim() == 2):
+            n_batches, n_hdim = h.shape
+            h_it = h.reshape(1, n_batches, n_hdim).expand(n_samples, n_batches, n_hdim)
+        else:
+            h_it = h
+
         for ar_nn in self.encoders[1:]:
-            inp = torch.cat([z, h], dim=-1) if self.do_h else z
-            mu, sigma = ar_nn(inp)
-            z = sigma * z + (1.0 - sigma) * mu
-            new_term = sigma.log()
+            if self.do_h:
+                inp = torch.cat([z, h_it], dim=-1)
+            else:
+                inp = z
+            mu_it, sigma_it = ar_nn(inp)
+            z = sigma_it * z + (1.0 - sigma_it) * mu_it
+            new_term = sigma_it.log()
             qz_x -= new_term.sum(dim=-1)
-        return dict(z=z, qz_x=qz_x, last_inp=inp)
+
+        if torch.isnan(qz_x).any() or torch.isinf(qz_x).any():
+            print("ouille")
+        return dict(
+            q_m=None,
+            q_v=None,
+            latent=z,
+            posterior_density=qz_x,
+            dist=None,
+            sum_last=False,
+            last_inp=inp,
+            # latent=z, posterior_density=qz_x
+        )
+
+
+# class EncoderIAF(nn.Module):
+#     def __init__(
+#         self,
+#         n_in,
+#         n_latent,
+#         n_cat_list,
+#         n_hidden,
+#         n_layers,
+#         t,
+#         dropout_rate=0.05,
+#         n_blocks=0,
+#         use_batch_norm=True,
+#         do_h=True,
+#     ):
+#         """
+#         Encoder using h representation as described in IAF paper
+
+#         :param n_in:
+#         :param n_latent:
+#         :param n_cat_list:
+#         :param n_hidden:
+#         :param n_layers:
+#         :param t:
+#         :param dropout_rate:
+#         :param use_batch_norm:
+#         """
+#         super().__init__()
+#         self.do_h = do_h
+#         msg = "" if do_h else "Not "
+#         logger.info(msg="{}Using Hidden State".format(msg))
+#         if n_blocks > 0:
+#             logger.info(msg="Resnet structure used for IAF encoder")
+#         self.n_latent = n_latent
+#         self.encoders = torch.nn.ModuleList()
+#         self.encoders.append(
+#             EncoderH(
+#                 n_in=n_in,
+#                 n_out=n_latent,
+#                 n_cat_list=n_cat_list,
+#                 n_layers=n_layers,
+#                 n_hidden=n_hidden,
+#                 do_h=do_h,
+#                 dropout_rate=dropout_rate,
+#                 use_batch_norm=use_batch_norm,
+#                 n_blocks=n_blocks,
+#                 do_sigmoid=False,
+#             )
+#         )
+
+#         n_in = 2 * n_latent if do_h else n_latent
+#         for _ in range(t - 1):
+#             self.encoders.append(
+#                 EncoderH(
+#                     n_in=n_in,
+#                     n_out=n_latent,
+#                     n_cat_list=None,
+#                     n_layers=n_layers,
+#                     n_hidden=n_hidden,
+#                     do_h=False,
+#                     dropout_rate=dropout_rate,
+#                     use_batch_norm=use_batch_norm,
+#                     n_blocks=n_blocks,
+#                     do_sigmoid=True,
+#                 )
+#             )
+
+#         self.dist0 = dist.Normal(
+#             loc=torch.zeros(n_latent, device="cuda"),
+#             scale=torch.ones(n_latent, device="cuda"),
+#         )
+
+#     def forward(self, x, *cat_list: int):
+#         """
+
+#         :param x:
+#         :param cat_list:
+#         :return:
+#         """
+#         if self.do_h:
+#             mu, sigma, h = self.encoders[0](x, *cat_list)
+#         else:
+#             mu, sigma = self.encoders[0](x, *cat_list)
+#             h = None
+
+#         # Big issue when x is 3d !!!
+#         # Should stay 2d!!
+#         eps = self.dist0.rsample((len(x),))
+#         assert eps.shape == (len(x), self.n_latent)
+
+#         z = mu + eps * sigma
+#         qz_x = sigma.log() + 0.5 * (eps ** 2) + 0.5 * np.log(2.0 * np.pi)
+#         qz_x = -qz_x.sum(dim=-1)
+
+#         # z shape (n_samples, n_batch, n_latent)
+#         for ar_nn in self.encoders[1:]:
+#             inp = torch.cat([z, h], dim=-1) if self.do_h else z
+#             mu, sigma = ar_nn(inp)
+#             z = sigma * z + (1.0 - sigma) * mu
+#             new_term = sigma.log()
+#             qz_x -= new_term.sum(dim=-1)
+#         return dict(
+#             q_m=None,
+#             q_v=None,
+#             latent=z,
+#             posterior_density=qz_x,
+#             dist=None,
+#             sum_last=False,
+#         )

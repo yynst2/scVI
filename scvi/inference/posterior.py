@@ -188,23 +188,28 @@ class Posterior:
         with torch.no_grad():
             for tensors in self.sequential():
                 sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
-                outputs = self.model.inference(
+                outputs = self.model(
                     sample_batch,
-                    batch_index,
+                    # batch_index,
+                    local_l_mean=local_l_mean,
+                    local_l_var=local_l_var,
+                    batch_index=batch_index,
+                    loss=None,
                     n_samples=n_samples,
                     train_library=train_library,
                 )
                 z = outputs["z"]
                 library = outputs["library"]
+                log_probas_batch = outputs["log_ratio"]
 
-                log_probas_batch = self.model.ratio_loss(
-                    sample_batch,
-                    local_l_mean,
-                    local_l_var,
-                    return_mean=False,
-                    train_library=train_library,
-                    outputs=outputs,
-                )
+                # log_probas_batch = self.model.ratio_loss(
+                #     sample_batch,
+                #     local_l_mean,
+                #     local_l_var,
+                #     return_mean=False,
+                #     train_library=train_library,
+                #     outputs=outputs,
+                # )
                 scale_batch = []
                 new_log_probas = []
                 batch_indices_batch = []
@@ -215,7 +220,10 @@ class Posterior:
                     scale_batch.append(
                         self.model.decoder.forward("gene", z, library, batch_index)[0]
                     )
-                    batch_indices_batch.append(batch_index)
+                    batch_index_save = bio_batch * torch.ones_like(
+                        scale_batch[-1][..., 0]
+                    )
+                    batch_indices_batch.append(batch_index_save)
                 # each elem of scale_batch has shape (n_samples, n_batch, n_genes)
                 batch_indices_batch = torch.cat(batch_indices_batch, dim=0)
                 scale_batch = torch.cat(scale_batch, dim=0)
@@ -239,6 +247,7 @@ class Posterior:
             # Hence we concatenate on dimension 1
             zs = torch.cat(zs, dim=1)
             scales = torch.cat(scales, dim=1)
+            batch_indices = torch.cat(batch_indices, dim=1)
 
             # zs = zs.transpose(0, 1)
             # zs = zs.transpose(1, 2)
@@ -248,7 +257,6 @@ class Posterior:
         log_probas = torch.cat(log_probas, dim=1)
         # Final log_probas shape (n_samples, n_cells)
         labels = torch.cat(labels)
-        batch_indices = torch.cat(batch_indices)
         return dict(
             z=zs,
             label=labels,

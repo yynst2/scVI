@@ -7,7 +7,7 @@ from torch import nn as nn
 from torch.distributions import Normal, MultivariateNormal
 from torch.distributions import Normal
 from torch.nn import ModuleList
-
+from torch.nn.utils import weight_norm
 from scvi.models.utils import one_hot
 
 
@@ -40,6 +40,99 @@ def get_one_hot_cat_list(n_cat_list, cat_list):
     return one_hot_cat_list
 
 
+# class FCLayers(nn.Module):
+#     r"""A helper class to build fully-connected layers for a neural network.
+
+#     :param n_in: The dimensionality of the input
+#     :param n_out: The dimensionality of the output
+#     :param n_cat_list: A list containing, for each category of interest,
+#                  the number of categories. Each category will be
+#                  included using a one-hot encoding.
+#     :param n_layers: The number of fully-connected hidden layers
+#     :param n_hidden: The number of nodes per hidden layer
+#     :param dropout_rate: Dropout rate to apply to each of the hidden layers
+#     :param use_batch_norm: Whether to have `BatchNorm` layers or not
+#     """
+
+#     def __init__(
+#         self,
+#         n_in: int,
+#         n_out: int,
+#         n_cat_list: Iterable[int] = None,
+#         n_layers: int = 1,
+#         n_hidden: int = 128,
+#         dropout_rate: float = 0.1,
+#         use_batch_norm: bool = True,
+#         with_activation: bool = True,
+#     ):
+#         super().__init__()
+#         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
+
+#         if n_cat_list is not None:
+#             # n_cat = 1 will be ignored
+#             self.n_cat_list = [n_cat if n_cat > 1 else 0 for n_cat in n_cat_list]
+#         else:
+#             self.n_cat_list = []
+
+#         self.fc_layers = nn.Sequential(
+#             collections.OrderedDict(
+#                 [
+#                     (
+#                         "Layer {}".format(i),
+#                         nn.Sequential(
+#                             nn.Linear(n_in + sum(self.n_cat_list), n_out),
+#                             # Below, 0.01 and 0.001 are the default values for `momentum` and `eps` from
+#                             # the tensorflow implementation of batch norm; we're using those settings
+#                             # here too so that the results match our old tensorflow code. The default
+#                             # setting from pytorch would probably be fine too but we haven't tested that.
+#                             nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
+#                             if use_batch_norm
+#                             else None,
+#                             nn.ReLU() if with_activation else None,
+#                             nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
+#                         ),
+#                     )
+#                     for i, (n_in, n_out) in enumerate(
+#                         zip(layers_dim[:-1], layers_dim[1:])
+#                     )
+#                 ]
+#             )
+#         )
+
+#     def forward(self, x: torch.Tensor, *cat_list: int, instance_id: int = 0):
+#         r"""Forward computation on ``x``.
+
+#         :param x: tensor of values with shape ``(n_in,)``
+#         :param cat_list: list of category membership(s) for this sample
+#         :param instance_id: Use a specific conditional instance normalization (batchnorm)
+#         :return: tensor of shape ``(n_out,)``
+#         :rtype: :py:class:`torch.Tensor`
+#         """
+#         one_hot_cat_list = get_one_hot_cat_list(self.n_cat_list, cat_list)
+#         for layers in self.fc_layers:
+#             for layer in layers:
+#                 if layer is not None:
+#                     if isinstance(layer, nn.BatchNorm1d):
+#                         if x.dim() == 3:
+#                             x = torch.cat(
+#                                 [(layer(slice_x)).unsqueeze(0) for slice_x in x], dim=0
+#                             )
+#                         else:
+#                             x = layer(x)
+#                     else:
+#                         if isinstance(layer, nn.Linear):
+#                             if x.dim() == 3:
+#                                 one_hot_cat_list = [
+#                                     o.unsqueeze(0).expand(
+#                                         (x.size(0), o.size(0), o.size(1))
+#                                     )
+#                                     for o in one_hot_cat_list
+#                                 ]
+#                             x = torch.cat((x, *one_hot_cat_list), dim=-1)
+#                         x = layer(x)
+#         return x
+
+
 class FCLayers(nn.Module):
     r"""A helper class to build fully-connected layers for a neural network.
 
@@ -62,9 +155,12 @@ class FCLayers(nn.Module):
         n_layers: int = 1,
         n_hidden: int = 128,
         dropout_rate: float = 0.1,
-        use_batch_norm: bool = True,
+        use_batch_norm: bool = False,
+        use_weight_norm: bool = False,
+        use_layer_norm: bool = False,
         with_activation: bool = True,
     ):
+        # assert not use_batch_norm
         super().__init__()
         layers_dim = [n_in] + (n_layers - 1) * [n_hidden] + [n_out]
 
@@ -74,20 +170,24 @@ class FCLayers(nn.Module):
         else:
             self.n_cat_list = []
 
+        def layer_definer(my_n_in, my_n_out):
+            if use_weight_norm:
+                return weight_norm(nn.Linear(my_n_in + sum(self.n_cat_list), my_n_out))
+            else:
+                return nn.Linear(my_n_in + sum(self.n_cat_list), my_n_out)
+
         self.fc_layers = nn.Sequential(
             collections.OrderedDict(
                 [
                     (
                         "Layer {}".format(i),
                         nn.Sequential(
-                            nn.Linear(n_in + sum(self.n_cat_list), n_out),
-                            # Below, 0.01 and 0.001 are the default values for `momentum` and `eps` from
-                            # the tensorflow implementation of batch norm; we're using those settings
-                            # here too so that the results match our old tensorflow code. The default
-                            # setting from pytorch would probably be fine too but we haven't tested that.
+                            layer_definer(my_n_in=n_in, my_n_out=n_out),
+                            # nn.Linear(n_in + sum(self.n_cat_list), n_out),
                             nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
                             if use_batch_norm
                             else None,
+                            nn.LayerNorm(n_out) if use_layer_norm else None,
                             nn.ReLU() if with_activation else None,
                             nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
                         ),
@@ -109,27 +209,23 @@ class FCLayers(nn.Module):
         :rtype: :py:class:`torch.Tensor`
         """
         one_hot_cat_list = get_one_hot_cat_list(self.n_cat_list, cat_list)
+
+        if sum(self.n_cat_list) >= 1:
+            batch_features = torch.cat(one_hot_cat_list, dim=-1)
+            n_examples, n_batch_cat = batch_features.shape
+            if x.ndim == 3:
+                n_particles = len(x)
+                batch_features = batch_features.unsqueeze(0).expand(
+                    [n_particles, n_examples, n_batch_cat]
+                )
+        else:
+            batch_features = torch.tensor([], device=x.device)
         for layers in self.fc_layers:
             for layer in layers:
                 if layer is not None:
-                    if isinstance(layer, nn.BatchNorm1d):
-                        if x.dim() == 3:
-                            x = torch.cat(
-                                [(layer(slice_x)).unsqueeze(0) for slice_x in x], dim=0
-                            )
-                        else:
-                            x = layer(x)
-                    else:
-                        if isinstance(layer, nn.Linear):
-                            if x.dim() == 3:
-                                one_hot_cat_list = [
-                                    o.unsqueeze(0).expand(
-                                        (x.size(0), o.size(0), o.size(1))
-                                    )
-                                    for o in one_hot_cat_list
-                                ]
-                            x = torch.cat((x, *one_hot_cat_list), dim=-1)
-                        x = layer(x)
+                    if isinstance(layer, nn.Linear):
+                        x = torch.cat([x, batch_features], -1)
+                    x = layer(x)
         return x
 
 
@@ -261,6 +357,7 @@ class DenseResNet(nn.Module):
             h = module(h, *cat_list, instance_id=instance_id)
         return h
 
+
 class LinearExpLayer(nn.Module):
     def __init__(
         self,
@@ -315,47 +412,40 @@ class Encoder(nn.Module):
         n_layers: int = 1,
         n_hidden: int = 128,
         dropout_rate: float = 0.1,
-        full_cov=False,
-        autoregressive=False,
+        use_batch_norm: bool = False,
+        use_weight_norm: bool = False,
+        use_layer_norm: bool = False,
         prevent_saturation: bool = False,
+        prevent_saturation2: bool = False,
     ):
         super().__init__()
-        assert not (full_cov and autoregressive)
+        self.prevent_saturation = prevent_saturation
+        self.prevent_saturation2 = prevent_saturation2
+
         self.encoder = FCLayers(
             n_in=n_input,
             n_out=n_hidden,
             n_cat_list=n_cat_list,
             n_layers=n_layers,
             n_hidden=n_hidden,
+            use_batch_norm=use_batch_norm,
+            use_weight_norm=use_weight_norm,
+            use_layer_norm=use_layer_norm,
             dropout_rate=dropout_rate,
         )
-        self.prevent_saturation = prevent_saturation
-        logger.info("Preventing saturation: {}".format(prevent_saturation))
         self.mean_encoder = nn.Linear(n_hidden, n_output)
-        self.full_cov = full_cov
-        self.autoregressive = autoregressive
-        self.n_output = n_output
-        if full_cov:
-            self.var_encoder = nn.Linear(n_hidden, int((n_output * (n_output + 1)) / 2))
-        elif autoregressive:
-            self.var_encoder = nn.Linear(n_hidden, n_output)
-            self.ltria = nn.Linear(n_hidden, int((n_output * (n_output - 1)) / 2))
+        self.var_encoder = nn.Linear(n_hidden, n_output)
+
+    def reparameterize(self, mu, var, reparam=True):
+        if reparam:
+            latent = Normal(mu, var.sqrt()).rsample()
         else:
-            self.var_encoder = nn.Linear(n_hidden, n_output)
+            latent = Normal(mu, var.sqrt()).sample()
+        return latent
 
-    def reparameterize(self, mu, var, sample_size=torch.Size()):
-        return self.distrib(mu, var).rsample(sample_size)
-
-    def sample(self, mu, var, sample_size=torch.Size()):
-        return self.distrib(mu, var).sample(sample_size)
-
-    def distrib(self, mu, var):
-        if self.full_cov or self.autoregressive:
-            return MultivariateNormal(loc=mu, covariance_matrix=var)
-        else:
-            return Normal(mu, var.sqrt())
-
-    def forward(self, x: torch.Tensor, *cat_list: int):
+    def forward(
+        self, x: torch.Tensor, *cat_list: int, n_samples=1, reparam=True, squeeze=True
+    ):
         r"""The forward computation for a single sample.
 
          #. Encodes the data into latent space using the encoder network
@@ -374,43 +464,35 @@ class Encoder(nn.Module):
         q_v = self.var_encoder(q)
 
         if self.prevent_saturation:
-            q_m = 14.0 * nn.Tanh()(self.mean_encoder(q))
-
-        q_v = self.get_cov(
-            q_v
-        )  # (computational stability safeguard)torch.clamp(, -5, 5)
-        if self.autoregressive:
-            l_vals = self.ltria(q)
-            n_batch = q.size(0)
-            l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=q.device)
-            indices = tril_indices(self.n_output, self.n_output, offset=-1)
-            rg = torch.arange(self.n_output, device=x.device)
-            l_mat[:, indices[:, 0], indices[:, 1]] = l_vals
-            l_mat[:, rg, rg] = 1.0
-            q_m = torch.bmm(l_mat, q_m.view(n_batch, self.n_output, 1)).squeeze()
-            last_term = q_v.view((n_batch, self.n_output, 1)) * l_mat.transpose(-1, -2)
-            q_v = torch.bmm(l_mat, last_term)
-
-        latent = reparameterize_gaussian(q_m, q_v)
-        return q_m, q_v, latent
-
-    def get_cov(self, x):
-        if self.full_cov:
-            n_batch = x.size(0)
-            l_mat = torch.zeros(n_batch, self.n_output, self.n_output, device=x.device)
-            lower_idx = tril_indices(self.n_output, self.n_output)
-            l_mat[:, lower_idx[:, 0], lower_idx[:, 1]] = x
-            rg = torch.arange(self.n_output, device=x.device)
-            l_mat[:, rg, rg] = 1e-4 + torch.nn.Softplus()(l_mat[:, rg, rg])
-
-            res = torch.matmul(l_mat, l_mat.transpose(-1, -2))
-            return res
+            q_m = 15.0 * nn.Tanh()(q_m)
+            # q_v = 3.0 * nn.Sigmoid()(q_v)
+            # q_m = torch.clamp(q_m, min=-8.0, max=12)
+            q_v = torch.clamp(q_v, min=-12.0, max=3)
+            q_v = q_v.exp()
+        if self.prevent_saturation2:
+            q_m = torch.clamp(q_m, max=16.0)
+            q_v = torch.clamp(q_v, min=-18.0, max=0.1)
+            q_v = torch.exp(q_v)
         else:
-            if self.prevent_saturation:
-                x = 5 * nn.Sigmoid()(x)
-            else:
-                x = torch.exp(x) + 1e-4
-            return x
+            q_v = torch.clamp(q_v, min=-12.0, max=8.0)
+            q_v = torch.exp(
+                self.var_encoder(q)
+            )  # (computational stability safeguard)torch.clamp(, -5, 5)
+        if (n_samples > 1) or (not squeeze):
+            q_m = q_m.unsqueeze(0).expand((n_samples, q_m.size(0), q_m.size(1)))
+            q_v = q_v.unsqueeze(0).expand((n_samples, q_v.size(0), q_v.size(1)))
+        dist = Normal(q_m, q_v.sqrt())
+        latent = self.reparameterize(q_m, q_v, reparam=reparam)
+
+        post_density = dist.log_prob(latent).sum(-1)
+        return dict(
+            q_m=q_m,
+            q_v=q_v,
+            latent=latent,
+            posterior_density=post_density,
+            dist=dist,
+            sum_last=True,
+        )
 
 
 # Decoder
@@ -436,7 +518,12 @@ class DecoderSCVI(nn.Module):
         n_layers: int = 1,
         n_hidden: int = 128,
         n_blocks: int = 0,
-        do_last_skip: bool = False
+        scale_normalize: bool = True,
+        use_batch_norm: bool = False,
+        use_layer_norm: bool = False,
+        use_weight_norm: bool = False,
+        do_last_skip: bool = False,
+        dropout_rate: float = 0.0,
     ):
         super().__init__()
         self.do_last_skip = do_last_skip
@@ -447,9 +534,13 @@ class DecoderSCVI(nn.Module):
                 n_cat_list=n_cat_list,
                 n_layers=n_layers,
                 n_hidden=n_hidden,
-                dropout_rate=0,
+                use_batch_norm=use_batch_norm,
+                use_layer_norm=use_layer_norm,
+                use_weight_norm=use_weight_norm,
+                dropout_rate=dropout_rate,
             )
         else:
+            assert use_batch_norm
             logger.info("Using ResNet structure for the Decoder")
             self.px_decoder = DenseResNet(
                 n_in=n_input,
@@ -462,9 +553,15 @@ class DecoderSCVI(nn.Module):
 
         n_in = n_hidden + n_input if do_last_skip else n_hidden
         # mean gamma
-        self.px_scale_decoder = nn.Sequential(
-            nn.Linear(n_in, n_output), nn.Softmax(dim=-1)
-        )
+        self.scale_normalize = scale_normalize
+        if scale_normalize:
+            logging.info("Scale decoder with Softmax normalization")
+            self.px_scale_decoder = nn.Sequential(
+                nn.Linear(n_in, n_output), nn.Softmax(dim=-1)
+            )
+        else:
+            logging.info("Scale decoder WITHOUT Softmax normalization")
+            self.px_scale_decoder = nn.Linear(n_in, n_output)
 
         # dispersion: here we only deal with gene-cell dispersion case
         self.px_r_decoder = nn.Linear(n_in, n_output)
@@ -502,6 +599,8 @@ class DecoderSCVI(nn.Module):
         if self.do_last_skip:
             last_input = torch.cat([last_input, z], dim=-1)
         px_scale = self.px_scale_decoder(last_input)
+        if not self.scale_normalize:
+            px_scale = px_scale.exp()
         px_dropout = self.px_dropout_decoder(last_input)
         # Clamp to high value: exp(12) ~ 160000 to avoid nans (computational stability)
         px_rate = torch.exp(library) * px_scale  # torch.clamp( , max=12)
@@ -681,6 +780,7 @@ class MultiEncoder(nn.Module):
         n_layers_shared: int = 2,
         n_cat_list: Iterable[int] = None,
         dropout_rate: float = 0.1,
+        use_batch_norm: bool = True,
     ):
         super().__init__()
 
@@ -693,7 +793,7 @@ class MultiEncoder(nn.Module):
                     n_layers=n_layers_individual,
                     n_hidden=n_hidden,
                     dropout_rate=dropout_rate,
-                    use_batch_norm=True,
+                    use_batch_norm=use_batch_norm,
                 )
                 for i in range(n_heads)
             ]

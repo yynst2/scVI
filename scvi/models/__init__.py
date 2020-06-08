@@ -1,21 +1,22 @@
 from .classifier import Classifier
 from .scanvi import SCANVI
 from .vae import VAE, LDVAE
-from .poisson_vae import LogNormalPoissonVAE
+# from .poisson_vae import LogNormalPoissonVAE
 from .vaec import VAEC
 from .modules import LinearExpLayer
 from .jvae import JVAE
-from .iavae import IAVAE, IALogNormalPoissonVAE
+# from .iavae import IAVAE, IALogNormalPoissonVAE
 from .iaf_encoder import EncoderIAF
 
-__all__ = ['SCANVI',
-           'VAEC',
-           'VAE',
-           'LDVAE',
-           'LogNormalPoissonVAE',
-           'Classifier',
-           'LinearExpLayer',
-           "IALogNormalPoissonVAE",
-           "IAVAE",
-           "EncoderIAF"
-           ]
+__all__ = [
+    "SCANVI",
+    "VAEC",
+    "VAE",
+    "LDVAE",
+    # "LogNormalPoissonVAE",
+    "Classifier",
+    "LinearExpLayer",
+    # "IALogNormalPoissonVAE",
+    # "IAVAE",
+    "EncoderIAF",
+]
