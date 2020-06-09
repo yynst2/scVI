@@ -20,6 +20,7 @@ def compute_elbo(vae, posterior, **kwargs):
     # Iterate once over the posterior and compute the elbo
     elbo = 0
     for i_batch, tensors in enumerate(posterior):
+        print(tensors)
         sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[
             :5
         ]  # general fish case
