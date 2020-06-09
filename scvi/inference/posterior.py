@@ -124,8 +124,12 @@ class Posterior:
                 indices = np.where(indices)[0].ravel()
             sampler = SubsetRandomSampler(indices)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
+        ###FIX LATER
+        # self.data_loader_kwargs.update(
+        #     {"collate_fn": gene_dataset.collate_fn_builder(), "sampler": sampler}
+        # )
         self.data_loader_kwargs.update(
-            {"collate_fn": gene_dataset.collate_fn_builder(), "sampler": sampler}
+            {"sampler": sampler}
         )
         self.data_loader = DataLoader(gene_dataset, **self.data_loader_kwargs)
         self.original_indices = self.indices
@@ -200,7 +204,8 @@ class Posterior:
 
     def __iter__(self):
         return map(self.to_cuda, iter(self.data_loader))
-
+    
+    #this needs to be changed
     def to_cuda(self, tensors: List[torch.Tensor]) -> List[torch.Tensor]:
         """Converts list of tensors to cuda.
 

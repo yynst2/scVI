@@ -101,7 +101,7 @@ class UnsupervisedTrainer(Trainer):
 
         # Total size of the dataset used for training
         # (e.g. training set in this class but testing set in AdapterTrainer).
-        # It used to rescale minibatch losses (cf. eq. (8) in Kingma et al., Auto-Encoding Variational Bayes, iCLR 2013)
+        # It used to rescale minibatch losses (cf. eq. (8) in Kingma et al., Auto-Encoding Variational Bayes, ICLR 2013)
         self.n_samples = 1.0
 
         if type(self) is UnsupervisedTrainer:

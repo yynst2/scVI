@@ -215,6 +215,7 @@ class Trainer:
         self.on_training_end()
 
     def on_training_loop(self, tensors_list):
+        # next line needs to be replaced
         self.current_loss = loss = self.loss(*tensors_list)
         self.optimizer.zero_grad()
         loss.backward()
