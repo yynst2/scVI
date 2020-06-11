@@ -1,4 +1,5 @@
 import logging
+import pdb
 import sys
 import time
 from abc import abstractmethod
@@ -160,6 +161,7 @@ class Trainer:
         self.compute_metrics_time += time.time() - begin
 
     def train(self, n_epochs=400, lr=1e-3, eps=0.01, params=None, **extras_kwargs):
+        pdb.set_trace()
         begin = time.time()
         self.model.train()
 
@@ -187,6 +189,7 @@ class Trainer:
         ):
             self.on_epoch_begin()
             for tensors_list in self.data_loaders_loop():
+                pdb.set_trace()
                 if tensors_list[0][0].shape[0] < 3:
                     continue
                 self.on_iteration_begin()
@@ -198,7 +201,7 @@ class Trainer:
             # Computes metrics and controls early stopping
             if not self.on_epoch_end():
                 break
-
+        pdb.set_trace()
         if self.early_stopping.save_best_state_metric is not None:
             self.model.load_state_dict(self.best_state_dict)
             self.compute_metrics()
@@ -308,7 +311,8 @@ class Trainer:
     @abstractmethod
     def posteriors_loop(self):
         pass
-
+    
+    #change this data_loaders_loop
     def data_loaders_loop(self):
         """returns an zipped iterable corresponding to loss signature"""
         data_loaders_loop = [self._posteriors[name] for name in self.posteriors_loop]

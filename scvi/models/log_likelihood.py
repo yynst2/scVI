@@ -1,5 +1,6 @@
 """File for computing log likelihood of the data"""
 
+import pdb
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -19,11 +20,17 @@ def compute_elbo(vae, posterior, **kwargs):
     """
     # Iterate once over the posterior and compute the elbo
     elbo = 0
+    pdb.set_trace()
     for i_batch, tensors in enumerate(posterior):
-        print(tensors)
-        sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[
-            :5
-        ]  # general fish case
+        sample_batch = tensors["X"]
+        local_l_mean = tensors["local_l_mean"]
+        local_l_var = tensors["local_l_var"]
+        batch_index = tensors["batch_indices"]
+        labels = tensors["labels"]
+
+        # sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[
+        #     :5
+        # ]  # general fish case
         # kl_divergence_global (scalar) should be common across all batches after training
         reconst_loss, kl_divergence, kl_divergence_global = vae(
             sample_batch,
