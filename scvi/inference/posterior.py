@@ -157,7 +157,7 @@ class Posterior:
             raise ValueError(
                 "{} already exists. Please provide an unexisting directory for saving.".format(
                     dir_path
-                )
+)
             )
         anndata_dataset = self.gene_dataset.to_anndata()
 
@@ -203,10 +203,12 @@ class Posterior:
         return self.__class__.__name__
 
     def __iter__(self):
+        # print('we are in iter')
         return map(self.to_cuda, iter(self.data_loader))
+        # return  iter(self.data_loader)
     
     #this needs to be changed
-    def to_cuda(self, tensors: List[torch.Tensor]) -> List[torch.Tensor]:
+    def to_cuda(self, tensors: Dict[str, torch.Tensor]) -> Dict[str,torch.Tensor]:
         """Converts list of tensors to cuda.
 
         Parameters
@@ -214,7 +216,8 @@ class Posterior:
         tensors
             tensors to convert
         """
-        return [t.cuda() if self.use_cuda else t for t in tensors]
+        return {k:(t.cuda() if self.use_cuda else t) for k,t in tensors.items()}
+        # return [t.cuda() if self.use_cuda else t for t in tensors]
 
     def update(self, data_loader_kwargs: dict) -> "Posterior":
         """Updates the dataloader

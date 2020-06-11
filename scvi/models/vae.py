@@ -2,6 +2,7 @@
 """Main module."""
 
 import numpy as np
+import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -292,8 +293,9 @@ class VAE(nn.Module):
         """
         x_ = x
         if self.log_variational:
+            # + doesnt operate with float16
             x_ = torch.log(1 + x_)
-
+        # pdb.set_trace()
         # Sampling
         qz_m, qz_v, z = self.z_encoder(x_, y)
         ql_m, ql_v, library = self.l_encoder(x_)
@@ -382,6 +384,7 @@ class VAE(nn.Module):
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(
             dim=1
         )
+        # pdb.set_trace()
         kl_divergence_l = kl(
             Normal(ql_m, torch.sqrt(ql_v)),
             Normal(local_l_mean, torch.sqrt(local_l_var)),
