@@ -1,4 +1,5 @@
 import copy
+import pdb
 import inspect
 import logging
 import os
@@ -8,6 +9,7 @@ from typing import List, Optional, Union, Tuple, Callable, Dict
 import numpy as np
 import pandas as pd
 import torch
+import anndata
 import torch.distributions as distributions
 from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
@@ -24,7 +26,7 @@ from torch.utils.data.sampler import (
     RandomSampler,
 )
 
-from scvi.dataset import GeneExpressionDataset
+from scvi.dataset import GeneExpressionDataset, BioDataset
 from scvi.inference.posterior_utils import (
     entropy_batch_mixing,
     plot_imputation,
@@ -43,6 +45,7 @@ from scvi.models.log_likelihood import (
 )
 from scvi.models.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from scipy.stats import spearmanr
+
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +104,7 @@ class Posterior:
     def __init__(
         self,
         model,
-        gene_dataset: GeneExpressionDataset,
+        gene_dataset: BioDataset,
         shuffle=False,
         indices=None,
         use_cuda=True,
@@ -333,7 +336,10 @@ class Posterior:
         batch_indices = []
         labels = []
         for tensors in self:
-            sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
+            # sample_batch, local_l_mean, local_l_var, batch_index, label = tensors
+            sample_batch = tensors["X"]
+            batch_index = tensors["batch_indices"]
+            label = tensors["labels"]
             latent += [
                 self.model.sample_from_posterior_z(
                     sample_batch, give_mean=give_mean
@@ -419,7 +425,9 @@ class Posterior:
         if len(self.gene_dataset) % batch_size == 1:
             batch_size += 1
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = tensors
+            sample_batch = tensors["X"]
+            batch_index = tensors["batch_indices"]
+            labels = tensors["labels"]
             px_scales += [
                 np.array(
                     (
@@ -791,7 +799,7 @@ class Posterior:
 
             if change_fn == "log-fold" or change_fn is None:
                 change_fn = lfc
-            elif not callable(change_fn):
+            elif not lable(change_fn):
                 raise ValueError("'change_fn' attribute not understood")
 
             # step2: Construct the DE area function
@@ -1338,7 +1346,10 @@ class Posterior:
         for batch in transform_batch:
             imputed_list_batch = []
             for tensors in self:
-                sample_batch, _, _, batch_index, labels = tensors
+                # sample_batch, _, _, batch_index, labels = tensors
+                sample_batch = tensors['X']
+                batch_index = tensors['batch_indices']
+                labels = tensors['labels'] 
                 px_rate = self.model.get_sample_rate(
                     sample_batch,
                     batch_index=batch_index,
@@ -1383,7 +1394,11 @@ class Posterior:
         x_old = []
         x_new = []
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = tensors
+            # sample_batch, _, _, batch_index, labels = tensors
+            sample_batch = tensors['X']
+            batch_index = tensors['batch_indices']
+            labels = tensors['labels'] 
+
             outputs = self.model.inference(
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
@@ -1451,7 +1466,11 @@ class Posterior:
         """
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = tensors
+            # sample_batch, _, _, batch_index, labels = tensors
+            sample_batch = tensors["X"]
+            batch_index = tensors["batch_indices"]
+            labels = tensors["labels"]
+
             outputs = self.model.inference(
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
@@ -1552,7 +1571,10 @@ class Posterior:
         mean_list = []
         dispersion_list = []
         for tensors in self.sequential(1000):
-            sample_batch, _, _, batch_index, labels = tensors
+            # sample_batch, _, _, batch_index, labels = tensors
+            sample_batch = tensors["X"]
+            batch_index = tensors["batch_indices"]
+            labels = tensors["labels"]
 
             outputs = self.model.inference(
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
@@ -1581,7 +1603,13 @@ class Posterior:
     def get_stats(self) -> np.ndarray:
         libraries = []
         for tensors in self.sequential(batch_size=128):
-            x, local_l_mean, local_l_var, batch_index, y = tensors
+            # x, local_l_mean, local_l_var, batch_index, y = tensors
+            x= tensors["X"]
+            local_l_mean = tensors["local_l_mean"]
+            local_l_var = tensors["local_l_var"]
+            batch_index = tensors["batch_indices"]
+            y= tensors["labels"]
+
             library = self.model.inference(x, batch_index, y)["library"]
             libraries += [np.array(library.cpu())]
         libraries = np.concatenate(libraries)
@@ -1651,7 +1679,10 @@ class Posterior:
 
         px_scales = []
         for tensors in self:
-            sample_batch, _, _, batch_index, labels = tensors
+            # sample_batch, _, _, batch_index, labels = tensors
+            sample_batch = tensors["X"]
+            batch_index = tensors["batch_indices"]
+            labels = tensors["labels"]
             px_scales += [
                 np.array(
                     (
@@ -1703,7 +1734,8 @@ class Posterior:
             self.uncorrupted().sequential(batch_size=batch_size),
             self.corrupted().sequential(batch_size=batch_size),
         ):
-            batch = tensors[0]
+            # batch = tensors[0]
+            batch = tensors["X"]
             actual_batch_size = batch.size(0)
             dropout_batch, _, _, batch_index, labels = corrupted_tensors
             px_rate = self.model.get_sample_rate(

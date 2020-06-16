@@ -26,12 +26,13 @@ from scvi.dataset.synthetic import (
     SyntheticDatasetCorr,
     ZISyntheticDatasetCorr,
 )
-
+from scvi.dataset.biodataset import BioDataset
 
 __all__ = [
     "AnnDatasetFromAnnData",
     "DownloadableAnnDataset",
     "BrainLargeDataset",
+    "BioDataset",
     "CiteSeqDataset",
     "CbmcDataset",
     "CellMeasurement",

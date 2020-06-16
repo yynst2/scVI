@@ -4,6 +4,7 @@ from typing import Union
 
 import matplotlib.pyplot as plt
 import torch
+import anndata
 from numpy import ceil
 
 from scvi.dataset import GeneExpressionDataset
@@ -77,7 +78,7 @@ class UnsupervisedTrainer(Trainer):
     def __init__(
         self,
         model,
-        gene_dataset: GeneExpressionDataset,
+        gene_dataset: anndata.AnnData,
         train_size: Union[int, float] = 0.8,
         test_size: Union[int, float] = None,
         n_iter_kl_warmup: Union[int, None] = None,
@@ -120,7 +121,14 @@ class UnsupervisedTrainer(Trainer):
         return ["train_set"]
 
     def loss(self, tensors):
-        sample_batch, local_l_mean, local_l_var, batch_index, y = tensors
+        # sample_batch, local_l_mean, local_l_var, batch_index, y = tensors
+
+        sample_batch = tensors["X"]
+        local_l_mean = tensors["local_l_mean"]
+        local_l_var = tensors["local_l_var"]
+        batch_index = tensors["batch_indices"]
+        y = tensors["labels"]
+
         reconst_loss, kl_divergence_local, kl_divergence_global = self.model(
             sample_batch, local_l_mean, local_l_var, batch_index, y
         )
