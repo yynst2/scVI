@@ -39,18 +39,34 @@ class BioDataset(Dataset):
         self.norm_X = None
 
     def get_registered_keys(self,):
+        """Returns the keys of the mappings in scvi data registry
+        """
         return self.adata.uns["scvi_data_registry"].keys()
 
     def setup_getitem(self, getitem_tensors: Union[List[str], Dict[str, type]] = None):
         """Sets up the getitem function
 
-        By default, getitem will return every single item
+        By default, getitem will return every single item registered in the scvi data registry
+        and also set their type to np.float32. 
+
+        If you want to specify which specific tensors to return you can pass in a List of keys from the scvi data registry
+        If you want to speficy specific tensors to return as well as their associated types, then you can pass in a dictionary with their type.
 
         Paramaters
         ----------
         getitem_tensors:
             Either a list of keys in the scvi data registry to return when getitem is called
             or 
+
+        Example
+        -------
+        bd = BioDataset(adata)
+
+        #following will only return the X and batch_indices both by defualt as np.float32
+        bd.setup_getitem(getitem_tensors  = ['X,'batch_indices'])
+
+        #This will return X as an integer and batch_indices as np.float32
+        bd.setup_getitem(getitem_tensors  = {'X':np.int64, 'batch_indices':np.float32])
         """
         registered_keys = self.get_registered_keys()
 
