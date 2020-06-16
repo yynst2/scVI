@@ -624,6 +624,7 @@ class GeneExpressionDataset(Dataset):
                     n_dim
                 )
             )
+        
         valid_obs = check_nonnegative_integers(X)
         if valid_obs is False:
             logger.warning(

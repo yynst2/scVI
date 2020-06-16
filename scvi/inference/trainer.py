@@ -9,10 +9,11 @@ from typing import List
 
 import numpy as np
 import torch
+import anndata
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from scvi.dataset import GeneExpressionDataset
+from scvi.dataset import GeneExpressionDataset, BioDataset
 from scvi.inference.posterior import Posterior
 
 IN_COLAB = "google.colab" in sys.modules
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class Trainer:
-    """The abstract Trainer class for training a PyTorch model and monitoring its statistics.
+    """The abstract rainer class for training a PyTorch model and monitoring its statistics.
 
     It should be inherited at least with a ``.loss()`` function to be optimized in the training loop.
 
@@ -67,7 +68,7 @@ class Trainer:
     def __init__(
         self,
         model,
-        gene_dataset: GeneExpressionDataset,
+        gene_dataset: anndata.AnnData,
         use_cuda: bool = True,
         metrics_to_monitor: List = None,
         benchmark: bool = False,
@@ -83,7 +84,7 @@ class Trainer:
 
         # Model, dataset management
         self.model = model
-        self.gene_dataset = gene_dataset
+        self.gene_dataset = BioDataset(gene_dataset)
         self._posteriors = OrderedDict()
         self.seed = seed  # For train/test splitting
         self.use_cuda = use_cuda and torch.cuda.is_available()
@@ -161,7 +162,6 @@ class Trainer:
         self.compute_metrics_time += time.time() - begin
 
     def train(self, n_epochs=400, lr=1e-3, eps=0.01, params=None, **extras_kwargs):
-        pdb.set_trace()
         begin = time.time()
         self.model.train()
 
@@ -188,20 +188,18 @@ class Trainer:
             file=sys.stdout,
         ):
             self.on_epoch_begin()
-            for tensors_list in self.data_loaders_loop():
-                pdb.set_trace()
-                if tensors_list[0][0].shape[0] < 3:
-                    continue
+            for tensors_dict in self.data_loaders_loop():
+                # if tensors_list[0][0].shape[0] < 3:
+                #     continue
                 self.on_iteration_begin()
                 # Update the model's parameters after seeing the data
-                self.on_training_loop(tensors_list)
+                self.on_training_loop(tensors_dict)
                 # Checks the training status, ensures no nan loss
                 self.on_iteration_end()
 
             # Computes metrics and controls early stopping
             if not self.on_epoch_end():
                 break
-        pdb.set_trace()
         if self.early_stopping.save_best_state_metric is not None:
             self.model.load_state_dict(self.best_state_dict)
             self.compute_metrics()
@@ -217,9 +215,9 @@ class Trainer:
             )
         self.on_training_end()
 
-    def on_training_loop(self, tensors_list):
+    def on_training_loop(self, tensors_dict):
         # next line needs to be replaced
-        self.current_loss = loss = self.loss(*tensors_list)
+        self.current_loss = loss = self.loss(*tensors_dict)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -311,8 +309,8 @@ class Trainer:
     @abstractmethod
     def posteriors_loop(self):
         pass
-    
-    #change this data_loaders_loop
+
+    # change this data_loaders_loop
     def data_loaders_loop(self):
         """returns an zipped iterable corresponding to loss signature"""
         data_loaders_loop = [self._posteriors[name] for name in self.posteriors_loop]
@@ -392,6 +390,7 @@ class Trainer:
             if gene_dataset is None and hasattr(self, "model")
             else gene_dataset
         )
+        # gene_dataset = BioDataset(gene_dataset)
         n = len(gene_dataset)
         try:
             n_train, n_test = _validate_shuffle_split(n, test_size, train_size)
@@ -424,7 +423,7 @@ class Trainer:
     def create_posterior(
         self,
         model=None,
-        gene_dataset=None,
+        gene_dataset: anndata.AnnData = None,
         shuffle=False,
         indices=None,
         type_class=Posterior,
@@ -433,7 +432,7 @@ class Trainer:
         gene_dataset = (
             self.gene_dataset
             if gene_dataset is None and hasattr(self, "model")
-            else gene_dataset
+            else BioDataset(gene_dataset)
         )
         return type_class(
             model,

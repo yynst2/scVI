@@ -295,7 +295,7 @@ class VAE(nn.Module):
         if self.log_variational:
             # + doesnt operate with float16
             x_ = torch.log(1 + x_)
-        # pdb.set_trace()
+
         # Sampling
         qz_m, qz_v, z = self.z_encoder(x_, y)
         ql_m, ql_v, library = self.l_encoder(x_)
