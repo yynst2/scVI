@@ -184,27 +184,39 @@ def setup_anndata(
     -------
     """
 
-    # add logging for everything
     if copy:
         adata = adata.copy()
 
     ###checking layers
     if X_layers_key is None:
-        check_nonnegative_integers(adata.X)
+        if check_nonnegative_integers(adata.X) is False:
+            logger.warning(
+                "adata.X does not contain unnormalized count data. Are you sure this is what you want?"
+            )
+        logger.info("Using data from adata.X")
     else:
         assert (
             X_layers_key in adata.layers.keys()
         ), "{} is not a valid key in adata.layers".format(X_layers_key)
-        check_nonnegative_integers(adata.layers[X_layers_key])
+        if check_nonnegative_integers(adata.layers[X_layers_key]) is False:
+            logger.warning(
+                'adata.layers["{}"] does not contain unnormalized count data. Are you sure this is what you want?'.format(
+                    X_layers_key
+                )
+            )
+        logger.info('Using data from adata.layers["{}"]'.format(X_layers_key))
 
     ###checking batch
     if batch_key is None:
+        logger.info("No batch_key inputted, assuming all cells are same batch")
         batch_key = "_scvi_batch"
         adata.obs[batch_key] = np.zeros(adata.shape[0])
     else:
         assert (
             batch_key in adata.obs.keys()
         ), "{} is not a valid key in adata.obs".format(batch_key)
+        logger.info('Using batches from adata.obs["{}"]'.format(batch_key))
+
     # check the datatype of batches. if theyre not integers, make them ints
     user_batch_dtype = adata.obs[batch_key].dtype
     if np.issubdtype(user_batch_dtype, np.integer) is False:
@@ -212,12 +224,15 @@ def setup_anndata(
         batch_key = "_scvi_batch"
 
     if labels_key is None:
+        logger.info("No label_key inputted, assuming all cells have same label")
         labels_key = "_scvi_labels"
         adata.obs[labels_key] = np.zeros(adata.shape[0])
     else:
         assert (
             labels_key in adata.obs.keys()
-        ), "{} is not a valid key in adata.obs".format(labels_key)
+        ), "{} is not a valid key for in adata.obs".format(labels_key)
+        logger.info('Using labels from adata.obs["{}"]'.format(labels_key))
+
     # check the datatype of labels. if theyre not integers, make them ints
     user_labels_dtype = adata.obs[labels_key].dtype
     if np.issubdtype(user_labels_dtype, np.integer) is False:
@@ -227,6 +242,8 @@ def setup_anndata(
     # computes the library size per batch
     local_l_mean_key = "_scvi_local_l_mean"
     local_l_var_key = "_scvi_local_l_var"
+
+    logger.info("Calculating log mean and log variance per batch")
 
     compute_library_size_batch(
         adata,
@@ -257,6 +274,12 @@ def setup_anndata(
     n_cells = adata.shape[0]
     n_genes = adata.shape[1]
     summary_stats = {"n_batch": n_batch, "n_cells": n_cells, "n_genes": n_genes}
+    logger.info(
+        "Successfully registered anndata object containing {} cells, {} genes, and {} batches \nRegistered keys:{}".format(
+            n_cells, n_genes, n_batch, list(data_registry.keys())
+        )
+    )
+
     adata.uns["scvi_summary_stats"] = summary_stats
     if copy:
         return adata
