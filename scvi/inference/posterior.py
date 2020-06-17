@@ -46,7 +46,6 @@ from scvi.models.log_likelihood import (
 from scvi.models.distributions import NegativeBinomial, ZeroInflatedNegativeBinomial
 from scipy.stats import spearmanr
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -127,7 +126,6 @@ class Posterior:
                 indices = np.where(indices)[0].ravel()
             sampler = SubsetRandomSampler(indices)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
-        ###FIX LATER
         # self.data_loader_kwargs.update(
         #     {"collate_fn": gene_dataset.collate_fn_builder(), "sampler": sampler}
         # )
@@ -206,11 +204,9 @@ class Posterior:
         return self.__class__.__name__
 
     def __iter__(self):
-        # print('we are in iter')
         return map(self.to_cuda, iter(self.data_loader))
         # return  iter(self.data_loader)
     
-    #this needs to be changed
     def to_cuda(self, tensors: Dict[str, torch.Tensor]) -> Dict[str,torch.Tensor]:
         """Converts list of tensors to cuda.
 
