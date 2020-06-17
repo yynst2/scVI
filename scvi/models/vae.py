@@ -2,7 +2,6 @@
 """Main module."""
 
 import numpy as np
-import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -384,7 +383,6 @@ class VAE(nn.Module):
         kl_divergence_z = kl(Normal(qz_m, torch.sqrt(qz_v)), Normal(mean, scale)).sum(
             dim=1
         )
-        # pdb.set_trace()
         kl_divergence_l = kl(
             Normal(ql_m, torch.sqrt(ql_v)),
             Normal(local_l_mean, torch.sqrt(local_l_var)),

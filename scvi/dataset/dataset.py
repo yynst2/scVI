@@ -598,7 +598,6 @@ class GeneExpressionDataset(Dataset):
     def __len__(self):
         return self.nb_cells
 
-    #get item in the dataset simply returns the index....
     def __getitem__(self, idx):
         """Implements @abstractcmethod in ``torch.utils.data.dataset.Dataset`` ."""
         return idx
@@ -624,7 +623,7 @@ class GeneExpressionDataset(Dataset):
                     n_dim
                 )
             )
-        
+
         valid_obs = check_nonnegative_integers(X)
         if valid_obs is False:
             logger.warning(
@@ -842,7 +841,6 @@ class GeneExpressionDataset(Dataset):
         """Returns a collate_fn with the requested shape/attributes
         """
         
-        #why do we need an override?
         if override:
             attributes_and_types = dict()
         else:

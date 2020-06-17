@@ -2,8 +2,8 @@ import numpy as np
 import anndata
 import torch
 
-from BioDataset import BioDataset
-from utils import register_anndata, get_from_registry, compute_library_size_batch
+from scvi.dataset.utils import setup_anndata
+from scvi.dataset.biodataset import BioDataset
 
 
 def test_BioDataset():
@@ -18,25 +18,13 @@ def test_BioDataset():
     labels = np.arange(adata.shape[0])
     adata.obs["labels"] = labels
 
-    compute_library_size_batch(
-        adata, "batch", local_l_mean_key="mean", local_l_var_key="var", in_place=True
-    )
-
-    data_registry = {
-        "X": (None, "X"),
-        "batch": ("obs", "batch"),
-        "local_l_mean": ("obs", "mean"),
-        "local_l_var": ("obs", "var"),
-        "labels_loc": ("obs", "labels"),
-    }
-
-    register_anndata(adata, data_registry)
+    setup_anndata(adata)
     test_BioDataset_getitem(adata)
 
 
 def test_BioDataset_getitem(adata):
     # check that we can successfully pass in a list of tensors to get
-    tensors_to_get = ["batch", "local_l_var"]
+    tensors_to_get = ["batch_indices", "local_l_var"]
     bd = BioDataset(adata, getitem_tensors=tensors_to_get)
     np.testing.assert_array_equal(tensors_to_get, list(bd[1].keys()))
 

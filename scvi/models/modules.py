@@ -1,5 +1,4 @@
 import collections
-import pdb
 from typing import Iterable, List
 
 import torch
@@ -226,7 +225,6 @@ class Encoder(nn.Module):
         """
 
         # Parameters for latent distribution
-        # pdb.set_trace()
         q = self.encoder(x, *cat_list)
         q_m = self.mean_encoder(q)
         q_v = torch.exp(self.var_encoder(q)) + 1e-4
@@ -320,7 +318,6 @@ class DecoderSCVI(nn.Module):
             parameters for the ZINB distribution of expression
         """
         # The decoder returns values for the parameters of the ZINB distribution
-        # pdb.set_trace()
         px = self.px_decoder(z, *cat_list)
         px_scale = self.px_scale_decoder(px)
         px_dropout = self.px_dropout_decoder(px)

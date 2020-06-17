@@ -216,7 +216,6 @@ class Trainer:
         self.on_training_end()
 
     def on_training_loop(self, tensors_dict):
-        # next line needs to be replaced
         self.current_loss = loss = self.loss(*tensors_dict)
         self.optimizer.zero_grad()
         loss.backward()
@@ -310,7 +309,6 @@ class Trainer:
     def posteriors_loop(self):
         pass
 
-    # change this data_loaders_loop
     def data_loaders_loop(self):
         """returns an zipped iterable corresponding to loss signature"""
         data_loaders_loop = [self._posteriors[name] for name in self.posteriors_loop]
