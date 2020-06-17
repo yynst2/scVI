@@ -388,7 +388,6 @@ class Trainer:
             if gene_dataset is None and hasattr(self, "model")
             else gene_dataset
         )
-        # gene_dataset = BioDataset(gene_dataset)
         n = len(gene_dataset)
         try:
             n_train, n_test = _validate_shuffle_split(n, test_size, train_size)
