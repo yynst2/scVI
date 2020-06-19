@@ -84,7 +84,7 @@ class Trainer:
 
         # Model, dataset management
         self.model = model
-        self.gene_dataset = BioDataset(gene_dataset)
+        self.gene_dataset = gene_dataset
         self._posteriors = OrderedDict()
         self.seed = seed  # For train/test splitting
         self.use_cuda = use_cuda and torch.cuda.is_available()
@@ -383,6 +383,7 @@ class Trainer:
 
         """
         model = self.model if model is None and hasattr(self, "model") else model
+        # what to do here if it has the attribute modle
         gene_dataset = (
             self.gene_dataset
             if gene_dataset is None and hasattr(self, "model")
@@ -429,7 +430,7 @@ class Trainer:
         gene_dataset = (
             self.gene_dataset
             if gene_dataset is None and hasattr(self, "model")
-            else BioDataset(gene_dataset)
+            else gene_dataset
         )
         return type_class(
             model,

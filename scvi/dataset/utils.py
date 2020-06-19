@@ -4,18 +4,19 @@ import scipy.sparse as sp_sparse
 import logging
 
 from typing import Dict, Tuple, Union
-from scvi.dataset.constants import (
-    X_KEY,
-    BATCH_KEY,
-    LOCAL_L_MEAN_KEY,
-    LOCAL_L_VAR_KEY,
-    LABELS_KEY,
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
+    _PROTEIN_EXP_KEY,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def register_anndata(adata, data_registry_dict: Dict[str, Tuple[str, str]]):
+def _register_anndata(adata, data_registry_dict: Dict[str, Tuple[str, str]]):
     """Registers the AnnData object by adding data_registry_dict to adata.uns
     
     Format is: {<scvi_key>: (<anndata dataframe>, <dataframe key> )}
@@ -66,7 +67,7 @@ def get_from_registry(adata, key: str):
         return getattr(adata, df_key)
 
 
-def compute_library_size(
+def _compute_library_size(
     data: Union[sp_sparse.csr_matrix, np.ndarray]
 ) -> Tuple[np.ndarray, np.ndarray]:
     sum_counts = data.sum(axis=1)
@@ -126,7 +127,7 @@ def compute_library_size_batch(
             data = adata[idx_batch].layers[X_layers_key]
         else:
             data = adata[idx_batch].X
-        (local_means[idx_batch], local_vars[idx_batch],) = compute_library_size(data)
+        (local_means[idx_batch], local_vars[idx_batch],) = _compute_library_size(data)
     if local_l_mean_key is None:
         local_l_mean_key = "_scvi_local_l_mean"
     if local_l_var_key is None:
@@ -142,7 +143,7 @@ def compute_library_size_batch(
         adata.obs[local_l_var_key] = local_vars
 
 
-def check_nonnegative_integers(X: Union[np.ndarray, sp_sparse.csr_matrix]):
+def _check_nonnegative_integers(X: Union[np.ndarray, sp_sparse.csr_matrix]):
     """Checks values of X to ensure it is count data
     """
 
@@ -162,6 +163,8 @@ def setup_anndata(
     batch_key: str = None,
     labels_key: str = None,
     X_layers_key: str = None,
+    protein_expression_obsm_key: str = None,
+    protein_names_uns_key: str = None,
     copy: bool = False,
 ):
     """Sets up anndata object for scVI models. This method will compute the log mean and log variance per batch. 
@@ -177,6 +180,10 @@ def setup_anndata(
         key in adata.obs for label information. Will automatically be converted into integer categories
     X_layers_key
         if not None, uses this as the key in adata.layers for raw count
+    protein_expression_obsm_key 
+        key in adata.obsm for protein expression data
+    protein_names_uns_key
+        key in adata.uns for protein names
     copy
         if True, a copy of anndata is returned
 
@@ -189,7 +196,7 @@ def setup_anndata(
 
     ###checking layers
     if X_layers_key is None:
-        if check_nonnegative_integers(adata.X) is False:
+        if _check_nonnegative_integers(adata.X) is False:
             logger.warning(
                 "adata.X does not contain unnormalized count data. Are you sure this is what you want?"
             )
@@ -198,7 +205,7 @@ def setup_anndata(
         assert (
             X_layers_key in adata.layers.keys()
         ), "{} is not a valid key in adata.layers".format(X_layers_key)
-        if check_nonnegative_integers(adata.layers[X_layers_key]) is False:
+        if _check_nonnegative_integers(adata.layers[X_layers_key]) is False:
             logger.warning(
                 'adata.layers["{}"] does not contain unnormalized count data. Are you sure this is what you want?'.format(
                     X_layers_key
@@ -243,7 +250,7 @@ def setup_anndata(
     local_l_mean_key = "_scvi_local_l_mean"
     local_l_var_key = "_scvi_local_l_var"
 
-    logger.info("Calculating log mean and log variance per batch")
+    logger.info("Computing library size prior per batch")
 
     compute_library_size_batch(
         adata,
@@ -261,26 +268,36 @@ def setup_anndata(
         X_key = X_layers_key
 
     data_registry = {
-        X_KEY: (X_loc, X_key),
-        BATCH_KEY: ("obs", batch_key),
-        LOCAL_L_MEAN_KEY: ("obs", local_l_mean_key),
-        LOCAL_L_VAR_KEY: ("obs", local_l_var_key),
-        LABELS_KEY: ("obs", labels_key),
+        _X_KEY: (X_loc, X_key),
+        _BATCH_KEY: ("obs", batch_key),
+        _LOCAL_L_MEAN_KEY: ("obs", local_l_mean_key),
+        _LOCAL_L_VAR_KEY: ("obs", local_l_var_key),
+        _LABELS_KEY: ("obs", labels_key),
     }
 
-    register_anndata(adata, data_registry_dict=data_registry)
-
     n_batch = len(np.unique(adata.obs[batch_key]))
+    print(adata.obs[batch_key])
+    print(batch_key)
     n_cells = adata.shape[0]
     n_genes = adata.shape[1]
+
     summary_stats = {"n_batch": n_batch, "n_cells": n_cells, "n_genes": n_genes}
+    if protein_expression_obsm_key is not None:
+        assert (
+            protein_expression_obsm_key in adata.obsm.keys()
+        ), "{} is not a valid key in adata.obsm".format(protein_expression_obsm_key)
+        data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
+        summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
+
+    _register_anndata(adata, data_registry_dict=data_registry)
+
     logger.info(
         "Successfully registered anndata object containing {} cells, {} genes, and {} batches \nRegistered keys:{}".format(
             n_cells, n_genes, n_batch, list(data_registry.keys())
         )
     )
-
     adata.uns["scvi_summary_stats"] = summary_stats
+
     if copy:
         return adata
 

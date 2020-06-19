@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Main module."""
 from typing import Dict, Optional, Tuple, Union, List
-
+import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -440,6 +440,7 @@ class TOTALVI(nn.Module):
             y_ = torch.log(1 + y_)
 
         # Sampling - Encoder gets concatenated genes + proteins
+        pdb.set_trace()
         qz_m, qz_v, ql_m, ql_v, latent, untran_latent = self.encoder(
             torch.cat((x_, y_), dim=-1), batch_index
         )

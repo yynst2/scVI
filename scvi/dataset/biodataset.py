@@ -7,7 +7,7 @@ import logging
 
 from torch.utils.data import Dataset
 from typing import Union, List, Dict, Tuple
-from scvi.dataset.utils import get_from_registry, check_nonnegative_integers
+from scvi.dataset.utils import get_from_registry, _check_nonnegative_integers
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class BioDataset(Dataset):
             "scvi_data_registry" in adata.uns_keys()
         ), "Please register your anndata first"
 
-        is_nonneg_int = check_nonnegative_integers(get_from_registry(adata, "X"))
+        is_nonneg_int = _check_nonnegative_integers(get_from_registry(adata, "X"))
         if not is_nonneg_int:
             logger.warning(
                 "Make sure the registered X field in anndata contains unnormalized count data."

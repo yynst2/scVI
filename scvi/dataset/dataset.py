@@ -1553,6 +1553,10 @@ class GeneExpressionDataset(Dataset):
 
         return adata.var
 
+    #figures out which proteins
+    #if someone gives a protein expression key
+    #total_vi_protein mask add it to the unstructured
+    #another private
     def get_batch_mask_cell_measurement(self, attribute_name: str):
         """Returns a list with length number of batches where each entry is a mask over present
         cell measurement columns

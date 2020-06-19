@@ -1,4 +1,6 @@
 from typing import Optional, Union, List, Callable, Tuple
+import pdb
+import anndata
 import logging
 import torch
 from torch.distributions import Poisson, Gamma, Bernoulli, Normal
@@ -10,12 +12,19 @@ from scipy.stats import spearmanr
 from scvi.inference import Posterior
 from . import UnsupervisedTrainer
 
-from scvi.dataset import GeneExpressionDataset
+from scvi.dataset import BioDataset
 from scvi.models import TOTALVI, Classifier
 from scvi.models.utils import one_hot
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
+    _PROTEIN_EXP_KEY
+)
 
 logger = logging.getLogger(__name__)
-
 
 class TotalPosterior(Posterior):
     """The functional data unit for totalVI.
@@ -56,7 +65,7 @@ class TotalPosterior(Posterior):
     def __init__(
         self,
         model: TOTALVI,
-        gene_dataset: GeneExpressionDataset,
+        gene_dataset: anndata.AnnData,
         shuffle: bool = False,
         indices: Optional[np.ndarray] = None,
         use_cuda: bool = True,
@@ -72,14 +81,16 @@ class TotalPosterior(Posterior):
             data_loader_kwargs=data_loader_kwargs,
         )
         # Add protein tensor as another tensor to be loaded
-        self.data_loader_kwargs.update(
-            {
-                "collate_fn": gene_dataset.collate_fn_builder(
-                    {"protein_expression": np.float32}
-                )
-            }
+        # self.data_loader_kwargs.update(
+        #     {
+        #         "collate_fn": gene_dataset.collate_fn_builder(
+        #             {"protein_expression": np.float32}
+        #         )
+        #     }
+        # )
+        self.data_loader = DataLoader(
+            BioDataset(gene_dataset), **self.data_loader_kwargs
         )
-        self.data_loader = DataLoader(gene_dataset, **self.data_loader_kwargs)
 
     def corrupted(self):
         return self.update(
@@ -135,6 +146,18 @@ class TotalPosterior(Posterior):
             background_mean += [np.array(b_mean.cpu())]
         return np.concatenate(background_mean)
 
+    def _unpack_tensors(self, tensors):
+        x = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
+        y = tensors[_PROTEIN_EXP_KEY]
+        print('here')
+    #HERE
+        pdb.set_trace()
+        return x, local_l_mean, local_l_var, batch_index, labels, y
+
     def compute_elbo(self, vae: TOTALVI, **kwargs):
         """Computes the ELBO.
 
@@ -158,7 +181,8 @@ class TotalPosterior(Posterior):
         # Iterate once over the posterior and computes the total log_likelihood
         elbo = 0
         for i_batch, tensors in enumerate(self):
-            x, local_l_mean, local_l_var, batch_index, labels, y = tensors
+            pdb.set_trace()
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
             (
                 reconst_loss_gene,
                 reconst_loss_protein,
@@ -183,6 +207,8 @@ class TotalPosterior(Posterior):
             ).item()
         n_samples = len(self.indices)
         return elbo / n_samples
+    
+
 
     def compute_reconstruction_error(self, vae: TOTALVI, **kwargs):
         r""" Computes log p(x/z), which is the reconstruction error.
@@ -197,7 +223,7 @@ class TotalPosterior(Posterior):
         log_lkl_gene = 0
         log_lkl_protein = 0
         for i_batch, tensors in enumerate(self):
-            x, local_l_mean, local_l_var, batch_index, labels, y = tensors
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
             (
                 reconst_loss_gene,
                 reconst_loss_protein,
@@ -244,7 +270,7 @@ class TotalPosterior(Posterior):
         # Uses MC sampling to compute a tighter lower bound on log p(x)
         log_lkl = 0
         for i_batch, tensors in enumerate(self.update({"batch_size": batch_size})):
-            x, local_l_mean, local_l_var, batch_index, labels, y = tensors
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
             to_sum = torch.zeros(x.size()[0], n_samples_mc)
 
             for i in range(n_samples_mc):
@@ -319,7 +345,8 @@ class TotalPosterior(Posterior):
         labels = []
         library_gene = []
         for tensors in self:
-            x, local_l_mean, local_l_var, batch_index, label, y = tensors
+            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
+            
             give_mean = not sample
             latent += [
                 self.model.sample_from_posterior_z(
@@ -369,7 +396,7 @@ class TotalPosterior(Posterior):
         original_list = []
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x, _, _, batch_index, labels, y = tensors
+            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x, y, batch_index=batch_index, label=labels, n_samples=n_samples
@@ -431,7 +458,7 @@ class TotalPosterior(Posterior):
         """
         px_dropouts = []
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
             outputs = self.model.inference(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -485,7 +512,7 @@ class TotalPosterior(Posterior):
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
             py_mixing = torch.zeros_like(y)
             if n_samples > 1:
                 py_mixing = torch.stack(n_samples * [py_mixing])
@@ -549,7 +576,7 @@ class TotalPosterior(Posterior):
         """
         scales = []
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
             model_scale = self.model.get_sample_scale(
                 x,
                 y,
@@ -602,7 +629,7 @@ class TotalPosterior(Posterior):
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
             px_scale = torch.zeros_like(x)
             py_scale = torch.zeros_like(y)
             if n_samples > 1:
@@ -681,7 +708,7 @@ class TotalPosterior(Posterior):
             transform_batch = [transform_batch]
         rate_list_pro = []
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
             protein_rate = torch.zeros_like(y)
             if n_samples > 1:
                 protein_rate = torch.stack(n_samples * [protein_rate])
@@ -742,7 +769,7 @@ class TotalPosterior(Posterior):
         """
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x, _, _, batch_index, labels, y = tensors
+            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x,
@@ -867,7 +894,7 @@ class TotalPosterior(Posterior):
         """
         imputed_list = []
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
             px_rate = self.model.get_sample_rate(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -1197,7 +1224,7 @@ class TotalTrainer(UnsupervisedTrainer):
     def __init__(
         self,
         model: TOTALVI,
-        dataset: GeneExpressionDataset,
+        dataset: anndata.AnnData,
         train_size: float = 0.90,
         test_size: float = 0.10,
         pro_recons_weight: float = 1.0,
@@ -1209,7 +1236,11 @@ class TotalTrainer(UnsupervisedTrainer):
         early_stopping_kwargs: Union[dict, str, None] = "auto",
         **kwargs,
     ):
-        self.n_genes = dataset.nb_genes
+        assert (
+            "scvi_data_registry" in dataset.uns_keys()
+        ), "Please register your anndata first"
+
+        self.n_genes = dataset.uns["scvi_summary_stats"]["n_genes"]
         self.n_proteins = model.n_input_proteins
         self.use_adversarial_loss = use_adversarial_loss
         self.kappa = kappa
@@ -1254,6 +1285,15 @@ class TotalTrainer(UnsupervisedTrainer):
             self.test_set.to_monitor = ["elbo"]
             self.validation_set.to_monitor = ["elbo"]
 
+    def _unpack_tensors(self, tensors):
+        x = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
+        y = tensors[_PROTEIN_EXP_KEY]
+        return x, local_l_mean, local_l_var, batch_index, labels, y
+
     def loss(self, tensors):
         (
             sample_batch_X,
@@ -1262,7 +1302,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = tensors
+        ) = self._unpack_tensors(tensors)
         (
             reconst_loss_gene,
             reconst_loss_protein,
@@ -1318,7 +1358,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = tensors
+        ) = self.unpack_tensors(tensors)
 
         z = self.model.sample_from_posterior_z(
             sample_batch_X, sample_batch_Y, batch_index, give_mean=False

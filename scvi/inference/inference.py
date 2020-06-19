@@ -1,4 +1,5 @@
 import logging
+import pdb
 import copy
 from typing import Union
 
@@ -9,6 +10,13 @@ from numpy import ceil
 
 from scvi.dataset import GeneExpressionDataset
 from scvi.inference import Trainer
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
+)
 
 plt.switch_backend("agg")
 logger = logging.getLogger(__name__)
@@ -121,13 +129,11 @@ class UnsupervisedTrainer(Trainer):
         return ["train_set"]
 
     def loss(self, tensors):
-        # sample_batch, local_l_mean, local_l_var, batch_index, y = tensors
-
-        sample_batch = tensors["X"]
-        local_l_mean = tensors["local_l_mean"]
-        local_l_var = tensors["local_l_var"]
-        batch_index = tensors["batch_indices"]
-        y = tensors["labels"]
+        sample_batch = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
 
         reconst_loss, kl_divergence_local, kl_divergence_global = self.model(
             sample_batch, local_l_mean, local_l_var, batch_index, y

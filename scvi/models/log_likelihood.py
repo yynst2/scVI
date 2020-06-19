@@ -6,12 +6,12 @@ import torch
 import torch.nn.functional as F
 from torch import logsumexp
 from torch.distributions import Normal, Beta
-from scvi.dataset.constants import (
-    X_KEY,
-    BATCH_KEY,
-    LOCAL_L_MEAN_KEY,
-    LOCAL_L_VAR_KEY,
-    LABELS_KEY,
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
 )
 
 
@@ -30,11 +30,11 @@ def compute_elbo(vae, posterior, **kwargs):
     for i_batch, tensors in enumerate(posterior):
         # we can either hard code it in, or use the constants
         # not sure which one is better
-        sample_batch = tensors[X_KEY]
-        local_l_mean = tensors[LOCAL_L_MEAN_KEY]
-        local_l_var = tensors[LOCAL_L_VAR_KEY]
-        batch_index = tensors[BATCH_KEY]
-        labels = tensors[LABELS_KEY]
+        sample_batch = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
 
         # sample_batch = tensors["X"]
         # local_l_mean = tensors["local_l_mean"]
