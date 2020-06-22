@@ -182,6 +182,7 @@ class Posterior:
         zs = []
         labels = []
         scales = []
+        libraries = []
         log_probas = []
         batch_indices = []
         n_bio_batches = self.gene_dataset.n_batches
@@ -238,6 +239,7 @@ class Posterior:
                 # print(label.device, z.device, scale_batch.device)
                 labels.append(label)
                 zs.append(z)
+                libraries.append(library)
                 scales.append(scale_batch)
                 batch_indices.append(batch_indices_batch)
                 log_probas.append(log_probas_batch)
@@ -246,6 +248,7 @@ class Posterior:
             # Then each z element has shape (n_samples, n_batch, n_latent)
             # Hence we concatenate on dimension 1
             zs = torch.cat(zs, dim=1)
+            libraries = torch.cat(libraries, dim=1)
             scales = torch.cat(scales, dim=1)
             batch_indices = torch.cat(batch_indices, dim=1)
 
@@ -259,6 +262,7 @@ class Posterior:
         labels = torch.cat(labels)
         return dict(
             z=zs,
+            library=libraries,
             label=labels,
             scale=scales,
             log_probas=log_probas,

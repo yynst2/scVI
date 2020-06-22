@@ -70,6 +70,7 @@ class VAE(nn.Module):
         n_blocks=0,
         decoder_do_last_skip=False,
         prevent_library_saturation: bool = False,
+        px_r_init: torch.Tensor = None,
     ):
         super().__init__()
 
@@ -104,7 +105,7 @@ class VAE(nn.Module):
             n_input,
             1,
             # n_cat_list=n_cat_list,
-            n_layers=1,
+            n_layers=n_layers,
             n_hidden=n_hidden,
             use_batch_norm=use_batch_norm,
             use_weight_norm=use_weight_norm,
@@ -138,7 +139,10 @@ class VAE(nn.Module):
         self.n_labels = n_labels
 
         if self.dispersion == "gene":
-            self.px_r = torch.nn.Parameter(torch.randn(n_input,))
+            if px_r_init is None:
+                self.px_r = torch.nn.Parameter(torch.randn(n_input,))
+            else:
+                self.px_r = torch.nn.Parameter(px_r_init, requires_grad=False)
         elif self.dispersion == "gene-batch":
             self.px_r = torch.nn.Parameter(torch.randn(n_input, n_batch))
         elif self.dispersion == "gene-label":

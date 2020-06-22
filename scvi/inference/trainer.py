@@ -45,6 +45,7 @@ class Trainer:
         gene_dataset,
         use_cuda=True,
         metrics_to_monitor=None,
+        grad_clip_value=None,
         benchmark=False,
         frequency=None,
         weight_decay=1e-6,
@@ -61,6 +62,7 @@ class Trainer:
         data_loader_kwargs = data_loader_kwargs if data_loader_kwargs else dict()
 
         self.model = model
+        self.grad_clip_value = grad_clip_value
         self.gene_dataset = gene_dataset
         self._posteriors = OrderedDict()
 
@@ -161,6 +163,10 @@ class Trainer:
                     loss_mean.append(loss.item())
                     self.debug_loss = loss
                     loss.backward()
+                    if self.grad_clip_value is not None:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.grad_clip_value
+                        )
                     optimizer.step()
 
                 loss_mean = np.mean(loss_mean)

@@ -4,8 +4,7 @@ import logging
 
 import torch
 from torch import nn as nn
-from torch.distributions import Normal, MultivariateNormal
-from torch.distributions import Normal
+from torch.distributions import Normal, MultivariateNormal, Poisson
 from torch.nn import ModuleList
 from torch.nn.utils import weight_norm
 from scvi.models.utils import one_hot
@@ -414,6 +413,7 @@ class Encoder(nn.Module):
         dropout_rate: float = 0.1,
         use_batch_norm: bool = False,
         use_weight_norm: bool = False,
+        variance_tweak: bool = False,
         use_layer_norm: bool = False,
         prevent_saturation: bool = False,
         prevent_saturation2: bool = False,
@@ -421,6 +421,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.prevent_saturation = prevent_saturation
         self.prevent_saturation2 = prevent_saturation2
+        self.variance_tweak = variance_tweak
 
         self.encoder = FCLayers(
             n_in=n_input,
