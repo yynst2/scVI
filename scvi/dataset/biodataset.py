@@ -1,4 +1,5 @@
 import torch
+import pdb
 import anndata
 import copy
 import numpy as np
@@ -140,20 +141,23 @@ class BioDataset(Dataset):
         data_numpy = {
             key: get_from_registry(self.adata, key)[idx].astype(dtype)
             if isinstance(get_from_registry(self.adata, key)[idx], np.ndarray)
-            else np.array(get_from_registry(self.adata, key)[idx]).astype(dtype)
+            else get_from_registry(self.adata, key)[idx].toarray().astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
+        # data_numpy = {
+        #     k: np.array([d]) if d.size == 1 else d for k, d in data_numpy.items()
+        # }
         data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
         return data_torch
 
     @property
-    def nb_cells(self) -> int:
+    def n_cells(self) -> int:
         """Returns the number of cells in the dataset
         """
         return self.adata.shape[0]
 
     @property
-    def nb_genes(self) -> int:
+    def n_genes(self) -> int:
         """Returns the number of genes in the dataset
         """
         return self.adata.shape[1]

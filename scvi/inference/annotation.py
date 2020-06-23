@@ -16,6 +16,8 @@ from scvi.inference import Posterior
 from scvi.inference import Trainer
 from scvi.inference.inference import UnsupervisedTrainer
 from scvi.inference.posterior import unsupervised_clustering_accuracy
+from scvi.dataset.utils import get_from_registry
+from scvi.dataset._constants import _LABELS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +225,7 @@ class SemiSupervisedTrainer(UnsupervisedTrainer):
     def __init__(
         self,
         model,
-        gene_dataset,
+        adata,
         n_labelled_samples_per_class=50,
         n_epochs_classifier=1,
         lr_classification=5 * 1e-3,
@@ -231,17 +233,17 @@ class SemiSupervisedTrainer(UnsupervisedTrainer):
         seed=0,
         **kwargs
     ):
-        super().__init__(model, gene_dataset, **kwargs)
+        super().__init__(model, adata, **kwargs)
         self.model = model
-        self.gene_dataset = gene_dataset
+        self.adata = adata
 
         self.n_epochs_classifier = n_epochs_classifier
         self.lr_classification = lr_classification
         self.classification_ratio = classification_ratio
         n_labelled_samples_per_class_array = [
             n_labelled_samples_per_class
-        ] * self.gene_dataset.n_labels
-        labels = np.array(self.gene_dataset.labels).ravel()
+        ] * self.adata.uns["scvi_summary_stats"]["n_labels"]
+        labels = np.array(get_from_registry(self.gene_dataset, _LABELS_KEY)).ravel()
         np.random.seed(seed=seed)
         permutation_idx = np.random.permutation(len(labels))
         labels = labels[permutation_idx]
@@ -261,7 +263,7 @@ class SemiSupervisedTrainer(UnsupervisedTrainer):
 
         self.classifier_trainer = ClassifierTrainer(
             model.classifier,
-            gene_dataset,
+            self.adata,
             metrics_to_monitor=[],
             show_progbar=False,
             frequency=0,

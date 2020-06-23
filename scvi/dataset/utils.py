@@ -1,7 +1,9 @@
 import copy
+import pdb
 import numpy as np
 import scipy.sparse as sp_sparse
 import logging
+import pandas as pd
 
 from typing import Dict, Tuple, Union
 from scvi.dataset._constants import (
@@ -11,6 +13,7 @@ from scvi.dataset._constants import (
     _LOCAL_L_VAR_KEY,
     _LABELS_KEY,
     _PROTEIN_EXP_KEY,
+    _SCANVI_LABELED_IDX_KEY,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,10 +64,11 @@ def get_from_registry(adata, key: str):
     assert "scvi_data_registry" in adata.uns.keys(), "AnnData was never registered"
     data_loc = adata.uns["scvi_data_registry"][key]
     df, df_key = data_loc[0], data_loc[1]
-    if df is not None:
-        return getattr(adata, df)[df_key]
-    else:
-        return getattr(adata, df_key)
+    data = getattr(adata, df)[df_key] if df is not None else getattr(adata, df_key)
+    if isinstance(data, pd.Series):
+        # get rid of tolist
+        data = np.array(data.values.tolist()).reshape(adata.shape[0], -1)
+    return data
 
 
 def _compute_library_size(
@@ -165,6 +169,7 @@ def setup_anndata(
     X_layers_key: str = None,
     protein_expression_obsm_key: str = None,
     protein_names_uns_key: str = None,
+    scanvi_labeled_idx_key: str = None,
     copy: bool = False,
 ):
     """Sets up anndata object for scVI models. This method will compute the log mean and log variance per batch. 
@@ -190,28 +195,30 @@ def setup_anndata(
     Returns
     -------
     """
-
+    # if dataset takes less than 1gb data, can make it dense
     if copy:
         adata = adata.copy()
 
     ###checking layers
-    if X_layers_key is None:
-        if _check_nonnegative_integers(adata.X) is False:
-            logger.warning(
-                "adata.X does not contain unnormalized count data. Are you sure this is what you want?"
+    if X_layers_key is not None and X_layers_key not in adata.layers.keys():
+        raise ValueError("{} is not a valid key in adata.layers".format(X_layers_key))
+
+    X = adata.layers[X_layers_key] if X_layers_key is not None else adata.X
+    if _check_nonnegative_integers(X) is False:
+        logger_data_loc = (
+            "adata.X"
+            if X_layers_key is None
+            else "adata.layers[{}]".format(X_layers_key)
+        )
+        logger.warning(
+            "{} does not contain unnormalized count data. Are you sure this is what you want?".format(
+                logger_data_loc
             )
-        logger.info("Using data from adata.X")
-    else:
-        assert (
-            X_layers_key in adata.layers.keys()
-        ), "{} is not a valid key in adata.layers".format(X_layers_key)
-        if _check_nonnegative_integers(adata.layers[X_layers_key]) is False:
-            logger.warning(
-                'adata.layers["{}"] does not contain unnormalized count data. Are you sure this is what you want?'.format(
-                    X_layers_key
-                )
-            )
+        )
+    if X_layers_key is not None:
         logger.info('Using data from adata.layers["{}"]'.format(X_layers_key))
+    else:
+        logger.info("Using data from adata.X")
 
     ###checking batch
     if batch_key is None:
@@ -276,18 +283,28 @@ def setup_anndata(
     }
 
     n_batch = len(np.unique(adata.obs[batch_key]))
-    print(adata.obs[batch_key])
-    print(batch_key)
     n_cells = adata.shape[0]
     n_genes = adata.shape[1]
+    n_labels = len(np.unique(adata.obs[labels_key]))
 
-    summary_stats = {"n_batch": n_batch, "n_cells": n_cells, "n_genes": n_genes}
+    summary_stats = {
+        "n_batch": n_batch,
+        "n_cells": n_cells,
+        "n_genes": n_genes,
+        "n_labels": n_labels,
+    }
     if protein_expression_obsm_key is not None:
         assert (
             protein_expression_obsm_key in adata.obsm.keys()
         ), "{} is not a valid key in adata.obsm".format(protein_expression_obsm_key)
         data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
         summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
+
+    if scanvi_labeled_idx_key is not None:
+        assert (
+            scanvi_labeled_idx_key in adata.obs.keys()
+        ), "{} is not a valid key in adata.obs".format(scanvi_labeled_idx_key)
+        data_registry[_SCANVI_LABELED_IDX_KEY] = ("obs", scanvi_labeled_idx_key)
 
     _register_anndata(adata, data_registry_dict=data_registry)
 
@@ -297,7 +314,6 @@ def setup_anndata(
         )
     )
     adata.uns["scvi_summary_stats"] = summary_stats
-
     if copy:
         return adata
 

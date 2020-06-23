@@ -871,7 +871,6 @@ class GeneExpressionDataset(Dataset):
             else getattr(self, attr)[indices].toarray().astype(dtype)
             for attr, dtype in attributes_and_types.items()
         ]
-
         data_torch = tuple(torch.from_numpy(d) for d in data_numpy)
         return data_torch
 

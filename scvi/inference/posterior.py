@@ -198,12 +198,12 @@ class Posterior:
             return np.arange(len(self.gene_dataset))
 
     @property
-    def nb_cells(self) -> int:
+    def n_cells(self) -> int:
         """returns the number of studied cells."""
         if hasattr(self.data_loader.sampler, "indices"):
             return len(self.data_loader.sampler.indices)
         else:
-            return self.gene_dataset.nb_cells
+            return self.gene_dataset.n_cells
 
     @property
     def posterior_type(self) -> str:

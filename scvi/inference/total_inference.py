@@ -21,10 +21,11 @@ from scvi.dataset._constants import (
     _LOCAL_L_MEAN_KEY,
     _LOCAL_L_VAR_KEY,
     _LABELS_KEY,
-    _PROTEIN_EXP_KEY
+    _PROTEIN_EXP_KEY,
 )
 
 logger = logging.getLogger(__name__)
+
 
 class TotalPosterior(Posterior):
     """The functional data unit for totalVI.
@@ -153,9 +154,6 @@ class TotalPosterior(Posterior):
         batch_index = tensors[_BATCH_KEY]
         labels = tensors[_LABELS_KEY]
         y = tensors[_PROTEIN_EXP_KEY]
-        print('here')
-    #HERE
-        pdb.set_trace()
         return x, local_l_mean, local_l_var, batch_index, labels, y
 
     def compute_elbo(self, vae: TOTALVI, **kwargs):
@@ -181,8 +179,9 @@ class TotalPosterior(Posterior):
         # Iterate once over the posterior and computes the total log_likelihood
         elbo = 0
         for i_batch, tensors in enumerate(self):
-            pdb.set_trace()
-            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
+                tensors
+            )
             (
                 reconst_loss_gene,
                 reconst_loss_protein,
@@ -207,8 +206,6 @@ class TotalPosterior(Posterior):
             ).item()
         n_samples = len(self.indices)
         return elbo / n_samples
-    
-
 
     def compute_reconstruction_error(self, vae: TOTALVI, **kwargs):
         r""" Computes log p(x/z), which is the reconstruction error.
@@ -223,7 +220,9 @@ class TotalPosterior(Posterior):
         log_lkl_gene = 0
         log_lkl_protein = 0
         for i_batch, tensors in enumerate(self):
-            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
+                tensors
+            )
             (
                 reconst_loss_gene,
                 reconst_loss_protein,
@@ -270,7 +269,9 @@ class TotalPosterior(Posterior):
         # Uses MC sampling to compute a tighter lower bound on log p(x)
         log_lkl = 0
         for i_batch, tensors in enumerate(self.update({"batch_size": batch_size})):
-            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
+                tensors
+            )
             to_sum = torch.zeros(x.size()[0], n_samples_mc)
 
             for i in range(n_samples_mc):
@@ -345,8 +346,8 @@ class TotalPosterior(Posterior):
         labels = []
         library_gene = []
         for tensors in self:
-            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
-            
+            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+
             give_mean = not sample
             latent += [
                 self.model.sample_from_posterior_z(
@@ -396,7 +397,7 @@ class TotalPosterior(Posterior):
         original_list = []
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x, y, batch_index=batch_index, label=labels, n_samples=n_samples
@@ -458,7 +459,7 @@ class TotalPosterior(Posterior):
         """
         px_dropouts = []
         for tensors in self:
-            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
             outputs = self.model.inference(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -512,7 +513,7 @@ class TotalPosterior(Posterior):
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         for tensors in self:
-            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
             py_mixing = torch.zeros_like(y)
             if n_samples > 1:
                 py_mixing = torch.stack(n_samples * [py_mixing])
@@ -576,7 +577,7 @@ class TotalPosterior(Posterior):
         """
         scales = []
         for tensors in self:
-            x,_ , _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
             model_scale = self.model.get_sample_scale(
                 x,
                 y,
@@ -629,7 +630,7 @@ class TotalPosterior(Posterior):
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             px_scale = torch.zeros_like(x)
             py_scale = torch.zeros_like(y)
             if n_samples > 1:
@@ -708,7 +709,7 @@ class TotalPosterior(Posterior):
             transform_batch = [transform_batch]
         rate_list_pro = []
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             protein_rate = torch.zeros_like(y)
             if n_samples > 1:
                 protein_rate = torch.stack(n_samples * [protein_rate])
@@ -769,7 +770,7 @@ class TotalPosterior(Posterior):
         """
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x,
@@ -894,7 +895,7 @@ class TotalPosterior(Posterior):
         """
         imputed_list = []
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors( tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             px_rate = self.model.get_sample_rate(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )

@@ -27,7 +27,9 @@ def compute_elbo(vae, posterior, **kwargs):
     """
     # Iterate once over the posterior and compute the elbo
     elbo = 0
+    pdb.set_trace()
     for i_batch, tensors in enumerate(posterior):
+        pdb.set_trace()
         # we can either hard code it in, or use the constants
         # not sure which one is better
         sample_batch = tensors[_X_KEY]

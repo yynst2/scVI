@@ -133,7 +133,7 @@ class UnsupervisedTrainer(Trainer):
         local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
         local_l_var = tensors[_LOCAL_L_VAR_KEY]
         batch_index = tensors[_BATCH_KEY]
-        labels = tensors[_LABELS_KEY]
+        y = tensors[_LABELS_KEY]
 
         reconst_loss, kl_divergence_local, kl_divergence_global = self.model(
             sample_batch, local_l_mean, local_l_var, batch_index, y
@@ -172,9 +172,7 @@ class UnsupervisedTrainer(Trainer):
                 )
         elif iter_criterion:
             log_message = "KL warmup for {} iterations".format(self.n_iter_kl_warmup)
-            n_iter_per_epochs_approx = ceil(
-                self.gene_dataset.nb_cells / self.batch_size
-            )
+            n_iter_per_epochs_approx = ceil(self.gene_dataset.n_cells / self.batch_size)
             n_total_iter_approx = self.n_epochs * n_iter_per_epochs_approx
             if self.n_iter_kl_warmup > n_total_iter_approx:
                 logger.info(

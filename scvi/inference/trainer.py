@@ -144,7 +144,7 @@ class Trainer:
 
                 for name, posterior in self._posteriors.items():
                     message = " ".join([s.capitalize() for s in name.split("_")[-2:]])
-                    if posterior.nb_cells < 5:
+                    if posterior.n_cells < 5:
                         logging.debug(
                             message + " is too small to track metrics (<5 samples)"
                         )
