@@ -93,7 +93,7 @@ class Trainer:
 
         # Data loader attributes
         self.batch_size = batch_size
-        self.data_loader_kwargs = {"batch_size": batch_size, "pin_memory": use_cuda}
+        self.data_loader_kwargs = {"pin_memory": use_cuda}
         data_loader_kwargs = data_loader_kwargs if data_loader_kwargs else dict()
         self.data_loader_kwargs.update(data_loader_kwargs)
 
@@ -438,6 +438,7 @@ class Trainer:
             shuffle=shuffle,
             indices=indices,
             use_cuda=self.use_cuda,
+            batch_size=self.batch_size,
             data_loader_kwargs=self.data_loader_kwargs,
         )
 

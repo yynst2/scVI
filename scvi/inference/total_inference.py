@@ -70,6 +70,7 @@ class TotalPosterior(Posterior):
         shuffle: bool = False,
         indices: Optional[np.ndarray] = None,
         use_cuda: bool = True,
+        batch_size: int = 256,
         data_loader_kwargs=dict(),
     ):
 
@@ -79,18 +80,8 @@ class TotalPosterior(Posterior):
             shuffle=shuffle,
             indices=indices,
             use_cuda=use_cuda,
+            batch_size=batch_size,
             data_loader_kwargs=data_loader_kwargs,
-        )
-        # Add protein tensor as another tensor to be loaded
-        # self.data_loader_kwargs.update(
-        #     {
-        #         "collate_fn": gene_dataset.collate_fn_builder(
-        #             {"protein_expression": np.float32}
-        #         )
-        #     }
-        # )
-        self.data_loader = DataLoader(
-            BioDataset(gene_dataset), **self.data_loader_kwargs
         )
 
     def corrupted(self):

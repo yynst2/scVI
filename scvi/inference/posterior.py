@@ -19,11 +19,7 @@ from sklearn.metrics import normalized_mutual_info_score as NMI
 from sklearn.metrics import silhouette_score
 from sklearn.mixture import GaussianMixture as GMM
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import (
-    SequentialSampler,
-    SubsetRandomSampler,
-    RandomSampler,
-)
+from torch.utils.data.sampler import SubsetRandomSampler
 
 from scvi.dataset import GeneExpressionDataset, BioDataset
 from scvi.inference.posterior_utils import (
@@ -59,6 +55,30 @@ logger = logging.getLogger(__name__)
 class SequentialSubsetSampler(SubsetRandomSampler):
     def __iter__(self):
         return iter(self.indices)
+
+
+class BatchSampler(torch.utils.data.sampler.Sampler):
+    def __init__(self, indices: np.ndarray, batch_size: int, shuffle: bool):
+        self.indices = indices
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+    def __iter__(self):
+        if self.shuffle is True:
+            idx = torch.randperm(len(self.indices)).tolist()
+        else:
+            idx = torch.arange(len(self.indices)).tolist()
+
+        data_iter = iter(
+            [
+                self.indices[idx[i : i + self.batch_size]]
+                for i in range(0, len(idx), self.batch_size)
+            ]
+        )
+        return data_iter
+
+    def __len__(self):
+        return len(self.indices) // self.batch_size
 
 
 class Posterior:
@@ -114,6 +134,7 @@ class Posterior:
         shuffle=False,
         indices=None,
         use_cuda=True,
+        batch_size=128,
         data_loader_kwargs=dict(),
     ):
         self.model = model
@@ -124,22 +145,22 @@ class Posterior:
         if indices is not None and shuffle:
             raise ValueError("indices is mutually exclusive with shuffle")
         if indices is None:
+            inds = np.arange(len(gene_dataset))
             if shuffle:
-                sampler = RandomSampler(gene_dataset)
+                sampler = BatchSampler(inds, batch_size=batch_size, shuffle=True)
             else:
-                sampler = SequentialSampler(gene_dataset)
+                sampler = BatchSampler(inds, batch_size=batch_size, shuffle=False)
         else:
             if hasattr(indices, "dtype") and indices.dtype is np.dtype("bool"):
                 indices = np.where(indices)[0].ravel()
-            sampler = SubsetRandomSampler(indices)
+            indices = np.asarray(indices)
+            sampler = BatchSampler(indices, batch_size=batch_size, shuffle=True)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
-        # self.data_loader_kwargs.update(
-        #     {"collate_fn": gene_dataset.collate_fn_builder(), "sampler": sampler}
-        # )
-        self.data_loader_kwargs.update(
-            {"sampler": sampler}
+        self.data_loader_kwargs.update({"sampler": sampler})
+        # do not touch batch size here, sampler gives batched indices
+        self.data_loader = DataLoader(
+            self.gene_dataset, batch_size=1, **self.data_loader_kwargs
         )
-        self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
         self.original_indices = self.indices
 
     def accuracy(self):
@@ -165,7 +186,7 @@ class Posterior:
             raise ValueError(
                 "{} already exists. Please provide an unexisting directory for saving.".format(
                     dir_path
-)
+                )
             )
         anndata_dataset = self.gene_dataset.to_anndata()
 
@@ -213,8 +234,8 @@ class Posterior:
     def __iter__(self):
         return map(self.to_cuda, iter(self.data_loader))
         # return  iter(self.data_loader)
-    
-    def to_cuda(self, tensors: Dict[str, torch.Tensor]) -> Dict[str,torch.Tensor]:
+
+    def to_cuda(self, tensors: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Converts list of tensors to cuda.
 
         Parameters
@@ -222,7 +243,7 @@ class Posterior:
         tensors
             tensors to convert
         """
-        return {k:(t.cuda() if self.use_cuda else t) for k,t in tensors.items()}
+        return {k: (t.cuda() if self.use_cuda else t) for k, t in tensors.items()}
         # return [t.cuda() if self.use_cuda else t for t in tensors]
 
     def update(self, data_loader_kwargs: dict) -> "Posterior":
@@ -256,8 +277,9 @@ class Posterior:
         """
         return self.update(
             {
-                "batch_size": batch_size,
-                "sampler": SequentialSubsetSampler(indices=self.indices),
+                "sampler": BatchSampler(
+                    indices=self.indices, batch_size=batch_size, shuffle=False
+                )
             }
         )
 
@@ -425,7 +447,7 @@ class Posterior:
         if len(self.gene_dataset) % batch_size == 1:
             batch_size += 1
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = self._unpack_tensors( tensors)
+            sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
             px_scales += [
                 np.array(
                     (
@@ -1344,7 +1366,7 @@ class Posterior:
         for batch in transform_batch:
             imputed_list_batch = []
             for tensors in self:
-                sample_batch, _, _, batch_index, labels = self._unpack_tensors( tensors)
+                sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
                 px_rate = self.model.get_sample_rate(
                     sample_batch,
                     batch_index=batch_index,
@@ -1389,7 +1411,7 @@ class Posterior:
         x_old = []
         x_new = []
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = self._unpack_tensors( tensors)
+            sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
 
             outputs = self.model.inference(
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
@@ -1466,7 +1488,7 @@ class Posterior:
         """
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            sample_batch, _, _, batch_index, labels = self._unpack_tensors( tensors)
+            sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
 
             outputs = self.model.inference(
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples

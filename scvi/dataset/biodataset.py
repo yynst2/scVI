@@ -48,7 +48,7 @@ class BioDataset(Dataset):
         """Sets up the getitem function
 
         By default, getitem will return every single item registered in the scvi data registry
-        and also set their type to np.float32. 
+        and also set their type to np.float32.
 
         If you want to specify which specific tensors to return you can pass in a List of keys from the scvi data registry
         If you want to speficy specific tensors to return as well as their associated types, then you can pass in a dictionary with their type.
@@ -57,7 +57,7 @@ class BioDataset(Dataset):
         ----------
         getitem_tensors:
             Either a list of keys in the scvi data registry to return when getitem is called
-            or 
+            or
 
         Example
         -------
@@ -138,12 +138,13 @@ class BioDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         data_numpy = {
-            key: get_from_registry(self.adata, key)[idx].astype(dtype)
-            if isinstance(get_from_registry(self.adata, key), np.ndarray)
-            else get_from_registry(self.adata, key)[idx]
-            .toarray()
-            .flatten()
-            .astype(dtype)
+            key: get_from_registry(self.adata, key)[idx]
+            for key, _ in self.attributes_and_types.items()
+        }
+        data_numpy = {
+            key: data_numpy[key].astype(dtype)
+            if isinstance(data_numpy[key], np.ndarray)
+            else data_numpy[key].toarray().flatten().astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
         # data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
