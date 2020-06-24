@@ -236,14 +236,13 @@ class SemiSupervisedTrainer(UnsupervisedTrainer):
         super().__init__(model, adata, **kwargs)
         self.model = model
         self.adata = adata
-
         self.n_epochs_classifier = n_epochs_classifier
         self.lr_classification = lr_classification
         self.classification_ratio = classification_ratio
         n_labelled_samples_per_class_array = [
             n_labelled_samples_per_class
         ] * self.adata.uns["scvi_summary_stats"]["n_labels"]
-        labels = np.array(get_from_registry(self.gene_dataset, _LABELS_KEY)).ravel()
+        labels = np.array(get_from_registry(self.adata, _LABELS_KEY)).ravel()
         np.random.seed(seed=seed)
         permutation_idx = np.random.permutation(len(labels))
         labels = labels[permutation_idx]

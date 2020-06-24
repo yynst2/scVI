@@ -146,8 +146,8 @@ class BioDataset(Dataset):
             .astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
-        data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
-        return data_torch
+        # data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
+        return data_numpy
 
     @property
     def n_cells(self) -> int:

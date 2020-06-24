@@ -61,7 +61,7 @@ def get_from_registry(adata, key: str):
     -------
     
     """
-    assert "scvi_data_registry" in adata.uns.keys(), "AnnData was never registered"
+    # assert "scvi_data_registry" in adata.uns.keys(), "AnnData was never registered"
     data_loc = adata.uns["scvi_data_registry"][key]
     df, df_key = data_loc[0], data_loc[1]
     data = getattr(adata, df)[df_key] if df is not None else getattr(adata, df_key)
@@ -269,17 +269,17 @@ def setup_anndata(
 
     if X_layers_key is None:
         X_loc = None
-        X_key = "X"
+        X_key = "_X"
     else:
         X_loc = "layers"
         X_key = X_layers_key
 
     data_registry = {
         _X_KEY: (X_loc, X_key),
-        _BATCH_KEY: ("obs", batch_key),
-        _LOCAL_L_MEAN_KEY: ("obs", local_l_mean_key),
-        _LOCAL_L_VAR_KEY: ("obs", local_l_var_key),
-        _LABELS_KEY: ("obs", labels_key),
+        _BATCH_KEY: ("_obs", batch_key),
+        _LOCAL_L_MEAN_KEY: ("_obs", local_l_mean_key),
+        _LOCAL_L_VAR_KEY: ("_obs", local_l_var_key),
+        _LABELS_KEY: ("_obs", labels_key),
     }
 
     n_batch = len(np.unique(adata.obs[batch_key]))
@@ -304,7 +304,7 @@ def setup_anndata(
         assert (
             scanvi_labeled_idx_key in adata.obs.keys()
         ), "{} is not a valid key in adata.obs".format(scanvi_labeled_idx_key)
-        data_registry[_SCANVI_LABELED_IDX_KEY] = ("obs", scanvi_labeled_idx_key)
+        data_registry[_SCANVI_LABELED_IDX_KEY] = ("_obs", scanvi_labeled_idx_key)
 
     _register_anndata(adata, data_registry_dict=data_registry)
 
