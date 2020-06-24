@@ -67,7 +67,7 @@ def get_from_registry(adata, key: str):
     data = getattr(adata, df)[df_key] if df is not None else getattr(adata, df_key)
     if isinstance(data, pd.Series):
         # get rid of tolist
-        data = np.array(data.values.tolist()).reshape(adata.shape[0], -1)
+        data = np.array(data.values).reshape(adata.shape[0], -1)
     return data
 
 

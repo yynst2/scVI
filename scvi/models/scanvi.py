@@ -184,7 +184,6 @@ class SCANVI(VAE):
         return [zs[0], z2]
 
     def forward(self, x, local_l_mean, local_l_var, batch_index=None, y=None):
-        pdb.set_trace()
         is_labelled = False if y is None else True
 
         outputs = self.inference(x, batch_index, y)

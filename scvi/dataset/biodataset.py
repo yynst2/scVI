@@ -84,7 +84,6 @@ class BioDataset(Dataset):
             raise ValueError(
                 "getitem_tensors invalid type. Expected: List[str] or Dict[str, type] or None"
             )
-
         for key in keys:
             assert (
                 key in registered_keys
@@ -140,13 +139,13 @@ class BioDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         data_numpy = {
             key: get_from_registry(self.adata, key)[idx].astype(dtype)
-            if isinstance(get_from_registry(self.adata, key)[idx], np.ndarray)
-            else get_from_registry(self.adata, key)[idx].toarray().astype(dtype)
+            if isinstance(get_from_registry(self.adata, key), np.ndarray)
+            else get_from_registry(self.adata, key)[idx]
+            .toarray()
+            .flatten()
+            .astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
-        # data_numpy = {
-        #     k: np.array([d]) if d.size == 1 else d for k, d in data_numpy.items()
-        # }
         data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
         return data_torch
 

@@ -109,7 +109,6 @@ class FCLayers(nn.Module):
         py:class:`torch.Tensor`
             tensor of shape ``(n_out,)``
         """
-        pdb.set_trace()
         one_hot_cat_list = []  # for generality in this list many indices useless.
         assert len(self.n_cat_list) <= len(
             cat_list
@@ -145,7 +144,6 @@ class FCLayers(nn.Module):
                                 ]
                             else:
                                 one_hot_cat_list_layer = one_hot_cat_list
-                            pdb.set_trace()
                             x = torch.cat((x, *one_hot_cat_list_layer), dim=-1)
                         x = layer(x)
         return x
