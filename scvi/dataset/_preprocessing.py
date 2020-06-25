@@ -3,58 +3,113 @@ import logging
 import pandas as pd
 import anndata
 import scipy.sparse as sp_sparse
-import scanpy as sc
+import copy
 
 from typing import Optional
+
+from .utils import _check_nonnegative_integers
 
 logger = logging.getLogger(__name__)
 
 
-def _seurat_v3_highly_variable_genes(
-    adata, n_top_genes: int = 4000, batch_key: str = None
-):
-    """An adapted implementation of the "vst" feature selection in Seurat v3.
+def highly_variable_genes_seurat_v3(
+    adata: anndata.AnnData,
+    layer: Optional[str] = None,
+    n_top_genes: int = 2000,
+    batch_key: Optional[str] = None,
+    span: Optional[float] = 0.3,
+    subset: bool = False,
+    inplace: bool = True,
+) -> Optional[pd.DataFrame]:
+    """\
+    Implements highly variable gene selection using the `vst` method in Seurat v3.
 
-        This function will be replaced once it's full implemented in scanpy
-        https://github.com/theislab/scanpy/pull/1182
+    Expects count data.
 
-        For further details of the arithmetic see https://www.overleaf.com/read/ckptrbgzzzpg
+    This is a temporary implementation that will be replaced by the one in Scanpy.
+    For further implemenation details see https://www.overleaf.com/read/ckptrbgzzzpg
 
     Parameters
     ----------
     adata
-        anndata object
+        The annotated data matrix of shape `n_obs` × `n_vars`. Rows correspond
+        to cells and columns to genes.
+    layer
+        If provided, use `adata.layers[layer]` for expression values instead of `adata.X`.
     n_top_genes
-        How many variable genes to return
+        Number of highly-variable genes to keep. Mandatory if `flavor='seurat_v3'`.
+    span
+        The fraction of the data (cells) used when estimating the variance in the loess
+        model fit if `flavor='seurat_v3'`.
+    subset
+        Inplace subset to highly-variable genes if `True` otherwise merely indicate
+        highly variable genes.
+    inplace
+        Whether to place calculated metrics in `.var` or return them.
     batch_key
-        key in adata.obs that contains batch info. If None, do not use batch info
+        If specified, highly-variable genes are selected within each batch separately and merged.
+        This simple process avoids the selection of batch-specific genes and acts as a
+        lightweight batch correction method. Genes are first sorted by how many batches
+        they are a HVG. Ties are broken by the median (across batches) rank based on
+        within-batch normalized variance.
 
+    Returns
+    -------
+    Depending on `inplace` returns calculated metrics (:class:`~pd.DataFrame`) or
+    updates `.var` with the following fields
+
+    highly_variable : bool
+        boolean indicator of highly-variable genes
+    **means**
+        means per gene
+    **variances**
+        variance per gene
+    **variances_norm**
+        normalized variance per gene, averaged in the case of multiple batches
+    highly_variable_rank : float
+        Rank of the gene according to normalized variance, median rank in the case of multiple batches
+    highly_variable_nbatches : int
+        If batch_key is given, this denotes in how many batches genes are detected as HVG
     """
-
     from scanpy.preprocessing._utils import _get_mean_var
-    from skmisc.loess import loess
+
+    try:
+        from skmisc.loess import loess
+    except ImportError:
+        raise ImportError(
+            "Please install skmisc package via `pip install --user scikit-misc"
+        )
+
+    X = adata.layers[layer] if layer is not None else adata.X
+    if _check_nonnegative_integers(X) is False:
+        raise ValueError(
+            "`pp.highly_variable_genes` with `flavor='seurat_v3'` expects "
+            "raw count data."
+        )
 
     if batch_key is None:
         batch_info = pd.Categorical(np.zeros(adata.shape[0], dtype=int))
     else:
-        batch_info = adata.obs[batch_key]
+        batch_info = adata.obs[batch_key].values
 
     norm_gene_vars = []
     for b in np.unique(batch_info):
 
-        mean, var = _get_mean_var(adata[batch_info == b].X)
+        ad = adata[batch_info == b]
+        X = ad.layers[layer] if layer is not None else ad.X
+
+        mean, var = _get_mean_var(X)
         not_const = var > 0
-        estimat_var = np.zeros(adata.shape[1])
+        estimat_var = np.zeros(adata.shape[1], dtype=np.float64)
 
         y = np.log10(var[not_const])
         x = np.log10(mean[not_const])
-
-        model = loess(x, y, span=0.3, degree=2)
+        model = loess(x, y, span=span, degree=2)
         model.fit()
         estimat_var[not_const] = model.outputs.fitted_values
         reg_std = np.sqrt(10 ** estimat_var)
 
-        batch_counts = adata[batch_info == b].X.astype(np.float64).copy()
+        batch_counts = X.astype(np.float64).copy()
         # clip large values as in Seurat
         N = np.sum(batch_info == b)
         vmax = np.sqrt(N)
@@ -82,152 +137,107 @@ def _seurat_v3_highly_variable_genes(
         norm_gene_vars.append(norm_gene_var.reshape(1, -1))
 
     norm_gene_vars = np.concatenate(norm_gene_vars, axis=0)
-    # argsort twice gives ranks
-    ranked_norm_gene_vars = np.argsort(np.argsort(norm_gene_vars, axis=1), axis=1)
-    median_norm_gene_vars = np.median(norm_gene_vars, axis=0)
-    median_ranked = np.median(ranked_norm_gene_vars, axis=0)
+    # argsort twice gives ranks, small rank means most variable
+    ranked_norm_gene_vars = np.argsort(np.argsort(-norm_gene_vars, axis=1), axis=1)
+
+    # this is done in SelectIntegrationFeatures() in Seurat v3
+    ranked_norm_gene_vars = ranked_norm_gene_vars.astype(np.float32)
+    ranked_norm_gene_vars[ranked_norm_gene_vars >= n_top_genes] = np.nan
+    median_ranked = np.nanmedian(ranked_norm_gene_vars, axis=0)
 
     num_batches_high_var = np.sum(
-        ranked_norm_gene_vars >= (adata.X.shape[1] - n_top_genes), axis=0
+        (ranked_norm_gene_vars < n_top_genes).astype(int), axis=0
     )
     df = pd.DataFrame(index=np.array(adata.var_names))
     df["highly_variable_nbatches"] = num_batches_high_var
-    df["highly_variable_median_rank"] = median_ranked
+    df["highly_variable_rank"] = median_ranked
+    df["variances_norm"] = np.mean(norm_gene_vars, axis=0)
+    df["means"] = mean
+    df["variances"] = var
 
-    df["highly_variable_median_variance"] = median_norm_gene_vars
     df.sort_values(
-        ["highly_variable_nbatches", "highly_variable_median_rank"],
-        ascending=False,
+        ["highly_variable_rank", "highly_variable_nbatches"],
+        ascending=[True, False],
         na_position="last",
         inplace=True,
     )
     df["highly_variable"] = False
-    df.loc[:n_top_genes, "highly_variable"] = True
+    df.loc[: int(n_top_genes), "highly_variable"] = True
     df = df.loc[adata.var_names]
 
-    adata.var["highly_variable"] = df["highly_variable"].values
-    if len(np.unique(batch_info)) > 1:
-        batches = adata.obs[batch_key].cat.categories
-        adata.var["highly_variable_nbatches"] = df["highly_variable_nbatches"].values
-        adata.var["highly_variable_intersection"] = df[
-            "highly_variable_nbatches"
-        ] == len(batches)
-    adata.var["highly_variable_median_rank"] = df["highly_variable_median_rank"].values
-    adata.var["highly_variable_median_variance"] = df[
-        "highly_variable_median_variance"
-    ].values
-
-
-def highly_variable_genes(
-    adata: anndata.AnnData,
-    n_top_genes: int = None,
-    flavor: Optional[str] = "seurat_v3",
-    batch_correction: Optional[bool] = True,
-    **highly_var_genes_kwargs,
-) -> pd.DataFrame:
-    """\
-    Code adapted from the scanpy package
-    Annotate highly variable genes [Satija15]_ [Zheng17]_ [Stuart19]_.
-    Depending on `flavor`, this reproduces the R-implementations of Seurat v2 and earlier
-    [Satija15]_ and Cell Ranger [Zheng17]_, and Seurat v3 [Stuart19]_.
-
-    Parameters
-    ----------
-    n_top_genes
-        Number of highly-variable genes to keep. Mandatory for Seurat v3
-    flavor
-        Choose the flavor for computing normalized dispersion. One of "seurat_v2", "cell_ranger",
-        "seurat_v3". In their default workflows, Seurat v2 passes the cutoffs whereas Cell Ranger passes
-        `n_top_genes`.
-    batch_correction
-        Whether batches should be taken into account during procedure
-    **highly_var_genes_kwargs
-        Kwargs to feed to highly_variable_genes when using
-        the Seurat V2 flavor.
-
-    Returns
-    -------
-    type
-        scanpy .var DataFrame providing genes information including means, dispersions
-        and whether the gene is tagged highly variable (key `highly_variable`)
-        (see scanpy highly_variable_genes documentation)
-
-    """
-
-    if flavor not in ["seurat_v2", "seurat_v3", "cell_ranger"]:
-        raise ValueError(
-            "Choose one of the following flavors: 'seurat_v2', 'seurat_v3', 'cell_ranger'"
+    if inplace or subset:
+        adata.uns["hvg"] = {"flavor": "seurat_v3"}
+        logger.hint(
+            "added\n"
+            "    'highly_variable', boolean vector (adata.var)\n"
+            "    'highly_variable_rank', float vector (adata.var)\n"
+            "    'means', float vector (adata.var)\n"
+            "    'variances', float vector (adata.var)\n"
+            "    'variances_norm', float vector (adata.var)"
         )
-
-    if flavor == "seurat_v3" and n_top_genes is None:
-        raise ValueError("n_top_genes must not be None with flavor=='seurat_v3'")
-
-    logger.info("extracting highly variable genes using {} flavor".format(flavor))
-
-    # Creating AnnData structure
-    obs = pd.DataFrame(
-        data=dict(batch=self.batch_indices.squeeze()), index=np.arange(self.nb_cells),
-    ).astype("category")
-
-    counts = self.X.copy()
-    adata = sc.AnnData(X=counts, obs=obs)
-    batch_key = "batch" if (batch_correction and self.n_batches >= 2) else None
-    if flavor != "seurat_v3":
-        if flavor == "seurat_v2":
-            # name expected by scanpy
-            flavor = "seurat"
-        # Counts normalization
-        sc.pp.normalize_total(adata, target_sum=1e4)
-        # logarithmed data
-        sc.pp.log1p(adata)
-
-        # Finding top genes
-        sc.pp.highly_variable_genes(
-            adata=adata,
-            n_top_genes=n_top_genes,
-            flavor=flavor,
-            batch_key=batch_key,
-            inplace=True,  # inplace=False looks buggy
-            **highly_var_genes_kwargs,
+        adata.var["highly_variable"] = df["highly_variable"].values
+        adata.var["highly_variable_rank"] = df["highly_variable_rank"].values
+        adata.var["means"] = df["means"].values
+        adata.var["variances"] = df["variances"].values
+        adata.var["variances_norm"] = df["variances_norm"].values.astype(
+            "float64", copy=False
         )
-    elif flavor == "seurat_v3":
-        _seurat_v3_highly_variable_genes(
-            adata, n_top_genes=n_top_genes, batch_key=batch_key
-        )
+        if batch_key is not None:
+            adata.var["highly_variable_nbatches"] = df[
+                "highly_variable_nbatches"
+            ].values
+        if subset:
+            adata._inplace_subset_var(df["highly_variable"].values)
     else:
-        raise ValueError(
-            "flavor should be one of 'seurat_v2', 'cell_ranger', 'seurat_v3'"
-        )
-
-    return adata.var
+        if batch_key is None:
+            df = df.drop(["highly_variable_nbatches"], axis=1)
+        return df
 
 
-def corrupt(self, rate: float = 0.1, corruption: str = "uniform"):
-    """Forms a corrupted_X attribute containing a corrupted version of X.
+def corrupt(
+    adata: anndata.AnnData,
+    layer: Optional[str] = None,
+    rate: Optional[float] = 0.1,
+    corruption: Optional[str] = "uniform",
+    layer_key_added: Optional[str] = "corrupted_X",
+):
+    """Forms a `corrupted_X` layer containing a corrupted version of X.
 
-    Sub-samples ``rate * self.X.shape[0] * self.X.shape[1]`` entries
+    Sub-samples ``rate * adata.shape[0] * adata.shape[1]`` entries
     and perturbs them according to the ``corruption`` method.
     Namely:
         - "uniform" multiplies the count by a Bernouilli(0.9)
         - "binomial" replaces the count with a Binomial(count, 0.2)
-    A corrupted version of ``self.X`` is stored in ``self.corrupted_X``.
 
     Parameters
     ----------
+    adata
+        The annotated data matrix of shape `n_obs` × `n_vars`. Rows correspond
+        to cells and columns to genes.
+    layer
+        If provided, use `adata.layers[layer]` for expression values instead of `adata.X`.
     rate
         Rate of corrupted entries.
     corruption
         Corruption method.
+    layer_key_added
+        key added to `adata.layers`
+
+    Returns
+    -------
+    Adds `.layers[layer_key_added]` with corrupted version of the data.
+
     """
-    self.corrupted_X = copy.deepcopy(self.X)
+    X = adata.layers[layer] if layer is not None else adata.X
+    corrupted_X = copy.deepcopy(X)
     if corruption == "uniform":  # multiply the entry n with a Ber(0.9) random variable.
-        i, j = self.X.nonzero()
+        i, j = X.nonzero()
         ix = np.random.choice(len(i), int(np.floor(rate * len(i))), replace=False)
         i, j = i[ix], j[ix]
-        self.corrupted_X[i, j] = np.squeeze(
+        corrupted_X[i, j] = np.squeeze(
             np.asarray(
                 np.multiply(
-                    self.X[i, j],
+                    X[i, j],
                     np.random.binomial(n=np.ones(len(ix), dtype=np.int32), p=0.9),
                 )
             )
@@ -235,14 +245,16 @@ def corrupt(self, rate: float = 0.1, corruption: str = "uniform"):
     elif (
         corruption == "binomial"
     ):  # replace the entry n with a Bin(n, 0.2) random variable.
-        i, j = (k.ravel() for k in np.indices(self.X.shape))
+        i, j = (k.ravel() for k in np.indices(X.shape))
         ix = np.random.choice(len(i), int(np.floor(rate * len(i))), replace=False)
         i, j = i[ix], j[ix]
-        self.corrupted_X[i, j] = np.squeeze(
-            np.asarray(np.random.binomial(n=(self.X[i, j]).astype(np.int32), p=0.2))
+        corrupted_X[i, j] = np.squeeze(
+            np.asarray(np.random.binomial(n=(X[i, j]).astype(np.int32), p=0.2))
         )
     else:
         raise NotImplementedError("Unknown corruption method.")
+
+    adata.layers[layer_key_added] = corrupted_X
 
 
 def organize_cite_seq_cell_ranger(adata):

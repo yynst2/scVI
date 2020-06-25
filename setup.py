@@ -24,7 +24,6 @@ requirements = [
     "statsmodels",
     "scanpy>=1.4",
     'dataclasses; python_version < "3.7"',  # for `dataclass`
-    "scikit-misc",
 ]
 
 setup_requirements = ["pip>=18.1"]
@@ -51,6 +50,7 @@ extras_requirements = {
         "umap-learn>=0.3.10",
         "seaborn>=0.9.0",
         "leidenalg>=0.7.0",
+        "scikit-misc>=0.1.3",
     ],
     "docs": [
         "sphinx>=2.0.1",
