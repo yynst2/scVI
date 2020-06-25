@@ -144,7 +144,7 @@ class BioDataset(Dataset):
         data_numpy = {
             key: data_numpy[key].astype(dtype)
             if isinstance(data_numpy[key], np.ndarray)
-            else data_numpy[key].toarray().flatten().astype(dtype)
+            else data_numpy[key].toarray().astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
         # data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}

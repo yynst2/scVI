@@ -1454,11 +1454,11 @@ class Posterior:
         return x_new.numpy(), x_old.numpy()
 
     def _unpack_tensors(self, tensors):
-        x = tensors[_X_KEY]
-        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
-        local_l_var = tensors[_LOCAL_L_VAR_KEY]
-        batch_index = tensors[_BATCH_KEY]
-        y = tensors[_LABELS_KEY]
+        x = tensors[_X_KEY].squeeze_(0)
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY].squeeze_(0)
+        local_l_var = tensors[_LOCAL_L_VAR_KEY].squeeze_(0)
+        batch_index = tensors[_BATCH_KEY].squeeze_(0)
+        y = tensors[_LABELS_KEY].squeeze_(0)
         return x, local_l_mean, local_l_var, batch_index, y
 
     @torch.no_grad()
