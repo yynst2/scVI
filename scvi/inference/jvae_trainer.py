@@ -13,6 +13,14 @@ from scvi.inference import Trainer
 from scvi.models.log_likelihood import compute_elbo
 
 logger = logging.getLogger(__name__)
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
+    _PROTEIN_EXP_KEY,
+)
 
 
 class JPosterior(Posterior):
@@ -237,9 +245,11 @@ class JVAETrainer(Trainer):
         kl_divergences = []
         losses = []
         total_batch_size = 0
-        for (i, (sample_batch, l_mean, l_var, batch_index, labels, *_)) in enumerate(
-            tensors
-        ):
+        for i, data in enumerate(tensors):
+            pdb.set_trace()
+            sample_batch, l_mean, l_var, batch_index, labels, *_ = self._unpack_tensors(
+                data
+            )
             reconstruction_loss, kl_divergence, _ = self.model(
                 sample_batch, l_mean, l_var, batch_index, mode=i
             )
@@ -257,6 +267,14 @@ class JVAETrainer(Trainer):
 
         averaged_loss = torch.stack(losses).sum() / total_batch_size
         return averaged_loss
+
+    def _unpack_tensors(self, tensors):
+        x = tensors[_X_KEY].squeeze_(0)
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY].squeeze_(0)
+        local_l_var = tensors[_LOCAL_L_VAR_KEY].squeeze_(0)
+        batch_index = tensors[_BATCH_KEY].squeeze_(0)
+        y = tensors[_LABELS_KEY].squeeze_(0)
+        return x, local_l_mean, local_l_var, batch_index, y
 
     def get_discriminator_confusion(self) -> np.ndarray:
         """A good mixing should lead to a uniform matrix.

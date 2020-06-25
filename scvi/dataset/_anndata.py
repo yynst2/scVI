@@ -6,6 +6,7 @@ import logging
 import pandas as pd
 
 from typing import Dict, Tuple, Union
+from scvi.dataset._utils import _compute_library_size_batch, _check_nonnegative_integers
 from scvi.dataset._constants import (
     _X_KEY,
     _BATCH_KEY,
@@ -21,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 def _register_anndata(adata, data_registry_dict: Dict[str, Tuple[str, str]]):
     """Registers the AnnData object by adding data_registry_dict to adata.uns
-    
+
     Format is: {<scvi_key>: (<anndata dataframe>, <dataframe key> )}
-    Example: 
+    Example:
     {"batch" :("obs", "batch_idx")}
     {"X": (None, "X")}
- 
+
     Parameters
     ----------
     adata
@@ -49,17 +50,17 @@ def _register_anndata(adata, data_registry_dict: Dict[str, Tuple[str, str]]):
 
 def get_from_registry(adata, key: str):
     """Returns an the object in Anndata associated the key in adata.uns['scvi_data_registry']
-    
+
     Parameters
     ----------
     adata
         anndata object
     key
         key of object to get from adata.uns['scvi_data_registry']
-    
+
     Returns
     -------
-    
+
     """
     # assert "scvi_data_registry" in adata.uns.keys(), "AnnData was never registered"
     data_loc = adata.uns["scvi_data_registry"][key]
@@ -68,97 +69,6 @@ def get_from_registry(adata, key: str):
     if isinstance(data, pd.Series):
         data = np.array(data.values).reshape(adata.shape[0], -1)
     return data
-
-
-def _compute_library_size(
-    data: Union[sp_sparse.csr_matrix, np.ndarray]
-) -> Tuple[np.ndarray, np.ndarray]:
-    sum_counts = data.sum(axis=1)
-    masked_log_sum = np.ma.log(sum_counts)
-    if np.ma.is_masked(masked_log_sum):
-        logger.warning(
-            "This dataset has some empty cells, this might fail scVI inference."
-            "Data should be filtered with `my_dataset.filter_cells_by_count()"
-        )
-    log_counts = masked_log_sum.filled(0)
-    local_mean = (np.mean(log_counts).reshape(-1, 1)).astype(np.float32)
-    local_var = (np.var(log_counts).reshape(-1, 1)).astype(np.float32)
-    return local_mean, local_var
-
-
-def compute_library_size_batch(
-    adata,
-    batch_key: str,
-    local_l_mean_key: str = None,
-    local_l_var_key: str = None,
-    X_layers_key=None,
-    copy: bool = False,
-):
-    """Computes the library size  
-
-    Parameters
-    ----------
-    adata 
-        anndata object containing counts
-    batch_key
-        key in obs for batch information
-    local_l_mean_key
-        key in obs to save the local log mean
-    local_l_var_key
-        key in obs to save the local log variance 
-    X_layers_key
-        if not None, will use this in adata.layers[] for X
-    copy
-        if True, returns a copy of the adata
-
-    Returns
-    -------
-    type
-        anndata.AnnData if copy was True, else None
-
-    """
-    assert batch_key in adata.obs_keys(), "batch_key not valid key in obs dataframe"
-    local_means = np.zeros((adata.shape[0], 1))
-    local_vars = np.zeros((adata.shape[0], 1))
-    batch_indices = adata.obs[batch_key]
-    for i_batch in np.unique(batch_indices):
-        idx_batch = np.squeeze(batch_indices == i_batch)
-        if X_layers_key is not None:
-            assert (
-                X_layers_key in adata.layers.keys()
-            ), "X_layers_key not a valid key for adata.layers"
-            data = adata[idx_batch].layers[X_layers_key]
-        else:
-            data = adata[idx_batch].X
-        (local_means[idx_batch], local_vars[idx_batch],) = _compute_library_size(data)
-    if local_l_mean_key is None:
-        local_l_mean_key = "_scvi_local_l_mean"
-    if local_l_var_key is None:
-        local_l_var_key = "_scvi_local_l_var"
-
-    if copy:
-        copy = adata.copy()
-        copy.obs[local_l_mean_key] = local_means
-        copy.obs[local_l_var_key] = local_vars
-        return copy
-    else:
-        adata.obs[local_l_mean_key] = local_means
-        adata.obs[local_l_var_key] = local_vars
-
-
-def _check_nonnegative_integers(X: Union[np.ndarray, sp_sparse.csr_matrix]):
-    """Checks values of X to ensure it is count data
-    """
-
-    data = X if type(X) is np.ndarray else X.data
-    # Check no negatives
-    if np.any(data < 0):
-        return False
-    # Check all are integers
-    elif np.any(~np.equal(np.mod(data, 1), 0)):
-        return False
-    else:
-        return True
 
 
 def setup_anndata(
@@ -171,7 +81,7 @@ def setup_anndata(
     scanvi_labeled_idx_key: str = None,
     copy: bool = False,
 ):
-    """Sets up anndata object for scVI models. This method will compute the log mean and log variance per batch. 
+    """Sets up anndata object for scVI models. This method will compute the log mean and log variance per batch.
     A mapping will be created between in
 
     Parameters
@@ -184,7 +94,7 @@ def setup_anndata(
         key in adata.obs for label information. Will automatically be converted into integer categories
     X_layers_key
         if not None, uses this as the key in adata.layers for raw count
-    protein_expression_obsm_key 
+    protein_expression_obsm_key
         key in adata.obsm for protein expression data
     protein_names_uns_key
         key in adata.uns for protein names
@@ -258,7 +168,7 @@ def setup_anndata(
 
     logger.info("Computing library size prior per batch")
 
-    compute_library_size_batch(
+    _compute_library_size_batch(
         adata,
         batch_key=batch_key,
         local_l_mean_key=local_l_mean_key,

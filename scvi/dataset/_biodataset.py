@@ -95,6 +95,7 @@ class BioDataset(Dataset):
         return self.adata.shape[0]
 
     def normalize(self):
+        # TODO change to add a layer in anndata and update registry, store as sparse?
         X = get_from_registry(self.adata, "X")
         scaling_factor = X.mean(axis=1)
         self.norm_X = X / scaling_factor.reshape(len(scaling_factor), 1)
