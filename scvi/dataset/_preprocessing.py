@@ -7,7 +7,7 @@ import copy
 
 from typing import Optional
 
-from .utils import _check_nonnegative_integers
+from ._utils import _check_nonnegative_integers
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ import anndata
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from scvi.dataset import GeneExpressionDataset, BioDataset
+from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior import Posterior
 
 IN_COLAB = "google.colab" in sys.modules

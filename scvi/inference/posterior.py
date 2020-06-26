@@ -21,7 +21,7 @@ from sklearn.mixture import GaussianMixture as GMM
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from scvi.dataset import GeneExpressionDataset, BioDataset
+from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior_utils import (
     entropy_batch_mixing,
     plot_imputation,
@@ -156,10 +156,10 @@ class Posterior:
             indices = np.asarray(indices)
             sampler = BatchSampler(indices, batch_size=batch_size, shuffle=True)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
-        self.data_loader_kwargs.update({"sampler": sampler})
         # do not touch batch size here, sampler gives batched indices
+        self.data_loader_kwargs.update({"sampler": sampler, "batch_size":None})
         self.data_loader = DataLoader(
-            self.gene_dataset, batch_size=1, **self.data_loader_kwargs
+            self.gene_dataset, **self.data_loader_kwargs
         )
         self.original_indices = self.indices
 
@@ -413,7 +413,7 @@ class Posterior:
         >>> self.data_loader = old_loader
         """
         sampler = SubsetRandomSampler(idx)
-        self.data_loader_kwargs.update({"sampler": sampler})
+        self.data_loader_kwargs.update({"sampler": sampler, 'batch_size': None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
 
     @torch.no_grad()

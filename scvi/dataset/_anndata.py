@@ -142,7 +142,12 @@ def setup_anndata(
 
     # check the datatype of batches. if theyre not integers, make them ints
     user_batch_dtype = adata.obs[batch_key].dtype
-    if np.issubdtype(user_batch_dtype, np.integer) is False:
+    if user_batch_dtype.name == "category":
+        adata.obs["_scvi_batch"] = adata.obs[batch_key].astype("category").cat.codes
+        batch_key = "_scvi_batch"
+
+    # this fails if user_batch_dtype is a category
+    elif np.issubdtype(user_batch_dtype, np.integer) is False:
         adata.obs["_scvi_batch"] = adata.obs[batch_key].astype("category").cat.codes
         batch_key = "_scvi_batch"
 
@@ -158,7 +163,11 @@ def setup_anndata(
 
     # check the datatype of labels. if theyre not integers, make them ints
     user_labels_dtype = adata.obs[labels_key].dtype
-    if np.issubdtype(user_labels_dtype, np.integer) is False:
+    user_batch_dtype = adata.obs[batch_key].dtype
+    if user_labels_dtype.name == "category":
+        adata.obs["_scvi_labels"] = adata.obs[batch_key].cat.codes
+        batch_key = "_scvi_labels"
+    elif np.issubdtype(user_labels_dtype, np.integer) is False:
         adata.obs["_scvi_labels"] = adata.obs[labels_key].astype("category").cat.codes
         labels_key = "_scvi_labels"
 

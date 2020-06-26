@@ -12,7 +12,7 @@ from scipy.stats import spearmanr
 from scvi.inference import Posterior
 from . import UnsupervisedTrainer
 
-from scvi.dataset import BioDataset
+from scvi.dataset._biodataset import BioDataset
 from scvi.models import TOTALVI, Classifier
 from scvi.models.utils import one_hot
 from scvi.dataset._constants import (

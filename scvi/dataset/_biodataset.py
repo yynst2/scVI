@@ -8,7 +8,8 @@ import logging
 
 from torch.utils.data import Dataset
 from typing import Union, List, Dict, Tuple
-from scvi.dataset.utils import get_from_registry, _check_nonnegative_integers
+from scvi.dataset._anndata import get_from_registry
+from scvi.dataset._utils import _check_nonnegative_integers
 
 logger = logging.getLogger(__name__)
 

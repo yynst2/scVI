@@ -12,7 +12,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.stats import entropy, kde
 from sklearn.neighbors import KNeighborsRegressor, NearestNeighbors
 
-from scvi.dataset import AnnDatasetFromAnnData
+from scvi.dataset.anndataset import AnnDatasetFromAnnData
 
 
 def load_posterior(

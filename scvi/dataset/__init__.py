@@ -1,2 +1,3 @@
-from scvi.dataset.utils import setup_anndata
-from scvi.dataset.preprocessing import *
+from scvi.dataset._anndata import setup_anndata
+from scvi.dataset._preprocessing import *
+from scvi.dataset.dataset import GeneExpressionDataset

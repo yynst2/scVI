@@ -16,7 +16,7 @@ from scvi.inference import Posterior
 from scvi.inference import Trainer
 from scvi.inference.inference import UnsupervisedTrainer
 from scvi.inference.posterior import unsupervised_clustering_accuracy
-from scvi.dataset.utils import get_from_registry
+from scvi.dataset._anndata import get_from_registry
 from scvi.dataset._constants import _LABELS_KEY
 
 logger = logging.getLogger(__name__)
