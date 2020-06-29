@@ -1,7 +1,7 @@
 import logging
 import pdb
 import copy
-from typing import Union
+from typing import Union, List
 
 import matplotlib.pyplot as plt
 import torch
@@ -32,16 +32,12 @@ class UnsupervisedTrainer(Trainer):
     gene_dataset
         A gene_dataset instance like ``CortexDataset()``
     train_size
-        The train size, either a float between 0 and 1 or an integer for the number of training samples
-        to use Default: ``0.8``.
+        The train size, a float between 0 and 1 representing proportion of dataset to use for training
+        to use Default: ``0.9``.
     test_size
-        The test size, either a float between 0 and 1 or an integer for the number of training samples
+        The test size,  a float between 0 and 1 representing proportion of dataset to use for testing
         to use Default: ``None``, which is equivalent to data not in the train set. If ``train_size`` and ``test_size``
-        do not add to 1 or the length of the dataset then the remaining samples are added to a ``validation_set``.
-    test_size
-        The test size, either a float between 0 and 1 or an integer for the number of training samples
-        to use Default: ``None``, which is equivalent to data not in the train set. If ``train_size`` and ``test_size``
-        do not add to 1 or the length of the dataset then the remaining samples are added to a ``validation_set``.
+        do not add to 1 then the remaining samples are added to a ``validation_set``.
     **kwargs
         Other keywords arguments from the general Trainer class.
 
@@ -87,13 +83,19 @@ class UnsupervisedTrainer(Trainer):
         self,
         model,
         gene_dataset: anndata.AnnData,
-        train_size: Union[int, float] = 0.8,
+        gene_dataset: GeneExpressionDataset,
+        train_size: Union[int, float] = 0.9,
         test_size: Union[int, float] = None,
         n_iter_kl_warmup: Union[int, None] = None,
         n_epochs_kl_warmup: Union[int, None] = 400,
         normalize_loss: bool = None,
         **kwargs
     ):
+        train_size = float(train_size)
+        if train_size > 1.0 or train_size <= 0.0:
+            raise ValueError(
+                "train_size needs to be greater than 0 and less than or equal to 1"
+            )
         super().__init__(model, gene_dataset, **kwargs)
 
         # Set up number of warmup iterations
@@ -128,13 +130,17 @@ class UnsupervisedTrainer(Trainer):
     def posteriors_loop(self):
         return ["train_set"]
 
-    def loss(self, tensors):
+    def loss(self, tensors: dict, feed_labels: bool = True):
         sample_batch = tensors[_X_KEY]
         local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
         local_l_var = tensors[_LOCAL_L_VAR_KEY]
         batch_index = tensors[_BATCH_KEY]
         y = tensors[_LABELS_KEY]
 
+        # The next lines should not be modified, because scanVI's trainer inherits
+        # from this class and should NOT include label information to compute the ELBO by default
+        if not feed_labels:
+            y = None
         reconst_loss, kl_divergence_local, kl_divergence_global = self.model(
             sample_batch, local_l_mean, local_l_var, batch_index, y
         )

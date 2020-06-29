@@ -105,10 +105,10 @@ class ClassifierTrainer(Trainer):
     gene_dataset
         A gene_dataset instance like ``CortexDataset()``
     train_size
-        The train size, either a float between 0 and 1 or and integer for the number of training samples
-        to use Default: ``0.8``.
+        The train size, a float between 0 and 1 representing proportion of dataset to use for training
+        to use Default: ``0.9``.
     test_size
-        The test size, either a float between 0 and 1 or and integer for the number of test samples
+        The test size, a float between 0 and 1 representing proportion of dataset to use for testing
         to use Default: ``None``.
     sampling_model
         Model with z_encoder with which to first transform data.
@@ -133,13 +133,18 @@ class ClassifierTrainer(Trainer):
     def __init__(
         self,
         *args,
-        train_size=0.8,
+        train_size=0.9,
         test_size=None,
         sampling_model=None,
         sampling_zl=False,
         use_cuda=True,
         **kwargs
     ):
+        train_size = float(train_size)
+        if train_size > 1.0 or train_size <= 0.0:
+            raise ValueError(
+                "train_size needs to be greater than 0 and less than or equal to 1"
+            )
         self.sampling_model = sampling_model
         self.sampling_zl = sampling_zl
         super().__init__(*args, use_cuda=use_cuda, **kwargs)
@@ -285,7 +290,7 @@ class SemiSupervisedTrainer(UnsupervisedTrainer):
         super().__setattr__(key, value)
 
     def loss(self, tensors_all, tensors_labelled):
-        loss = super().loss(tensors_all)
+        loss = super().loss(tensors_all, feed_labels=False)
         sample_batch, _, _, _, y = tensors_labelled
         classification_loss = F.cross_entropy(
             self.model.classify(sample_batch), y.view(-1)

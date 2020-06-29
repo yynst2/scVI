@@ -357,7 +357,7 @@ class Trainer:
         self,
         model=None,
         gene_dataset=None,
-        train_size=0.1,
+        train_size=0.9,
         test_size=None,
         type_class=Posterior,
     ):
@@ -368,9 +368,9 @@ class Trainer:
         Parameters
         ----------
         train_size :
-            float, int, or None (default is 0.1)
+            float, or None (default is 0.9)
         test_size :
-            float, int, or None (default is None)
+            float, or None (default is None)
         model :
              (Default value = None)
         gene_dataset :
@@ -382,6 +382,12 @@ class Trainer:
         -------
 
         """
+        train_size = float(train_size)
+        if train_size > 1.0 or train_size <= 0.0:
+            raise ValueError(
+                "train_size needs to be greater than 0 and less than or equal to 1"
+            )
+
         model = self.model if model is None and hasattr(self, "model") else model
         # what to do here if it has the attribute modle
         gene_dataset = (

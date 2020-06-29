@@ -1185,10 +1185,10 @@ class TotalTrainer(UnsupervisedTrainer):
     gene_dataset
         A gene_dataset instance like ``CbmcDataset()`` with attribute ``protein_expression``
     train_size
-        The train size, either a float between 0 and 1 or and integer for the number of training samples
+        The train size, a float between 0 and 1 representing proportion of dataset to use for training
         to use Default: ``0.90``.
     test_size
-        The test size, either a float between 0 and 1 or and integer for the number of training samples
+        The test size, a float between 0 and 1 representing proportion of dataset to use for testing
         to use Default: ``0.10``. Note that if train and test do not add to 1 the remainder is placed in a validation set
     pro_recons_weight
         Scaling factor on the reconstruction loss for proteins. Default: ``1.0``.
@@ -1228,6 +1228,11 @@ class TotalTrainer(UnsupervisedTrainer):
         early_stopping_kwargs: Union[dict, str, None] = "auto",
         **kwargs,
     ):
+        train_size = float(train_size)
+        if train_size > 1.0 or train_size <= 0.0:
+            raise ValueError(
+                "train_size needs to be greater than 0 and less than or equal to 1"
+            )
         assert (
             "scvi_data_registry" in dataset.uns_keys()
         ), "Please register your anndata first"
