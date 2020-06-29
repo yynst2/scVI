@@ -83,7 +83,6 @@ class UnsupervisedTrainer(Trainer):
         self,
         model,
         gene_dataset: anndata.AnnData,
-        gene_dataset: GeneExpressionDataset,
         train_size: Union[int, float] = 0.9,
         test_size: Union[int, float] = None,
         n_iter_kl_warmup: Union[int, None] = None,

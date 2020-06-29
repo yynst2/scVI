@@ -147,20 +147,33 @@ class Posterior:
         if indices is None:
             inds = np.arange(len(gene_dataset))
             if shuffle:
-                sampler = BatchSampler(inds, batch_size=batch_size, shuffle=True)
+                sampler_kwargs = {
+                    "indices": inds,
+                    "batch_size": batch_size,
+                    "shuffle": True,
+                }
             else:
-                sampler = BatchSampler(inds, batch_size=batch_size, shuffle=False)
+                sampler_kwargs = {
+                    "indices": inds,
+                    "batch_size": batch_size,
+                    "shuffle": False,
+                }
         else:
             if hasattr(indices, "dtype") and indices.dtype is np.dtype("bool"):
                 indices = np.where(indices)[0].ravel()
             indices = np.asarray(indices)
-            sampler = BatchSampler(indices, batch_size=batch_size, shuffle=True)
+            sampler_kwargs = {
+                "indices": indices,
+                "batch_size": batch_size,
+                "shuffle": True,
+            }
+
+        self.sampler_kwargs = sampler_kwargs
+        sampler = BatchSampler(**self.sampler_kwargs)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
         # do not touch batch size here, sampler gives batched indices
-        self.data_loader_kwargs.update({"sampler": sampler, "batch_size":None})
-        self.data_loader = DataLoader(
-            self.gene_dataset, **self.data_loader_kwargs
-        )
+        self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
+        self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
         self.original_indices = self.indices
 
     def accuracy(self):
@@ -266,6 +279,11 @@ class Posterior:
         )
         return posterior
 
+    def update_batch_size(self, batch_size):
+        self.sampler_kwargs.update({"batch_size": batch_size})
+        sampler = BatchSampler(**self.sampler_kwargs)
+        return self.update({"sampler": sampler, "batch_size": None})
+
     def sequential(self, batch_size: Optional[int] = 128) -> "Posterior":
         """Returns a copy of the object that iterate over the data sequentially.
 
@@ -275,13 +293,12 @@ class Posterior:
             New batch size.
 
         """
-        return self.update(
-            {
-                "sampler": BatchSampler(
-                    indices=self.indices, batch_size=batch_size, shuffle=False
-                )
-            }
-        )
+        self.sampler_kwargs = {
+            "indices": self.indices,
+            "batch_size": batch_size,
+            "shuffle": False,
+        }
+        return self.update({"sampler": BatchSampler(**self.sampler_kwargs)})
 
     def corrupted(self) -> "Posterior":
         """Corrupts gene counts."""
@@ -412,8 +429,10 @@ class Posterior:
         >>> # Do not forget next line!
         >>> self.data_loader = old_loader
         """
-        sampler = SubsetRandomSampler(idx)
-        self.data_loader_kwargs.update({"sampler": sampler, 'batch_size': None})
+        # sampler = SubsetRandomSampler(idx)
+        self.sampler_kwargs.update({'indices': idx})
+        sampler = BatchSampler(**self.sampler_kwargs)
+        self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
 
     @torch.no_grad()
@@ -441,12 +460,15 @@ class Posterior:
 
         px_scales = []
         all_labels = []
+
+        # mod this batch_size
+
         batch_size = max(
-            self.data_loader_kwargs["batch_size"] // M_sampling, 2
+            self.sampler_kwargs["batch_size"] // M_sampling, 2
         )  # Reduce batch_size on GPU
         if len(self.gene_dataset) % batch_size == 1:
             batch_size += 1
-        for tensors in self.update({"batch_size": batch_size}):
+        for tensors in self.update_batch_size(batch_size):
             sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
             px_scales += [
                 np.array(
@@ -1410,7 +1432,7 @@ class Posterior:
         assert self.model.reconstruction_loss in ["zinb", "nb", "poisson"]
         x_old = []
         x_new = []
-        for tensors in self.update({"batch_size": batch_size}):
+        for tensors in self.update_batch_size(batch_size):
             sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
 
             outputs = self.model.inference(
@@ -1454,11 +1476,11 @@ class Posterior:
         return x_new.numpy(), x_old.numpy()
 
     def _unpack_tensors(self, tensors):
-        x = tensors[_X_KEY].squeeze_(0)
-        local_l_mean = tensors[_LOCAL_L_MEAN_KEY].squeeze_(0)
-        local_l_var = tensors[_LOCAL_L_VAR_KEY].squeeze_(0)
-        batch_index = tensors[_BATCH_KEY].squeeze_(0)
-        y = tensors[_LABELS_KEY].squeeze_(0)
+        x = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        y = tensors[_LABELS_KEY]
         return x, local_l_mean, local_l_var, batch_index, y
 
     @torch.no_grad()
@@ -1487,7 +1509,7 @@ class Posterior:
 
         """
         posterior_list = []
-        for tensors in self.update({"batch_size": batch_size}):
+        for tensors in self.update_batch_size(batch_size):
             sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
 
             outputs = self.model.inference(
