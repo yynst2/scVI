@@ -19,7 +19,6 @@ from sklearn.metrics import normalized_mutual_info_score as NMI
 from sklearn.metrics import silhouette_score
 from sklearn.mixture import GaussianMixture as GMM
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler
 
 from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior_utils import (
@@ -50,11 +49,6 @@ from scvi.dataset._constants import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class SequentialSubsetSampler(SubsetRandomSampler):
-    def __iter__(self):
-        return iter(self.indices)
 
 
 class BatchSampler(torch.utils.data.sampler.Sampler):
