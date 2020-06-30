@@ -337,7 +337,7 @@ class TotalPosterior(Posterior):
         labels = []
         library_gene = []
         for tensors in self:
-            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
 
             give_mean = not sample
             latent += [
@@ -450,7 +450,7 @@ class TotalPosterior(Posterior):
         """
         px_dropouts = []
         for tensors in self:
-            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             outputs = self.model.inference(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -504,7 +504,7 @@ class TotalPosterior(Posterior):
         if (transform_batch is None) or (isinstance(transform_batch, int)):
             transform_batch = [transform_batch]
         for tensors in self:
-            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             py_mixing = torch.zeros_like(y)
             if n_samples > 1:
                 py_mixing = torch.stack(n_samples * [py_mixing])
@@ -568,7 +568,7 @@ class TotalPosterior(Posterior):
         """
         scales = []
         for tensors in self:
-            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             model_scale = self.model.get_sample_scale(
                 x,
                 y,
@@ -767,7 +767,7 @@ class TotalPosterior(Posterior):
                     x,
                     y,
                     batch_index=batch_index,
-                    label=labels,
+                    label=label,
                     n_samples=n_samples,
                     transform_batch=transform_batch,
                 )
