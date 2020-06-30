@@ -167,7 +167,7 @@ def highly_variable_genes_seurat_v3(
 
     if inplace or subset:
         adata.uns["hvg"] = {"flavor": "seurat_v3"}
-        logger.hint(
+        logger.info(
             "added\n"
             "    'highly_variable', boolean vector (adata.var)\n"
             "    'highly_variable_rank', float vector (adata.var)\n"
