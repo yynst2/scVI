@@ -145,9 +145,10 @@ def highly_variable_genes_seurat_v3(
     ranked_norm_gene_vars[ranked_norm_gene_vars >= n_top_genes] = np.nan
     median_ranked = np.nanmedian(ranked_norm_gene_vars, axis=0)
 
-    num_batches_high_var = np.sum(
-        (ranked_norm_gene_vars < n_top_genes).astype(int), axis=0
-    )
+    with np.errstate(invalid="ignore"):
+        num_batches_high_var = np.sum(
+            (ranked_norm_gene_vars < n_top_genes).astype(int), axis=0
+        )
     df = pd.DataFrame(index=np.array(adata.var_names))
     df["highly_variable_nbatches"] = num_batches_high_var
     df["highly_variable_rank"] = median_ranked
