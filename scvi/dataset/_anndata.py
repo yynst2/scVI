@@ -220,9 +220,15 @@ def setup_anndata(
         if protein_names_uns_key is None and isinstance(
             adata.obsm[protein_expression_obsm_key], pd.DataFrame
         ):
-            list(adata.obsm[protein_expression_obsm_key].columns)
-
-            pdb.set_trace()
+            summary_stats["protein_names"] = list(
+                adata.obsm[protein_expression_obsm_key].columns
+            )
+        elif protein_names_uns_key is not None:
+            summary_stats["protein_names"] = adata.uns[protein_names_uns_key]
+        else:
+            summary_stats["protein_names"] = np.arange(
+                adata.obsm[protein_expression_obsm_key].shape[1]
+            )
 
     if scanvi_labeled_idx_key is not None:
         assert (

@@ -164,5 +164,21 @@ class BioDataset(Dataset):
         """
         return self.adata.shape[1]
 
+    @property
+    def protein_names(self) -> List[str]:
+        """Returns list of protein names
+        """
+        if "protein_names" in self.adata.uns["scvi_summary_stats"].keys():
+            return self.adata.uns["scvi_summary_stats"]["protein_names"]
+        else:
+            return None
+
+    @property
+    def protein_expression(self) -> np.ndarray:
+        if "protein_expression" in self.adata.uns["scvi_data_registry"].keys():
+            return get_from_registry(self.adata, "protein_expression")
+        else:
+            return None
+
     def to_anndata(self,) -> anndata.AnnData:
         return self.adata.copy()
