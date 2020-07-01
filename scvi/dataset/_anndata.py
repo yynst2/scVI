@@ -163,10 +163,10 @@ def setup_anndata(
 
     # check the datatype of labels. if theyre not integers, make them ints
     user_labels_dtype = adata.obs[labels_key].dtype
-    user_batch_dtype = adata.obs[batch_key].dtype
     if user_labels_dtype.name == "category":
-        adata.obs["_scvi_labels"] = adata.obs[batch_key].cat.codes
-        batch_key = "_scvi_labels"
+        # this is a little weird. must make it category first or else its series?
+        adata.obs["_scvi_labels"] = adata.obs[batch_key].astype("category").cat.codes
+        labels_key = "_scvi_labels"
     elif np.issubdtype(user_labels_dtype, np.integer) is False:
         adata.obs["_scvi_labels"] = adata.obs[labels_key].astype("category").cat.codes
         labels_key = "_scvi_labels"
@@ -193,11 +193,11 @@ def setup_anndata(
         X_key = X_layers_key
 
     data_registry = {
-        _X_KEY: (X_loc, X_key),
-        _BATCH_KEY: ("_obs", batch_key),
-        _LOCAL_L_MEAN_KEY: ("_obs", local_l_mean_key),
-        _LOCAL_L_VAR_KEY: ("_obs", local_l_var_key),
-        _LABELS_KEY: ("_obs", labels_key),
+        _X_KEY: [X_loc, X_key],
+        _BATCH_KEY: ["obs", batch_key],
+        _LOCAL_L_MEAN_KEY: ["obs", local_l_mean_key],
+        _LOCAL_L_VAR_KEY: ["obs", local_l_var_key],
+        _LABELS_KEY: ["obs", labels_key],
     }
 
     n_batch = len(np.unique(adata.obs[batch_key]))
@@ -217,6 +217,12 @@ def setup_anndata(
         ), "{} is not a valid key in adata.obsm".format(protein_expression_obsm_key)
         data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
         summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
+        if protein_names_uns_key is None and isinstance(
+            adata.obsm[protein_expression_obsm_key], pd.DataFrame
+        ):
+            list(adata.obsm[protein_expression_obsm_key].columns)
+
+            pdb.set_trace()
 
     if scanvi_labeled_idx_key is not None:
         assert (

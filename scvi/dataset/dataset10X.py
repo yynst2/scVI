@@ -1,9 +1,11 @@
 import logging
+import pdb
+import scanpy
 import os
 import pickle
 import tarfile
 from typing import Tuple
-
+from scvi.dataset import setup_anndata
 import numpy as np
 import pandas as pd
 import scipy.io as sp_io
@@ -15,6 +17,7 @@ from scvi.dataset.dataset import CellMeasurement, DownloadableDataset, _download
 logger = logging.getLogger(__name__)
 
 available_datasets = {
+    # these can made manually
     "1.1.0": [
         "frozen_pbmc_donor_a",
         "frozen_pbmc_donor_b",
@@ -31,6 +34,8 @@ available_datasets = {
         "cytotoxic_t",
         "naive_cytotoxic",
     ],
+    "1.3.0": ["1M_neurons"],
+    # all of these can be h5 files
     "2.1.0": ["pbmc8k", "pbmc4k", "t_3k", "t_4k", "neuron_9k"],
     "3.0.0": [
         "pbmc_1k_protein_v3",
@@ -61,24 +66,36 @@ dataset_to_group = dict(
     ]
 )
 
+# standardize this later
 group_to_url_skeleton = {
     "1.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices.tar.gz",
+    "1.3.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices_h5.h5",
     "2.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices.tar.gz",
-    "3.0.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_feature_bc_matrix.tar.gz",
-    "3.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_feature_bc_matrix.tar.gz",
+    "3.0.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices._h5.h5",
+    "3.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matries._h5.h5",
 }
 
 group_to_filename_skeleton = {
     "1.1.0": "{}_gene_bc_matrices.tar.gz",
-    "2.1.0": "{}_gene_bc_matrices.tar.gz",
-    "3.0.0": "{}_feature_bc_matrix.tar.gz",
-    "3.1.0": "{}_feature_bc_matrix.tar.gz",
+    "2.1.0": "{}_gene_bc_matrices_h5.h5",
+    "3.0.0": "{}_feature_bc_matrix_h5.h5",
+    "3.1.0": "{}_feature_bc_matrix_h5.h5",
 }
 
 available_specification = ["filtered", "raw"]
 
 
-class Dataset10X(DownloadableDataset):
+def dataset10X(
+    dataset_name: str = None,
+    filename: str = None,
+    save_path: str = "data/10X",
+    url: str = None,
+    is_filtered: bool = True,
+    dense: bool = False,
+    measurement_names_column: int = 1,
+    remove_extracted_data: bool = False,
+    delayed_populating: bool = False,
+):
     """Loads a file from `10x <http://cf.10xgenomics.com/>`_ website.
 
     Parameters
@@ -114,51 +131,40 @@ class Dataset10X(DownloadableDataset):
     >>> tenX_dataset = Dataset10X("neuron_9k")
     """
 
-    def __init__(
-        self,
-        dataset_name: str = None,
-        filename: str = None,
-        save_path: str = "data/10X",
-        url: str = None,
-        type: str = "filtered",
-        dense: bool = False,
-        measurement_names_column: int = 1,
-        remove_extracted_data: bool = False,
-        delayed_populating: bool = False,
-    ):
-        self.barcodes = None
-        self.dense = dense
-        self.measurement_names_column = measurement_names_column
-        self.remove_extracted_data = remove_extracted_data
-
-        # form data url and filename unless manual override
-        if dataset_name is not None:
-            if url is not None:
-                logger.warning("dataset_name provided, manual url is disregarded.")
-            if filename is not None:
-                logger.warning("dataset_name provided, manual filename is disregarded.")
-            group = dataset_to_group[dataset_name]
-            url_skeleton = group_to_url_skeleton[group]
-            url = url_skeleton.format(group, dataset_name, dataset_name, type)
-            filename_skeleton = group_to_filename_skeleton[group]
-            filename = filename_skeleton.format(type)
-            save_path = os.path.join(save_path, dataset_name)
-        elif filename is not None and url is not None:
-            logger.debug("Loading 10X dataset with custom url and filename")
-        elif filename is not None and url is None:
-            logger.debug("Loading local 10X dataset with custom filename")
-        else:
-            logger.debug("Loading extracted local 10X dataset with custom filename")
-        super().__init__(
-            urls=url,
-            filenames=filename,
-            save_path=save_path,
-            delayed_populating=delayed_populating,
-        )
+    self.barcodes = None
+    self.dense = dense
+    self.measurement_names_column = measurement_names_column
+    self.remove_extracted_data = remove_extracted_data
+    self.save_path = save_path
+    # form data url and filename unless manual override
+    if dataset_name is not None:
+        if url is not None:
+            logger.warning("dataset_name provided, manual url is disregarded.")
+        if filename is not None:
+            logger.warning("dataset_name provided, manual filename is disregarded.")
+        group = dataset_to_group[dataset_name]
+        url_skeleton = group_to_url_skeleton[group]
+        url = url_skeleton.format(group, dataset_name, dataset_name, type)
+        filename_skeleton = group_to_filename_skeleton[group]
+        filename = filename_skeleton.format(type)
+        save_path = os.path.join(save_path, dataset_name)
+    elif filename is not None and url is not None:
+        logger.debug("Loading 10X dataset with custom url and filename")
+    elif filename is not None and url is None:
+        logger.debug("Loading local 10X dataset with custom filename")
+    else:
+        logger.debug("Loading extracted local 10X dataset with custom filename")
+    print(url)
+    _download(url, save_path=save_path, filename=filename)
+    pdb.set_trace()
+    path_to_data, suffix = self.find_path_to_data()
+    # print(path_to_data)
+    # self.adata = scanpy.read_10x_h5(os.path.join(save_path, filename))
+    self.adata = scanpy.read_10x_mtx(path_to_data)
+    # setup_anndata(adata, )
 
     def populate(self):
         logger.info("Preprocessing dataset")
-
         was_extracted = False
         if len(self.filenames) > 0:
             file_path = os.path.join(self.save_path, self.filenames[0])

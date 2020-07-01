@@ -69,9 +69,9 @@ def compute_reconstruction_error(vae, posterior, **kwargs):
     # Iterate once over the posterior and computes the reconstruction error
     log_lkl = 0
     for i_batch, tensors in enumerate(posterior):
-        sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors[
-            :5
-        ]  # general fish case
+        sample_batch = tensors[_X_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
 
         # Distribution parameters
         outputs = vae.inference(sample_batch, batch_index, labels, **kwargs)
@@ -111,7 +111,12 @@ def compute_marginal_log_likelihood_scvi(vae, posterior, n_samples_mc=100):
     # Uses MC sampling to compute a tighter lower bound on log p(x)
     log_lkl = 0
     for i_batch, tensors in enumerate(posterior):
-        sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors
+        sample_batch = tensors[_X_KEY]
+        local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+        local_l_var = tensors[_LOCAL_L_VAR_KEY]
+        batch_index = tensors[_BATCH_KEY]
+        labels = tensors[_LABELS_KEY]
+
         to_sum = torch.zeros(sample_batch.size()[0], n_samples_mc)
 
         for i in range(n_samples_mc):

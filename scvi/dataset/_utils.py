@@ -1,10 +1,61 @@
 import scipy.sparse as sp_sparse
+import pdb
 import logging
 import numpy as np
+import os
+import urllib.request
 
 from typing import Union, Tuple
 
 logger = logging.getLogger(__name__)
+
+from scvi.dataset._constants import (
+    _X_KEY,
+    _BATCH_KEY,
+    _LOCAL_L_MEAN_KEY,
+    _LOCAL_L_VAR_KEY,
+    _LABELS_KEY,
+    _PROTEIN_EXP_KEY,
+)
+
+
+def _download(url: str, save_path: str, filename: str):
+    """Writes data from url to file.
+    """
+    if os.path.exists(os.path.join(save_path, filename)):
+        logger.info("File %s already downloaded" % (os.path.join(save_path, filename)))
+        return
+    print("actual")
+    print(url)
+    r = urllib.request.urlopen(url)
+    logger.info("Downloading file at %s" % os.path.join(save_path, filename))
+
+    def read_iter(file, block_size=1000):
+        """Given a file 'file', returns an iterator that returns bytes of
+        size 'blocksize' from the file, using read().
+        """
+        while True:
+            block = file.read(block_size)
+            if not block:
+                break
+            yield block
+
+    # Create the path to save the data
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    with open(os.path.join(save_path, filename), "wb") as f:
+        for data in read_iter(r):
+            f.write(data)
+
+
+def _unpack_tensors(tensors):
+    x = tensors[_X_KEY]
+    local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+    local_l_var = tensors[_LOCAL_L_VAR_KEY]
+    batch_index = tensors[_BATCH_KEY]
+    y = tensors[_LABELS_KEY]
+    return x, local_l_mean, local_l_var, batch_index, y
 
 
 def _compute_library_size(
