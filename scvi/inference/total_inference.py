@@ -1355,7 +1355,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = self.unpack_tensors(tensors)
+        ) = self._unpack_tensors(tensors)
 
         z = self.model.sample_from_posterior_z(
             sample_batch_X, sample_batch_Y, batch_index, give_mean=False
