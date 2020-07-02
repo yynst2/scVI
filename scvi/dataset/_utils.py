@@ -180,6 +180,7 @@ def _get_batch_mask_protein_data(
 
     """
     pro_exp = adata.obsm[protein_expression_obsm_key]
+    pro_exp = pro_exp.to_numpy() if type(pro_exp) is pd.DataFrame else pro_exp
     batches = adata.obs[batch_key].values
     batch_mask = []
     for b in np.unique(batches):
