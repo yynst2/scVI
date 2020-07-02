@@ -1373,7 +1373,7 @@ class TotalTrainer(UnsupervisedTrainer):
                 kappa = 1 - self.kl_weight
             else:
                 kappa = self.kappa
-            batch_index = tensors_dict[_BATCH_KEY]
+            batch_index = tensors_dict[0][_BATCH_KEY]
             if kappa > 0:
                 z = self._get_z(tensors_dict)
                 # Train discriminator
