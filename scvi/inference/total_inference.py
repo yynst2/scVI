@@ -1375,7 +1375,7 @@ class TotalTrainer(UnsupervisedTrainer):
                 kappa = self.kappa
             batch_index = tensors_dict[0][_BATCH_KEY]
             if kappa > 0:
-                z = self._get_z(tensors_dict)
+                z = self._get_z(*tensors_dict)
                 # Train discriminator
                 d_loss = self.loss_discriminator(z.detach(), batch_index, True)
                 d_loss *= kappa
@@ -1389,7 +1389,7 @@ class TotalTrainer(UnsupervisedTrainer):
 
             # Train generative model
             self.optimizer.zero_grad()
-            self.current_loss = loss = self.loss(tensors_dict)
+            self.current_loss = loss = self.loss(*tensors_dict)
             if kappa > 0:
                 (loss + fool_loss).backward()
             else:
