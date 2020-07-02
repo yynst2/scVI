@@ -180,7 +180,7 @@ def _get_batch_mask_protein_data(
 
     """
     pro_exp = adata.obsm[protein_expression_obsm_key]
-    batches = adata.obs[batch_key]
+    batches = adata.obs[batch_key].values
     batch_mask = []
     for b in np.unique(batches):
         b_inds = np.where(batches.ravel() == b)[0]
