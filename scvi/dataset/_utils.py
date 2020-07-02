@@ -1,4 +1,6 @@
 import scipy.sparse as sp_sparse
+import pandas as pd
+import anndata
 import pdb
 import logging
 import numpy as np
@@ -118,7 +120,7 @@ def _compute_library_size_batch(
             data = adata[idx_batch].layers[X_layers_key]
         else:
             data = adata[idx_batch].X
-        (local_means[idx_batch], local_vars[idx_batch],) = _compute_library_size(data)
+        (local_means[idx_batch], local_vars[idx_batch]) = _compute_library_size(data)
     if local_l_mean_key is None:
         local_l_mean_key = "_scvi_local_l_mean"
     if local_l_var_key is None:
@@ -134,11 +136,20 @@ def _compute_library_size_batch(
         adata.obs[local_l_var_key] = local_vars
 
 
-def _check_nonnegative_integers(X: Union[np.ndarray, sp_sparse.csr_matrix]):
+def _check_nonnegative_integers(
+    X: Union[pd.DataFrame, np.ndarray, sp_sparse.csr_matrix]
+):
     """Checks values of X to ensure it is count data
     """
 
-    data = X if type(X) is np.ndarray else X.data
+    if type(X) is np.ndarray:
+        data = X
+    elif issubclass(type(X), sp_sparse.spmatrix):
+        data = X.data
+    elif type(X) is pd.DataFrame:
+        data = X.to_numpy()
+    else:
+        raise TypeError("X type not understood")
     # Check no negatives
     if np.any(data < 0):
         return False
@@ -149,7 +160,9 @@ def _check_nonnegative_integers(X: Union[np.ndarray, sp_sparse.csr_matrix]):
         return True
 
 
-def _get_batch_mask_cell_measurement(self, attribute_name: str):
+def _get_batch_mask_protein_data(
+    adata: anndata.AnnData, protein_expression_obsm_key: str, batch_key: str
+):
     """Returns a list with length number of batches where each entry is a mask over present
     cell measurement columns
 
@@ -166,11 +179,12 @@ def _get_batch_mask_cell_measurement(self, attribute_name: str):
         over datasets.
 
     """
+    pro_exp = adata.obsm[protein_expression_obsm_key]
+    batches = adata.obs[batch_key]
     batch_mask = []
-    for b in np.unique(self.batch_indices.ravel()):
-        batch_sum = getattr(self, attribute_name)[
-            np.where(self.batch_indices.ravel() == b)[0], :
-        ].sum(axis=0)
+    for b in np.unique(batches):
+        b_inds = np.where(batches.ravel() == b)[0]
+        batch_sum = pro_exp[b_inds, :].sum(axis=0)
         all_zero = batch_sum == 0
         batch_mask.append(~all_zero)
 

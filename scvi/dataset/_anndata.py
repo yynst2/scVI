@@ -6,7 +6,11 @@ import logging
 import pandas as pd
 
 from typing import Dict, Tuple, Union
-from scvi.dataset._utils import _compute_library_size_batch, _check_nonnegative_integers
+from scvi.dataset._utils import (
+    _compute_library_size_batch,
+    _check_nonnegative_integers,
+    _get_batch_mask_protein_data,
+)
 from scvi.dataset._constants import (
     _X_KEY,
     _BATCH_KEY,
@@ -215,6 +219,13 @@ def setup_anndata(
         assert (
             protein_expression_obsm_key in adata.obsm.keys()
         ), "{} is not a valid key in adata.obsm".format(protein_expression_obsm_key)
+        pro_exp = adata.obsm[protein_expression_obsm_key]
+        if _check_nonnegative_integers(pro_exp) is False:
+            logger.warning(
+                "adata.obsm[{}] does not contain unnormalized count data. Are you sure this is what you want?".format(
+                    protein_expression_obsm_key
+                )
+            )
         data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
         summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
         if protein_names_uns_key is None and isinstance(
@@ -229,6 +240,14 @@ def setup_anndata(
             summary_stats["protein_names"] = np.arange(
                 adata.obsm[protein_expression_obsm_key].shape[1]
             )
+        # batch mask totalVI
+        batch_mask = _get_batch_mask_protein_data(
+            adata, protein_expression_obsm_key, batch_key
+        )
+        # check if it's actually needed
+        if sum(sum([~b for b in batch_mask])) > 0:
+            logger.info("Found batches with missing protein expression")
+            adata.uns["totalvi_batch_mask"] = batch_mask
 
     if scanvi_labeled_idx_key is not None:
         assert (
@@ -246,4 +265,3 @@ def setup_anndata(
     adata.uns["scvi_summary_stats"] = summary_stats
     if copy:
         return adata
-
