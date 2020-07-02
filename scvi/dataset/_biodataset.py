@@ -1,4 +1,5 @@
 import torch
+import pandas as pd
 import pdb
 import anndata
 import copy
@@ -140,13 +141,16 @@ class BioDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         data_numpy = {
-            key: get_from_registry(self.adata, key)[idx]
+            key: get_from_registry(self.adata, key)
             for key, _ in self.attributes_and_types.items()
         }
+
         data_numpy = {
-            key: data_numpy[key].astype(dtype)
+            key: data_numpy[key][idx].astype(dtype)
             if isinstance(data_numpy[key], np.ndarray)
-            else data_numpy[key].toarray().astype(dtype)
+            else data_numpy[key].iloc[idx, :].to_numpy().astype(dtype)
+            if isinstance(data_numpy[key], pd.DataFrame)
+            else data_numpy[key][idx].toarray().astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
         # data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
