@@ -1261,7 +1261,7 @@ class TotalTrainer(UnsupervisedTrainer):
             discriminator = Classifier(
                 n_input=self.model.n_latent,
                 n_hidden=32,
-                n_labels=self.gene_dataset.n_batches,
+                n_labels=self.gene_dataset.uns["scvi_summary_stats"]["n_batch"],
                 n_layers=2,
                 logits=True,
             )
