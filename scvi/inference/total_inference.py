@@ -1329,7 +1329,7 @@ class TotalTrainer(UnsupervisedTrainer):
         self, z, batch_index, predict_true_class=True, return_details=True
     ):
 
-        n_classes = self.gene_dataset.n_batches
+        n_classes = self.gene_dataset.uns["scvi_summary_stats"]["n_batch"]
         cls_logits = torch.nn.LogSoftmax(dim=1)(self.discriminator(z))
 
         if predict_true_class:
