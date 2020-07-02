@@ -4,7 +4,7 @@ import anndata
 from ._synthetic import _generate_synthetic
 
 
-def synthetic_scrna_protein(
+def synthetic_iid(
     batch_size: Optional[int] = 200,
     n_genes: Optional[int] = 100,
     n_proteins: Optional[int] = 100,
