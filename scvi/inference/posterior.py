@@ -219,7 +219,7 @@ class Posterior:
         sampler_kwargs = pd.Series(
             {key: vals for key, vals in self.sampler_kwargs.items()}
         )
-        sampler_kwargs = sampler_kwargs[~data_loader_kwargs.index.isin(["indices"])]
+        sampler_kwargs = sampler_kwargs[~sampler_kwargs.index.isin(["indices"])]
         sampler_kwargs.to_hdf(
             os.path.join(dir_path, "sampler_kwargs.h5"), key="sampler"
         )
