@@ -23,7 +23,7 @@ requirements = [
     "anndata>=0.7.3",
     "scanpy>=1.5.1",
     'dataclasses; python_version < "3.7"',  # for `dataclass`
-    "pytables>=3.6.1",  # read_hdf pandas in load_posterior
+    "tables>=3.6.1",  # read_hdf pandas in load_posterior
 ]
 
 setup_requirements = ["pip>=18.1"]
