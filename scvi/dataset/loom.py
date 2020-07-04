@@ -3,6 +3,7 @@ import os
 
 import loompy
 import numpy as np
+import pandas as pd
 from anndata import AnnData
 
 from scvi.dataset import setup_anndata
@@ -47,7 +48,7 @@ def retina(save_path: str = "data/") -> AnnData:
         cell_types[i] for i in adata.obs["ClusterID"].values.astype(int).ravel()
     ]
     del adata.obs["ClusterID"]
-    adata.obs["batch"] = adata.obs["BatchID"].values.copy()
+    adata.obs["batch"] = pd.Categorical(adata.obs["BatchID"].values.copy())
     del adata.obs["BatchID"]
 
     setup_anndata(adata, labels_key="labels", batch_key="batch")
