@@ -25,7 +25,7 @@ def cortex(save_path: str = "data/"):
 
 
 def _load_cortex_txt(path_to_file):
-    logger.info("Loading Cortex data")
+    logger.info("Loading Cortex data from {}".format(path_to_file))
     rows = []
     gene_names = []
     with open(path_to_file, "r") as csvfile:
