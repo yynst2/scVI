@@ -215,6 +215,15 @@ class Posterior:
             os.path.join(dir_path, "data_loader_kwargs.h5"), key="data_loader"
         )
         np.save(file=os.path.join(dir_path, "indices.npy"), arr=np.array(self.indices))
+
+        sampler_kwargs = pd.Series(
+            {key: vals for key, vals in self.sampler_kwargs.items()}
+        )
+        sampler_kwargs = sampler_kwargs[~sampler_kwargs.index.isin(["indices"])]
+        sampler_kwargs.to_hdf(
+            os.path.join(dir_path, "sampler_kwargs.h5"), key="sampler"
+        )
+
         pass
 
     @property
@@ -424,7 +433,7 @@ class Posterior:
         >>> self.data_loader = old_loader
         """
         # sampler = SubsetRandomSampler(idx)
-        self.sampler_kwargs.update({'indices': idx})
+        self.sampler_kwargs.update({"indices": idx})
         sampler = BatchSampler(**self.sampler_kwargs)
         self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)

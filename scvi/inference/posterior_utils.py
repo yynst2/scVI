@@ -12,8 +12,6 @@ from scipy.optimize import linear_sum_assignment
 from scipy.stats import entropy, kde
 from sklearn.neighbors import KNeighborsRegressor, NearestNeighbors
 
-from scvi.dataset.anndataset import AnnDatasetFromAnnData
-
 
 def load_posterior(
     dir_path: str,
@@ -63,6 +61,7 @@ def load_posterior(
     model_path = os.path.join(dir_path, "model_params.pt")
     indices_path = os.path.join(dir_path, "indices.npy")
     data_loader_kwargs_path = os.path.join(dir_path, "data_loader_kwargs.h5")
+    sampler_kwargs_path = os.path.join(dir_path, "sampler_kwargs.h5")
 
     # Infering posterior type
     with open(post_type_path, "r") as post_file:
@@ -81,14 +80,6 @@ def load_posterior(
 
     # Loading dataset and associated measurements
     ad = anndata.read_h5ad(filename=dataset_path)
-    key = "cell_measurements_col_mappings"
-    if key in ad.uns:
-        cell_measurements_col_mappings = ad.uns[key]
-    else:
-        cell_measurements_col_mappings = dict()
-    dataset = AnnDatasetFromAnnData(
-        ad=ad, cell_measurements_col_mappings=cell_measurements_col_mappings
-    )
 
     # Loading scVI model
     if use_cuda == "auto":
@@ -107,11 +98,13 @@ def load_posterior(
     data_loader_kwargs = pd.read_hdf(
         data_loader_kwargs_path, key="data_loader"
     ).to_dict()
+    sampler_kwargs = pd.read_hdf(sampler_kwargs_path, key="sampler").to_dict()
     my_post = post_class(
         model=model,
-        gene_dataset=dataset,
-        shuffle=False,
+        gene_dataset=ad,
+        shuffle=sampler_kwargs["shuffle"],
         indices=indices,
+        batch_size=sampler_kwargs["batch_size"],
         use_cuda=use_cuda,
         data_loader_kwargs=data_loader_kwargs,
         **posterior_kwargs

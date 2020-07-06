@@ -180,7 +180,8 @@ class BioDataset(Dataset):
     @property
     def protein_expression(self) -> np.ndarray:
         if "protein_expression" in self.adata.uns["scvi_data_registry"].keys():
-            return get_from_registry(self.adata, "protein_expression")
+            pe = get_from_registry(self.adata, "protein_expression")
+            return pe.to_numpy() if type(pe) is pd.DataFrame else pe
         else:
             return None
 

@@ -1261,7 +1261,7 @@ class TotalTrainer(UnsupervisedTrainer):
             discriminator = Classifier(
                 n_input=self.model.n_latent,
                 n_hidden=32,
-                n_labels=self.gene_dataset.n_batches,
+                n_labels=self.gene_dataset.uns["scvi_summary_stats"]["n_batch"],
                 n_layers=2,
                 logits=True,
             )
@@ -1329,7 +1329,7 @@ class TotalTrainer(UnsupervisedTrainer):
         self, z, batch_index, predict_true_class=True, return_details=True
     ):
 
-        n_classes = self.gene_dataset.n_batches
+        n_classes = self.gene_dataset.uns["scvi_summary_stats"]["n_batch"]
         cls_logits = torch.nn.LogSoftmax(dim=1)(self.discriminator(z))
 
         if predict_true_class:
@@ -1355,7 +1355,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = self.unpack_tensors(tensors)
+        ) = self._unpack_tensors(tensors)
 
         z = self.model.sample_from_posterior_z(
             sample_batch_X, sample_batch_Y, batch_index, give_mean=False
@@ -1367,15 +1367,15 @@ class TotalTrainer(UnsupervisedTrainer):
 
         super().train(n_epochs=n_epochs, lr=lr, eps=eps, params=params)
 
-    def on_training_loop(self, tensors_list):
+    def on_training_loop(self, tensors_dict):
         if self.use_adversarial_loss:
             if self.kappa is None:
                 kappa = 1 - self.kl_weight
             else:
                 kappa = self.kappa
-            batch_index = tensors_list[0][3]
+            batch_index = tensors_dict[0][_BATCH_KEY]
             if kappa > 0:
-                z = self._get_z(*tensors_list)
+                z = self._get_z(*tensors_dict)
                 # Train discriminator
                 d_loss = self.loss_discriminator(z.detach(), batch_index, True)
                 d_loss *= kappa
@@ -1389,7 +1389,7 @@ class TotalTrainer(UnsupervisedTrainer):
 
             # Train generative model
             self.optimizer.zero_grad()
-            self.current_loss = loss = self.loss(*tensors_list)
+            self.current_loss = loss = self.loss(*tensors_dict)
             if kappa > 0:
                 (loss + fool_loss).backward()
             else:
@@ -1397,7 +1397,7 @@ class TotalTrainer(UnsupervisedTrainer):
             self.optimizer.step()
 
         else:
-            self.current_loss = loss = self.loss(*tensors_list)
+            self.current_loss = loss = self.loss(tensors_dict)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
