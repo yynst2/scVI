@@ -26,7 +26,6 @@ def _load_seqfish_data(path_to_file):
     xl = pd.ExcelFile(path_to_file)
     counts = xl.parse("Hippocampus Counts")
     X = counts.values[:, 1:].astype(int).T  # transpose because counts is genes X cells
-    pdb.set_trace()
     gene_names = counts.values[:, 0].astype(str)
     adata = anndata.AnnData(pd.DataFrame(data=X, columns=gene_names))
     logger.info("Finished loading seqfish dataset")

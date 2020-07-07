@@ -108,11 +108,14 @@ def setup_anndata(
     Returns
     -------
     """
+    if adata.is_view:
+        raise ValueError("adata cannot be a view of an AnnData object.")
+
     # if dataset takes less than 1gb data, can make it dense
     if copy:
         adata = adata.copy()
 
-    ###checking layers
+    # checking layers
     if X_layers_key is not None and X_layers_key not in adata.layers.keys():
         raise ValueError("{} is not a valid key in adata.layers".format(X_layers_key))
 
@@ -133,7 +136,7 @@ def setup_anndata(
     else:
         logger.info("Using data from adata.X")
 
-    ###checking batch
+    # checking batch
     if batch_key is None:
         logger.info("No batch_key inputted, assuming all cells are same batch")
         batch_key = "_scvi_batch"
@@ -149,12 +152,9 @@ def setup_anndata(
     if user_batch_dtype.name == "category":
         adata.obs["_scvi_batch"] = adata.obs[batch_key].astype("category").cat.codes
         batch_key = "_scvi_batch"
-
-    # this fails if user_batch_dtype is a category
     elif np.issubdtype(user_batch_dtype, np.integer) is False:
         adata.obs["_scvi_batch"] = adata.obs[batch_key].astype("category").cat.codes
         batch_key = "_scvi_batch"
-
     if labels_key is None:
         logger.info("No label_key inputted, assuming all cells have same label")
         labels_key = "_scvi_labels"
@@ -168,8 +168,7 @@ def setup_anndata(
     # check the datatype of labels. if theyre not integers, make them ints
     user_labels_dtype = adata.obs[labels_key].dtype
     if user_labels_dtype.name == "category":
-        # this is a little weird. must make it category first or else its series?
-        adata.obs["_scvi_labels"] = adata.obs[batch_key].astype("category").cat.codes
+        adata.obs["_scvi_labels"] = adata.obs[labels_key].astype("category").cat.codes
         labels_key = "_scvi_labels"
     elif np.issubdtype(user_labels_dtype, np.integer) is False:
         adata.obs["_scvi_labels"] = adata.obs[labels_key].astype("category").cat.codes
@@ -226,6 +225,12 @@ def setup_anndata(
                     protein_expression_obsm_key
                 )
             )
+        logger.info(
+            "Using protein expression from adata.obsm['{}']".format(
+                protein_expression_obsm_key
+            )
+        )
+
         data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
         summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
         if protein_names_uns_key is None and isinstance(
@@ -234,12 +239,21 @@ def setup_anndata(
             summary_stats["protein_names"] = list(
                 adata.obsm[protein_expression_obsm_key].columns
             )
+            logger.info(
+                "Using protein names from columns of adata.obsm['{}']".format(
+                    protein_expression_obsm_key
+                )
+            )
         elif protein_names_uns_key is not None:
             summary_stats["protein_names"] = adata.uns[protein_names_uns_key]
+            logger.info(
+                "Using protein names from adata.uns['{}']".format(protein_names_uns_key)
+            )
         else:
             summary_stats["protein_names"] = np.arange(
                 adata.obsm[protein_expression_obsm_key].shape[1]
             )
+            logger.info("Generating sequential protein names")
         # batch mask totalVI
         batch_mask = _get_batch_mask_protein_data(
             adata, protein_expression_obsm_key, batch_key

@@ -13,7 +13,6 @@ import torch.distributions as distributions
 from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
 from sklearn.cluster import KMeans
-from sklearn.manifold import TSNE
 from sklearn.metrics import adjusted_rand_score as ARI
 from sklearn.metrics import normalized_mutual_info_score as NMI
 from sklearn.metrics import silhouette_score
@@ -105,8 +104,7 @@ class Posterior:
 
     A `UnsupervisedTrainer` instance has two `Posterior` attributes: `train_set` and `test_set`
     For this subset of the original gene_dataset instance, we can examine the differential expression,
-    log_likelihood, entropy batch mixing, ... or display the TSNE of the data in the latent space through the
-    scVI model
+    log_likelihood, entropy batch mixing, etc.
 
     >>> gene_dataset = CortexDataset()
     >>> vae = VAE(gene_dataset.nb_genes, n_batch=gene_dataset.n_batches * False,
@@ -2023,16 +2021,6 @@ class Posterior:
         if save_name:
             plt.savefig(save_name)
 
-    @staticmethod
-    def apply_t_sne(latent, n_samples: int = 1000) -> Tuple:
-        idx_t_sne = (
-            np.random.permutation(len(latent))[:n_samples]
-            if n_samples
-            else np.arange(len(latent))
-        )
-        if latent.shape[1] != 2:
-            latent = TSNE().fit_transform(latent[idx_t_sne])
-        return latent, idx_t_sne
 
     def raw_data(self) -> Tuple:
         """Returns raw data for classification"""
