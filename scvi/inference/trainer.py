@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class Trainer:
-    """The abstract rainer class for training a PyTorch model and monitoring its statistics.
+    """The abstract Trainer class for training a PyTorch model and monitoring its statistics.
 
     It should be inherited at least with a ``.loss()`` function to be optimized in the training loop.
 
