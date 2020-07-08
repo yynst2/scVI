@@ -60,6 +60,7 @@ extras_requirements = {
         "nbsphinx-link",
         "scanpydoc",
         "sphinx-automodapi",
+        "sphinx-book-theme",
     ],
     "test": test_requirements,
 }
