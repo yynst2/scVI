@@ -7,3 +7,4 @@ ipython
 autodocsumm
 scanpydoc
 sphinx-automodapi
+sphinx-book-theme
