@@ -16,11 +16,10 @@ def seqfishplus(save_path="data/", tissue_region="subventricular cortex"):
     adata = _load_seqfishplus(
         os.path.join(save_path, save_fn), delimiter="\t", gene_by_cell=False
     )
-    setup_anndata(adata)
     return adata
 
 
-def populate(self):
+def _load_seqfishplus(self):
     counts_filename = "sourcedata/{}_counts.csv".format(self.file_prefix)
     coordinates_filename = "sourcedata/{}_cellcentroids.csv".format(self.file_prefix)
     data_path = os.path.join(self.save_path, "seqfishplus")
@@ -52,44 +51,3 @@ def populate(self):
         Ys=[coordinates],
         cell_attributes_dict=cell_attributes_dict,
     )
-
-
-class SeqFishPlusDataset(DownloadableDataset):
-    """seqFISH+ can image mRNAs for 10,000 genes in single cells—with high accuracy and
-    sub-diffraction-limit resolution—in the cortex, subventricular zone
-    and olfactory bulb of mouse brain
-
-    Parameters
-    ----------
-    tissue_region
-        Region of the mouse brain, Either "subventricular cortex" or "olfactory bulb"
-    save_path
-        Location to use when saving/loading the SeqFish+ data.
-    delayed_populating
-        Switch for delayed populating mechanism.
-    """
-
-    def __init__(
-        self,
-        tissue_region: str = "subventricular cortex",
-        save_path: str = "data",
-        delayed_populating: bool = False,
-    ):
-
-        self.tissue_region = tissue_region
-        if tissue_region == "subventricular cortex":
-            self.file_prefix = "cortex_svz"
-        elif tissue_region == "olfactory bulb":
-            self.file_prefix = "ob"
-        else:
-            raise ValueError(
-                '`tissue_type` must be "subventricular cortex" or "olfactory bulb", but got {}'.format(
-                    tissue_region
-                )
-            )
-        super().__init__(
-            urls="https://github.com/CaiGroup/seqFISH-PLUS/raw/master/sourcedata.zip",
-            filenames="seqfishplus.zip",
-            save_path=save_path,
-            delayed_populating=delayed_populating,
-        )

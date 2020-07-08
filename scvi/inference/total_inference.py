@@ -212,7 +212,7 @@ class TotalPosterior(Posterior):
         log_lkl_protein = 0
         for i_batch, tensors in enumerate(self):
             x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
-                tensors
+                *tensors
             )
             (
                 reconst_loss_gene,
@@ -261,7 +261,7 @@ class TotalPosterior(Posterior):
         log_lkl = 0
         for i_batch, tensors in enumerate(self.update({"batch_size": batch_size})):
             x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
-                tensors
+                *tensors
             )
             to_sum = torch.zeros(x.size()[0], n_samples_mc)
 
@@ -388,7 +388,7 @@ class TotalPosterior(Posterior):
         original_list = []
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, labels, y = self._unpack_tensors(*tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x, y, batch_index=batch_index, label=labels, n_samples=n_samples
@@ -450,7 +450,7 @@ class TotalPosterior(Posterior):
         """
         px_dropouts = []
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(*tensors)
             outputs = self.model.inference(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -700,7 +700,7 @@ class TotalPosterior(Posterior):
             transform_batch = [transform_batch]
         rate_list_pro = []
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(*tensors)
             protein_rate = torch.zeros_like(y)
             if n_samples > 1:
                 protein_rate = torch.stack(n_samples * [protein_rate])
@@ -761,7 +761,7 @@ class TotalPosterior(Posterior):
         """
         posterior_list = []
         for tensors in self.update({"batch_size": batch_size}):
-            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(*tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
                     x,
@@ -886,7 +886,7 @@ class TotalPosterior(Posterior):
         """
         imputed_list = []
         for tensors in self:
-            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
+            x, _, _, batch_index, label, y = self._unpack_tensors(*tensors)
             px_rate = self.model.get_sample_rate(
                 x, y, batch_index=batch_index, label=label, n_samples=n_samples
             )
@@ -1299,7 +1299,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = self._unpack_tensors(tensors)
+        ) = self._unpack_tensors(*tensors)
         (
             reconst_loss_gene,
             reconst_loss_protein,
@@ -1355,7 +1355,7 @@ class TotalTrainer(UnsupervisedTrainer):
             batch_index,
             label,
             sample_batch_Y,
-        ) = self._unpack_tensors(tensors)
+        ) = self._unpack_tensors(*tensors)
 
         z = self.model.sample_from_posterior_z(
             sample_batch_X, sample_batch_Y, batch_index, give_mean=False

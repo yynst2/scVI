@@ -144,7 +144,6 @@ class BioDataset(Dataset):
             key: get_from_registry(self.adata, key)
             for key, _ in self.attributes_and_types.items()
         }
-
         data_numpy = {
             key: data_numpy[key][idx].astype(dtype)
             if isinstance(data_numpy[key], np.ndarray)
@@ -153,7 +152,6 @@ class BioDataset(Dataset):
             else data_numpy[key][idx].toarray().astype(dtype)
             for key, dtype in self.attributes_and_types.items()
         }
-        # data_torch = {k: torch.from_numpy(d) for k, d in data_numpy.items()}
         return data_numpy
 
     @property

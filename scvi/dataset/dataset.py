@@ -841,7 +841,7 @@ class GeneExpressionDataset(Dataset):
     ) -> Callable[[Union[List[int], np.ndarray]], Tuple[torch.Tensor, ...]]:
         """Returns a collate_fn with the requested shape/attributes
         """
-        
+
         if override:
             attributes_and_types = dict()
         else:
@@ -1553,10 +1553,10 @@ class GeneExpressionDataset(Dataset):
 
         return adata.var
 
-    #figures out which proteins
-    #if someone gives a protein expression key
-    #total_vi_protein mask add it to the unstructured
-    #another private
+    # figures out which proteins
+    # if someone gives a protein expression key
+    # total_vi_protein mask add it to the unstructured
+    # another private
     def get_batch_mask_cell_measurement(self, attribute_name: str):
         """Returns a list with length number of batches where each entry is a mask over present
         cell measurement columns
@@ -1874,7 +1874,7 @@ def _download(url: str, save_path: str, filename: str):
     if os.path.exists(os.path.join(save_path, filename)):
         logger.info("File %s already downloaded" % (os.path.join(save_path, filename)))
         return
-    print('actual')
+    print("actual")
     print(url)
     r = urllib.request.urlopen(url)
     logger.info("Downloading file at %s" % os.path.join(save_path, filename))

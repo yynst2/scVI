@@ -51,7 +51,6 @@ def retina(save_path: str = "data/") -> AnnData:
     adata.obs["batch"] = pd.Categorical(adata.obs["BatchID"].values.copy())
     del adata.obs["BatchID"]
 
-    setup_anndata(adata, labels_key="labels", batch_key="batch")
     return adata
 
 
@@ -71,8 +70,6 @@ def prefrontalcortex_starmap(save_path: str = "data/") -> AnnData:
     adata.obs["batch"] = adata.obs.BatchID.values
     del adata.obs["BatchID"]
 
-    setup_anndata(adata, labels_key="labels", batch_key="batch")
-
     return adata
 
 
@@ -89,8 +86,6 @@ def frontalcortex_dropseq(save_path: str = "data/") -> AnnData:
     # reorder labels such that layers of the cortex are in order
     # order_labels = [5, 6, 3, 2, 4, 0, 1, 8, 7, 9, 10, 11, 12, 13]
     # self.reorder_cell_types(self.cell_types[order_labels])
-
-    setup_anndata(adata)
 
     return adata
 

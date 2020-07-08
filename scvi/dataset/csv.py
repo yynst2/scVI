@@ -16,7 +16,6 @@ def breast_cancer_dataset(save_path="data/"):
     adata = _load_csv(
         os.path.join(save_path, save_fn), delimiter="\t", gene_by_cell=False
     )
-    setup_anndata(adata)
     return adata
 
 
@@ -28,7 +27,6 @@ def mouse_ob_dataset(save_path="data/"):
     adata = _load_csv(
         os.path.join(save_path, save_fn), delimiter="\t", gene_by_cell=False
     )
-    setup_anndata(adata)
     return adata
 
 

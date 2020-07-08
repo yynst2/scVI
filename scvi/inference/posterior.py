@@ -2021,7 +2021,6 @@ class Posterior:
         if save_name:
             plt.savefig(save_name)
 
-
     def raw_data(self) -> Tuple:
         """Returns raw data for classification"""
         return (

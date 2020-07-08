@@ -11,34 +11,74 @@ from scvi.dataset import setup_anndata
 
 logger = logging.getLogger(__name__)
 
+_subtype_to_high_level_mapping = {
+    "Astrocytes": ("Astrocyte Gfap", "Astrocyte Mfge8"),
+    "Endothelials": ("Endothelial", "Endothelial 1"),
+    "Inhibitory": (
+        "Inhibitory Cnr1",
+        "Inhibitory Kcnip2",
+        "Inhibitory Pthlh",
+        "Inhibitory Crhbp",
+        "Inhibitory CP",
+        "Inhibitory IC",
+        "Inhibitory Vip",
+    ),
+    "Microglias": ("Perivascular Macrophages", "Microglia"),
+    "Oligodendrocytes": (
+        "Oligodendrocyte Precursor cells",
+        "Oligodendrocyte COP" "Oligodendrocyte NF",
+        "Oligodendrocyte Mature",
+        "Oligodendrocyte MF",
+    ),
+    "Pyramidals": (
+        "Pyramidal L2-3",
+        "Pyramidal Cpne5",
+        "Pyramidal L2-3 L5",
+        "pyramidal L4",
+        "Pyramidal L3-4",
+        "Pyramidal Kcnip2",
+        "Pyramidal L6",
+        "Pyramidal L5",
+        "Hippocampus",
+    ),
+}
 
-def smfish(save_path="data/"):
+
+def smfish(save_path="data/", use_high_level_cluster=True):
     save_path = os.path.abspath(save_path)
     url = "http://linnarssonlab.org/osmFISH/osmFISH_SScortex_mouse_all_cells.loom"
     save_fn = "osmFISH_SScortex_mouse_all_cell.loom"
     _download(url, save_path, save_fn)
-    adata = _load_smfish(os.path.join(save_path, save_fn))
-    setup_anndata(adata)
+    adata = _load_smfish(
+        os.path.join(save_path, save_fn), use_high_level_cluster=use_high_level_cluster
+    )
     return adata
 
 
-def _load_smfish(path_to_file):
+def _load_smfish(path_to_file, use_high_level_cluster):
     logger.info("Loading smFISH dataset")
     ds = loompy.connect(path_to_file)
     gene_names = ds.ra["Gene"].astype(np.str)
     labels = ds.ca["ClusterID"].reshape(-1, 1)
-    tmp_cell_types = np.asarray(ds.ca["ClusterName"])
-
+    cell_types = np.asarray(ds.ca["ClusterName"])
+    if use_high_level_cluster:
+        pdb.set_trace()
+        for high_level_cluster, subtypes in _subtype_to_high_level_mapping.items():
+            for subtype in subtypes:
+                idx = np.where(cell_types == subtype)
+                cell_types[idx] = high_level_cluster
+        pdb.set_trace()
+        # for old_cell_type_idx, new_cell_type in major_clusters:
+        #     pdb.set_trace()
     u_labels, u_index = np.unique(labels.ravel(), return_index=True)
     cell_types = ["" for _ in range(max(u_labels) + 1)]
     for i, index in zip(u_labels, u_index):
         cell_types[i] = tmp_cell_types[index]
     cell_types = np.asarray(cell_types, dtype=np.str)
+    pdb.set_trace()
 
     x_coord, y_coord = ds.ca["X"], ds.ca["Y"]
     data = ds[:, :].T
-
-    pdb.set_trace()
 
     adata = anndata.AnnData(
         X=data,
@@ -55,16 +95,6 @@ def _load_smfish(path_to_file):
     #     cell_types=cell_types,
     #     cell_attributes_dict=
     #     remap_attributes=False,
-    # )
-    # major_clusters = dict(
-    #     [
-    #         ((3, 2), "Astrocytes"),
-    #         ((7, 26), "Endothelials"),
-    #         ((18, 17, 14, 19, 15, 16, 20), "Inhibitory"),
-    #         ((29, 28), "Microglias"),
-    #         ((32, 33, 30, 22, 21), "Oligodendrocytes"),
-    #         ((9, 8, 10, 6, 5, 4, 12, 1, 13), "Pyramidals"),
-    #     ]
     # )
     # if self.use_high_level_cluster:
     #     self.map_cell_types(major_clusters)
