@@ -6,7 +6,7 @@ from typing import Tuple
 import numpy as np
 import shutil
 
-from ._utils import _download
+from scvi.dataset._utils import _download
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,6 @@ group_to_filename_skeleton = {
     "3.1.0": "{}_feature_bc_matrix.h5",
 }
 
-available_specification = ["filtered", "raw"]
-
 
 def dataset10X(
     dataset_name: str = None,
@@ -86,8 +84,6 @@ def dataset10X(
     save_path: str = "data/10X",
     url: str = None,
     is_filtered: bool = True,
-    dense: bool = False,
-    measurement_names_column: int = 1,
     remove_extracted_data: bool = False,
     delayed_populating: bool = False,
     **scanpy_read_10x_kwargs,
@@ -114,9 +110,6 @@ def dataset10X(
         which are automatically formed only using the ``dataset_name``.
     type
         Either `filtered` data or `raw` data.
-    dense
-        Whether to load as dense or sparse.
-        If False, data is cast to sparse using ``scipy.sparse.csr_matrix``.
     remove_extracted_data
         Whether to remove extracted archives in the case of `.tar.gz` downloads.
 
@@ -133,9 +126,11 @@ def dataset10X(
             logger.warning("dataset_name provided, manual filename is disregarded.")
         group = dataset_to_group[dataset_name]
         url_skeleton = group_to_url_skeleton[group]
-        url = url_skeleton.format(group, dataset_name, dataset_name, type)
+
+        filter_type = "filtered" if is_filtered else "raw"
+        url = url_skeleton.format(group, dataset_name, dataset_name, filter_type)
         filename_skeleton = group_to_filename_skeleton[group]
-        filename = filename_skeleton.format(type)
+        filename = filename_skeleton.format(filter_type)
         save_path = os.path.join(save_path, dataset_name)
     elif filename is not None and url is not None:
         logger.debug("Loading 10X dataset with custom url and filename")
@@ -143,7 +138,6 @@ def dataset10X(
         logger.debug("Loading local 10X dataset with custom filename")
     else:
         logger.debug("Loading extracted local 10X dataset with custom filename")
-    print(url)
     _download(url, save_path=save_path, filename=filename)
     file_path = os.path.join(save_path, filename)
 
@@ -162,9 +156,14 @@ def dataset10X(
     else:
         adata = scanpy.read_10x_h5(file_path, **scanpy_read_10x_kwargs)
 
-    if was_extracted and remove_extracted_data and download_is_targz:
-        logger.info("Removing extracted data at {}".format(file_path[:-7]))
-        shutil.rmtree(file_path[:-7])
+    if download_is_targz is True:
+        if was_extracted and remove_extracted_data:
+            logger.info("Removing extracted data at {}".format(file_path[:-7]))
+            shutil.rmtree(file_path[:-7])
+
+    adata.var_names_make_unique()
+    scanpy.pp.filter_cells(adata, min_counts=1)
+    scanpy.pp.filter_genes(adata, min_counts=1)
 
     return adata
 
