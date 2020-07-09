@@ -65,16 +65,16 @@ group_to_url_skeleton = {
     "1.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices.tar.gz",
     "1.3.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices_h5.h5",
     "2.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices.tar.gz",
-    "3.0.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matrices_h5.h5",
-    "3.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_gene_bc_matries_h5.h5",
+    "3.0.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_feature_bc_matrix.h5",
+    "3.1.0": "http://cf.10xgenomics.com/samples/cell-exp/{}/{}/{}_{}_feature_bc_matrix.h5",
 }
 
 group_to_filename_skeleton = {
     "1.1.0": "{}_gene_bc_matrices.tar.gz",
     "1.3.0": "{}_gene_bc_matrices_h5.h5",
     "2.1.0": "{}_gene_bc_matrices.tar.gz",
-    "3.0.0": "{}_feature_bc_matrix_h5.h5",
-    "3.1.0": "{}_feature_bc_matrix_h5.h5",
+    "3.0.0": "{}_feature_bc_matrix.h5",
+    "3.1.0": "{}_feature_bc_matrix.h5",
 }
 
 available_specification = ["filtered", "raw"]
