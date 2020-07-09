@@ -1,5 +1,9 @@
 from ._anndata import setup_anndata
-from ._preprocessing import highly_variable_genes_seurat_v3
+from ._preprocessing import (
+    highly_variable_genes_seurat_v3,
+    poisson_gene_selection,
+    organize_cite_seq_10x,
+)
 
 from .cite_seq import pbmcs_10x_cite_seq
 from .dataset10X import dataset10X

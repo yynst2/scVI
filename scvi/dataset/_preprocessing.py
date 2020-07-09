@@ -4,7 +4,6 @@ import pandas as pd
 import anndata
 import scipy.sparse as sp_sparse
 import torch
-import copy
 
 from typing import Optional
 
@@ -405,6 +404,37 @@ def poisson_gene_selection(
         return df
 
 
-def organize_cite_seq_cell_ranger(adata):
+def organize_cite_seq_10x(adata: anndata.AnnData, copy: bool = False):
+    """\
+    Organize anndata object loaded from 10x for scvi models
 
-    raise NotImplementedError
+    Parameters
+    ----------
+    adata
+        AnnData object with RNA and protein data in `.X`
+    copy
+        Whether to copy the anndata object
+
+    Returns
+    -------
+    If copy is True, returns anndata object organized for input to scvi models
+
+    Else, updates the anndata inplace
+
+    """
+
+    if copy:
+        adata = adata.copy()
+
+    pro_array = adata[:, adata.var["feature_types"] == "Antibody Capture"].X.A
+    pro_names = np.array(
+        adata.var_names[adata.var["feature_types"] == "Antibody Capture"]
+    )
+    pro_df = pd.DataFrame(pro_array, index=adata.obs_names, columns=pro_names)
+    adata.obsm["protein_expression"] = pro_df
+
+    genes = (adata.var["feature_types"] != "Antibody Capture").values
+    adata._inplace_subset_var(genes)
+
+    if copy:
+        return adata

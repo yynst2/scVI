@@ -460,13 +460,16 @@ def test_differential_expression(save_path):
 
     # Test totalVI DE
     sp = os.path.join(save_path, "10X")
-    # TODO fix to pbmc cite seq dataset
-    dataset = Dataset10X(dataset_name="pbmc_10k_protein_v3", save_path=sp)
+    dataset = scvi.dataset.dataset10X(
+        dataset_name="pbmc_10k_protein_v3", save_path=sp, gex_only=False
+    )
+    scvi.dataset.organize_cite_seq_10x(dataset)
+
     n_cells = len(dataset)
     all_indices = np.arange(n_cells)
     vae = TOTALVI(
         dataset.uns["scvi_summary_stats"]["n_genes"],
-        len(dataset.protein_names),
+        dataset.uns["scvi_summary_stats"]["n_proteins"],
         n_batch=dataset.uns["scvi_summary_stats"]["n_batch"],
     )
     trainer = TotalTrainer(
@@ -520,7 +523,7 @@ def test_totalvi(save_path):
     dataset = synthetic_dataset_two_batches
     totalvae = TOTALVI(
         dataset.uns["scvi_summary_stats"]["n_genes"],
-        len(dataset.protein_names),
+        dataset.uns["scvi_summary_stats"]["n_proteins"],
         n_batch=dataset.uns["scvi_summary_stats"]["n_batch"],
     )
     trainer = TotalTrainer(
@@ -544,7 +547,7 @@ def test_totalvi(save_path):
         original_post.save_posterior(posterior_save_path)
         new_totalvae = TOTALVI(
             dataset.uns["scvi_summary_stats"]["n_genes"],
-            len(dataset.protein_names),
+            dataset.uns["scvi_summary_stats"]["n_proteins"],
             n_batch=dataset.uns["scvi_summary_stats"]["n_batch"],
         )
         new_post = load_posterior(
