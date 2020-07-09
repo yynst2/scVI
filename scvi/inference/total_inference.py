@@ -1,10 +1,8 @@
 from typing import Optional, Union, List, Callable, Tuple
-import pdb
 import anndata
 import logging
 import torch
 from torch.distributions import Poisson, Gamma, Bernoulli, Normal
-from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
@@ -12,7 +10,6 @@ from scipy.stats import spearmanr
 from scvi.inference import Posterior
 from . import UnsupervisedTrainer
 
-from scvi.dataset._biodataset import BioDataset
 from scvi.models import TOTALVI, Classifier
 from scvi.models.utils import one_hot
 from scvi.dataset._constants import (
@@ -241,7 +238,7 @@ class TotalPosterior(Posterior):
         """
         # Uses MC sampling to compute a tighter lower bound on log p(x)
         log_lkl = 0
-        for i_batch, tensors in enumerate(self.update({"batch_size": batch_size})):
+        for i_batch, tensors in enumerate(self.update_batch_size(batch_size)):
             x, local_l_mean, local_l_var, batch_index, labels, y = self._unpack_tensors(
                 tensors
             )
