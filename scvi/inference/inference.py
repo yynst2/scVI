@@ -1,14 +1,12 @@
 import logging
-import pdb
 import copy
-from typing import Union, List
+from typing import Union
 
 import matplotlib.pyplot as plt
 import torch
 import anndata
 from numpy import ceil
 
-from scvi.dataset import GeneExpressionDataset
 from scvi.inference import Trainer
 from scvi.dataset._constants import (
     _X_KEY,

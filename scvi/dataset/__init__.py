@@ -10,6 +10,7 @@ from .dataset10X import dataset10X
 from ._datasets import synthetic_iid
 from .cortex import cortex
 from .seqfish import seqfish
+from .seqfishplus import seqfishplus
 from .smfish import smfish
 from .csv import breast_cancer_dataset, mouse_ob_dataset
 from .loom import retina, prefrontalcortex_starmap, frontalcortex_dropseq
