@@ -109,7 +109,7 @@ class TotalPosterior(Posterior):
     def get_protein_background_mean(self):
         background_mean = []
         for tensors in self:
-            x, _, _, batch_index, label, y = tensors
+            x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             outputs = self.model.inference(
                 x, y, batch_index=batch_index, label=label, n_samples=1
             )
