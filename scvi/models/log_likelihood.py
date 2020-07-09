@@ -1,6 +1,5 @@
 """File for computing log likelihood of the data"""
 
-import pdb
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -185,7 +184,11 @@ def compute_marginal_log_likelihood_autozi(autozivae, posterior, n_samples_mc=10
         )
 
         for i_batch, tensors in enumerate(posterior):
-            sample_batch, local_l_mean, local_l_var, batch_index, labels = tensors
+            sample_batch = tensors[_X_KEY]
+            local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
+            local_l_var = tensors[_LOCAL_L_VAR_KEY]
+            batch_index = tensors[_BATCH_KEY]
+            labels = tensors[_LABELS_KEY]
 
             # Distribution parameters and sampled variables
             outputs = autozivae.inference(sample_batch, batch_index, labels)
