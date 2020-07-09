@@ -17,8 +17,7 @@ class TestDataset10X(TestCase):
     def test_brain_small(self):
         dataset = scvi.dataset.dataset10X(
             dataset_name="neuron_9k",
-            save_path="tests/data",
-            save_path_10X="tests/data/10X",
+            save_path="tests/data/10X",
             remove_extracted_data=True,
         )
         scvi.dataset.setup_anndata(dataset)
