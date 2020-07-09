@@ -84,24 +84,6 @@ class TotalPosterior(Posterior):
             data_loader_kwargs=data_loader_kwargs,
         )
 
-    def corrupted(self):
-        return self.update(
-            {
-                "collate_fn": self.gene_dataset.collate_fn_builder(
-                    {"protein_expression": np.float32}, corrupted=True
-                )
-            }
-        )
-
-    def uncorrupted(self):
-        return self.update(
-            {
-                "collate_fn": self.gene_dataset.collate_fn_builder(
-                    {"protein_expression": np.float32}
-                )
-            }
-        )
-
     @torch.no_grad()
     def elbo(self):
         elbo = self.compute_elbo(self.model)
@@ -893,60 +875,6 @@ class TotalPosterior(Posterior):
             imputed_list += [np.array(px_rate.cpu())]
         imputed_list = np.concatenate(imputed_list)
         return imputed_list.squeeze()
-
-    @torch.no_grad()
-    def imputation_list(self, n_samples: int = 1):
-        """This code is identical to same function in posterior.py
-
-        Except, we use the totalVI definition of `model.get_sample_rate`
-
-        Parameters
-        ----------
-        n_samples
-             (Default value = 1)
-
-        Returns
-        -------
-
-        """
-        original_list = []
-        imputed_list = []
-        batch_size = self.data_loader_kwargs["batch_size"] // n_samples
-        for tensors, corrupted_tensors in zip(
-            self.uncorrupted().sequential(batch_size=batch_size),
-            self.corrupted().sequential(batch_size=batch_size),
-        ):
-            batch = tensors[0]
-            actual_batch_size = batch.size(0)
-            dropout_x, _, _, batch_index, labels, y = corrupted_tensors
-            px_rate = self.model.get_sample_rate(
-                dropout_x, y, batch_index=batch_index, label=labels, n_samples=n_samples
-            )
-            px_rate = px_rate[:, : self.gene_dataset.nb_genes]
-
-            indices_dropout = torch.nonzero(batch - dropout_x)
-            if indices_dropout.size() != torch.Size([0]):
-                i = indices_dropout[:, 0]
-                j = indices_dropout[:, 1]
-
-                batch = batch.unsqueeze(0).expand(
-                    (n_samples, batch.size(0), batch.size(1))
-                )
-                original = np.array(batch[:, i, j].view(-1).cpu())
-                imputed = np.array(px_rate[..., i, j].view(-1).cpu())
-
-                cells_index = np.tile(np.array(i.cpu()), n_samples)
-
-                original_list += [
-                    original[cells_index == i] for i in range(actual_batch_size)
-                ]
-                imputed_list += [
-                    imputed[cells_index == i] for i in range(actual_batch_size)
-                ]
-            else:
-                original_list = np.array([])
-                imputed_list = np.array([])
-        return original_list, imputed_list
 
     @torch.no_grad()
     def differential_expression_score(
