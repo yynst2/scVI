@@ -26,7 +26,8 @@ _subtype_to_high_level_mapping = {
     "Microglias": ("Perivascular Macrophages", "Microglia"),
     "Oligodendrocytes": (
         "Oligodendrocyte Precursor cells",
-        "Oligodendrocyte COP" "Oligodendrocyte NF",
+        "Oligodendrocyte COP",
+        "Oligodendrocyte NF",
         "Oligodendrocyte Mature",
         "Oligodendrocyte MF",
     ),
@@ -58,55 +59,49 @@ def smfish(save_path="data/", use_high_level_cluster=True):
 def _load_smfish(path_to_file, use_high_level_cluster):
     logger.info("Loading smFISH dataset")
     ds = loompy.connect(path_to_file)
-    gene_names = ds.ra["Gene"].astype(np.str)
-    labels = ds.ca["ClusterID"].reshape(-1, 1)
-    cell_types = np.asarray(ds.ca["ClusterName"])
-    if use_high_level_cluster:
-        pdb.set_trace()
-        for high_level_cluster, subtypes in _subtype_to_high_level_mapping.items():
-            for subtype in subtypes:
-                idx = np.where(cell_types == subtype)
-                cell_types[idx] = high_level_cluster
-        pdb.set_trace()
-        # for old_cell_type_idx, new_cell_type in major_clusters:
-        #     pdb.set_trace()
-    u_labels, u_index = np.unique(labels.ravel(), return_index=True)
-    cell_types = ["" for _ in range(max(u_labels) + 1)]
-    for i, index in zip(u_labels, u_index):
-        cell_types[i] = tmp_cell_types[index]
-    cell_types = np.asarray(cell_types, dtype=np.str)
-    pdb.set_trace()
-
     x_coord, y_coord = ds.ca["X"], ds.ca["Y"]
     data = ds[:, :].T
+    gene_names = ds.ra["Gene"].astype(np.str)
+    labels = ds.ca["ClusterID"]
+    str_labels = np.asarray(ds.ca["ClusterName"])
+    labels_mapping = pd.Categorical(str_labels).categories
+
+    if use_high_level_cluster:
+        for high_level_cluster, subtypes in _subtype_to_high_level_mapping.items():
+            for subtype in subtypes:
+                idx = np.where(str_labels == subtype)
+                str_labels[idx] = high_level_cluster
+        cell_types_to_keep = [
+            "Astrocytes",
+            "Endothelials",
+            "Inhibitory",
+            "Microglias",
+            "Oligodendrocytes",
+            "Pyramidals",
+        ]
+        row_indices = [
+            i
+            for i in range(data.shape[0])
+            if ds.ca["ClusterName"][i] in cell_types_to_keep
+        ]
+        str_labels = str_labels[row_indices]
+        data = data[row_indices, :]
+        x_coord = x_coord[row_indices]
+        y_coord = y_coord[row_indices]
+
+        str_labels = pd.Categorical(str_labels)
+        labels = str_labels.codes
+        labels_mapping = str_labels.categories
 
     adata = anndata.AnnData(
         X=data,
-        obs={"x_coord": x_coord, "y_coord": y_coord},
-        uns={"cell_types": cell_types},
+        obs={
+            "x_coord": x_coord,
+            "y_coord": y_coord,
+            "labels": labels,
+            "str_labels": str_labels,
+        },
+        uns={"cell_types": labels_mapping},
     )
     adata.var_names = gene_names
     return adata
-    # adata.
-    # self.populate_from_data(
-    #     X=data,
-    #     labels=labels,
-    #     gene_names=gene_names,
-    #     cell_types=cell_types,
-    #     cell_attributes_dict=
-    #     remap_attributes=False,
-    # )
-    # if self.use_high_level_cluster:
-    #     self.map_cell_types(major_clusters)
-    #     self.filter_cell_types(
-    #         [
-    #             "Astrocytes",
-    #             "Endothelials",
-    #             "Inhibitory",
-    #             "Microglias",
-    #             "Oligodendrocytes",
-    #             "Pyramidals",
-    #         ]
-    #     )
-
-    # self.remap_categorical_attributes()
