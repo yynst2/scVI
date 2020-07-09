@@ -223,7 +223,7 @@ def ldvae_benchmark(dataset, n_epochs, use_cuda=True):
 def totalvi_benchmark(dataset, n_epochs, use_cuda=True):
     totalvae = TOTALVI(
         dataset.uns["scvi_summary_stats"]["n_genes"],
-        len(dataset.protein_names),
+        dataset.uns["scvi_summary_stats"]["n_proteins"],
         n_batch=dataset.uns["scvi_summary_stats"]["n_batch"],
     )
     trainer = TotalTrainer(
@@ -320,7 +320,7 @@ def test_LDVAE(save_path):
     scvi.dataset.setup_anndata(synthetic_datset_one_batch, batch_key="batch")
     ldvae_benchmark(synthetic_datset_one_batch, n_epochs=1, use_cuda=False)
     synthetic_datset_two_batches = scvi.dataset.synthetic_iid(n_batches=2)
-    scvi.dataset.setup_anndata(synthetic_datset_one_batch, batch_key="batch")
+    scvi.dataset.setup_anndata(synthetic_datset_two_batches, batch_key="batch")
     ldvae_benchmark(synthetic_datset_two_batches, n_epochs=1, use_cuda=False)
 
 

@@ -37,7 +37,7 @@ class TestVAE(TestCase):
         rand_cell_types = adata.obs.batch.values
         cell_idx1 = rand_cell_types == 1
         cell_idx2 = rand_cell_types == 0
-        de_res = full.differential_expression_score(cell_idx1, cell_idx2,)
+        de_res = full.differential_expression_score(cell_idx1, cell_idx2)
 
     def test_totalVI_posterior(self,):
         use_cuda = False
@@ -51,10 +51,9 @@ class TestVAE(TestCase):
         )
         stats = adata.uns["scvi_summary_stats"]
         totalvae = TOTALVI(
-            stats["n_genes"], stats["n_proteins"], n_batch=stats["n_batch"],
+            stats["n_genes"], stats["n_proteins"], n_batch=stats["n_batch"]
         )
         use_cuda = False
-        pdb.set_trace()
         # totalVI is trained on 90% of the data
         # Early stopping does not comply with our automatic notebook testing so we disable it when testing
         trainer = TotalTrainer(

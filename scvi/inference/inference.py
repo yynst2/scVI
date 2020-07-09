@@ -130,7 +130,6 @@ class UnsupervisedTrainer(Trainer):
         return ["train_set"]
 
     def loss(self, tensors: dict, feed_labels: bool = True):
-        pdb.set_trace()
         sample_batch = tensors[_X_KEY]
         local_l_mean = tensors[_LOCAL_L_MEAN_KEY]
         local_l_var = tensors[_LOCAL_L_VAR_KEY]
