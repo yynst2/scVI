@@ -405,69 +405,6 @@ def poisson_gene_selection(
         return df
 
 
-def corrupt(
-    adata: anndata.AnnData,
-    layer: Optional[str] = None,
-    rate: Optional[float] = 0.1,
-    corruption: Optional[str] = "uniform",
-    layer_key_added: Optional[str] = "corrupted_X",
-):
-    """Forms a `corrupted_X` layer containing a corrupted version of X.
-
-    Sub-samples ``rate * adata.shape[0] * adata.shape[1]`` entries
-    and perturbs them according to the ``corruption`` method.
-    Namely:
-        - "uniform" multiplies the count by a Bernouilli(0.9)
-        - "binomial" replaces the count with a Binomial(count, 0.2)
-
-    Parameters
-    ----------
-    adata
-        The annotated data matrix of shape `n_obs` × `n_vars`. Rows correspond
-        to cells and columns to genes.
-    layer
-        If provided, use `adata.layers[layer]` for expression values instead of `adata.X`.
-    rate
-        Rate of corrupted entries.
-    corruption
-        Corruption method.
-    layer_key_added
-        key added to `adata.layers`
-
-    Returns
-    -------
-    Adds `.layers[layer_key_added]` with corrupted version of the data.
-
-    """
-    X = adata.layers[layer] if layer is not None else adata.X
-    corrupted_X = copy.deepcopy(X)
-    if corruption == "uniform":  # multiply the entry n with a Ber(0.9) random variable.
-        i, j = X.nonzero()
-        ix = np.random.choice(len(i), int(np.floor(rate * len(i))), replace=False)
-        i, j = i[ix], j[ix]
-        corrupted_X[i, j] = np.squeeze(
-            np.asarray(
-                np.multiply(
-                    X[i, j],
-                    np.random.binomial(n=np.ones(len(ix), dtype=np.int32), p=0.9),
-                )
-            )
-        )
-    elif (
-        corruption == "binomial"
-    ):  # replace the entry n with a Bin(n, 0.2) random variable.
-        i, j = (k.ravel() for k in np.indices(X.shape))
-        ix = np.random.choice(len(i), int(np.floor(rate * len(i))), replace=False)
-        i, j = i[ix], j[ix]
-        corrupted_X[i, j] = np.squeeze(
-            np.asarray(np.random.binomial(n=(X[i, j]).astype(np.int32), p=0.2))
-        )
-    else:
-        raise NotImplementedError("Unknown corruption method.")
-
-    adata.layers[layer_key_added] = corrupted_X
-
-
 def organize_cite_seq_cell_ranger(adata):
 
     raise NotImplementedError

@@ -59,14 +59,6 @@ def test_cortex(save_path):
     trainer_cortex_vae.train_set.imputation(n_samples=1)
     trainer_cortex_vae.test_set.imputation(n_samples=5)
 
-    trainer_cortex_vae.corrupt_posteriors(corruption="binomial")
-    trainer_cortex_vae.corrupt_posteriors()
-    trainer_cortex_vae.train(n_epochs=1)
-    trainer_cortex_vae.uncorrupt_posteriors()
-
-    trainer_cortex_vae.train_set.imputation_benchmark(
-        n_samples=1, show_plot=False, title_plot="imputation", save_path=save_path
-    )
     trainer_cortex_vae.train_set.generate_parameters()
 
     n_cells, n_genes = (
@@ -93,10 +85,6 @@ def test_cortex(save_path):
     x_new, x_old = full.generate(n_samples=10)
     assert x_new.shape == (cortex_dataset.nb_cells, cortex_dataset.nb_genes, 10)
     assert x_old.shape == (cortex_dataset.nb_cells, cortex_dataset.nb_genes)
-
-    trainer_cortex_vae.train_set.imputation_benchmark(
-        n_samples=1, show_plot=False, title_plot="imputation", save_path=save_path
-    )
 
     svaec = SCANVI(
         cortex_dataset.nb_genes, cortex_dataset.n_batches, cortex_dataset.n_labels
