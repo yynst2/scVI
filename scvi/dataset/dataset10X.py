@@ -143,6 +143,7 @@ def dataset10X(
 
     # untar
     download_is_targz = url[-7:] == ".tar.gz"
+    was_extracted = False
     if download_is_targz is True:
         if not os.path.exists(file_path[:-7]):  # nothing extracted yet
             if tarfile.is_tarfile(file_path):
@@ -156,10 +157,9 @@ def dataset10X(
     else:
         adata = scanpy.read_10x_h5(file_path, **scanpy_read_10x_kwargs)
 
-    if download_is_targz is True:
-        if was_extracted and remove_extracted_data:
-            logger.info("Removing extracted data at {}".format(file_path[:-7]))
-            shutil.rmtree(file_path[:-7])
+    if was_extracted and remove_extracted_data and download_is_targz:
+        logger.info("Removing extracted data at {}".format(file_path[:-7]))
+        shutil.rmtree(file_path[:-7])
 
     adata.var_names_make_unique()
     scanpy.pp.filter_cells(adata, min_counts=1)
