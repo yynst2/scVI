@@ -1384,8 +1384,10 @@ class Posterior:
                     transform_batch=batch,
                 )
                 imputed_list_batch += [np.array(px_rate.cpu())]
-            # axis 1 is cells
-            imputed_arr.append(np.concatenate(imputed_list_batch, axis=1))
+            # axis 1 is cells if n_samples > 1
+            imputed_arr.append(
+                np.concatenate(imputed_list_batch, axis=1 if n_samples > 1 else 0)
+            )
         imputed_arr = np.array(imputed_arr)
         # shape: (len(transformed_batch), n_samples, n_cells, n_genes) if n_samples > 1
         # else shape: (len(transformed_batch), n_cells, n_genes)
