@@ -1,8 +1,9 @@
 import pandas as pd
 import scanpy as sc
+import os
 
 
-def pbmcs_10x_cite_seq(save_path: str = None, protein_join: str = "inner"):
+def pbmcs_10x_cite_seq(save_path: str = "data/", protein_join: str = "inner"):
     """Filtered PBMCs from 10x Genomics profiled with RNA and protein
 
     Datasets were filtered for doublets and other outliers as in
@@ -20,11 +21,11 @@ def pbmcs_10x_cite_seq(save_path: str = None, protein_join: str = "inner"):
     Missing protein values are zero, and are identified during `AnnData` setup.
     """
     dataset1 = sc.read(
-        "pbmc_10k_protein.h5ad",
+        os.path.join(save_path, "pbmc_10k_protein.h5ad"),
         backup_url="https://github.com/YosefLab/scVI-data/raw/master/pbmc_10k_protein_v3.h5ad?raw=true",
     )
     dataset2 = sc.read(
-        "pbmc_5k_protein.h5ad",
+        os.path.join(save_path, "pbmc_5k_protein.h5ad"),
         backup_url="https://github.com/YosefLab/scVI-data/raw/master/pbmc_5k_protein_v3.h5ad?raw=true",
     )
     common_genes = dataset1.var_names.intersection(dataset2.var_names)
