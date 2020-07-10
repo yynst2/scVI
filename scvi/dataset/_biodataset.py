@@ -24,7 +24,17 @@ class BioDataset(Dataset):
     ):
         assert (
             "scvi_data_registry" in adata.uns_keys()
-        ), "Please register your anndata first"
+        ), "Please register your anndata first."
+
+        stats = adata.uns["scvi_summary_stats"]
+        error_msg = "Number of {} in anndata different from when setup_anndata was run. Please rerun setup_anndata."
+        assert adata.shape[0] == stats["n_cells"], error_msg.format("cells")
+        assert adata.shape[1] == stats["n_genes"], error_msg.format("gene")
+        if "protein_expression" in adata.uns["scvi_data_registry"].keys():
+            assert (
+                stats["n_proteins"]
+                == get_from_registry(adata, "protein_expression").shape[1]
+            ), error_msg.format("proteins")
 
         is_nonneg_int = _check_nonnegative_integers(get_from_registry(adata, "X"))
         if not is_nonneg_int:
