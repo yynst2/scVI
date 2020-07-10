@@ -7,6 +7,7 @@ import pandas as pd
 import pdb
 import anndata
 from scvi.dataset.dataset import DownloadableDataset, remap_categories
+from scvi.dataset import dataset10X
 
 # from scvi.dataset.dataset10X import Dataset10X
 
@@ -15,9 +16,7 @@ from scvi.dataset import setup_anndata
 
 
 def purified_pbmc_dataset(
-    save_path: str = "data/",
-    subset_datasets: List[str] = None,
-    run_setup_anndata=False,
+    save_path: str = "data/", subset_datasets: List[str] = None, run_setup_anndata=True,
 ):
     url = "https://github.com/YosefLab/scVI-data/raw/master/PurifiedPBMCDataset.h5ad"
     save_fn = "PurifiedPBMCDataset.h5ad"
@@ -56,124 +55,72 @@ def purified_pbmc_dataset(
     return adata
 
 
-class PbmcDataset(DownloadableDataset):
-    """Loads pbmc dataset.
+def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
+    urls = [
+        "https://github.com/YosefLab/scVI-data/raw/master/gene_info.csv",
+        "https://github.com/YosefLab/scVI-data/raw/master/pbmc_metadata.pickle",
+    ]
+    save_fns = ["gene_info_pbmc.csv", "pbmc_metadata.pickle"]
 
-    We considered scRNA-seq data from two batches of peripheral blood mononuclear cells (PBMCs) from a healthy donor
-    (4K PBMCs and 8K PBMCs). We derived quality control metrics using the cellrangerRkit R package (v. 1.1.0).
-    Quality metrics were extracted from CellRanger throughout the molecule specific information file. After filtering,
-    we extract 12,039 cells with 10,310 sampled genes and get biologically meaningful clusters with the
-    software Seurat. We then filter genes that we could not match with the bulk data used for differential
-    expression to be left with g = 3346.
+    for i in range(len(urls)):
+        _download(urls[i], save_path, save_fns[i])
 
-    Parameters
-    ----------
-    save_path
-        Location to use when saving/loading the Pbmc metadata.
-    save_path_10X
-        Location to use when saving/loading the underlying 10X datasets.
-    remove_extracted_data
-        Whether to remove extracted archives after populating the dataset.
-    delayed_populating
-        Switch for delayed populating mechanism.
+    de_metadata = pd.read_csv(os.path.join(save_path, "gene_info_pbmc.csv"), sep=",")
+    pbmc_metadata = pickle.load(
+        open(os.path.join(save_path, "pbmc_metadata.pickle"), "rb")
+    )
+    pbmc8k = dataset10X("pbmc8k", save_path=save_path)
+    pbmc4k = dataset10X("pbmc4k", save_path=save_path)
+    barcodes = np.concatenate((pbmc8k.obs_names, pbmc4k.obs_names))
 
+    adata = pbmc8k.concatenate(pbmc4k)
+    adata.obs_names = barcodes
 
-    Examples
-    --------
-    >>> gene_dataset = PbmcDataset()
-    """
+    dict_barcodes = dict(zip(barcodes, np.arange(len(barcodes))))
+    subset_cells = []
+    barcodes_metadata = pbmc_metadata["barcodes"].index.values.ravel().astype(np.str)
+    for barcode in barcodes_metadata:
+        if (
+            barcode in dict_barcodes
+        ):  # barcodes with end -11 filtered on 10X website (49 cells)
+            subset_cells += [dict_barcodes[barcode]]
+    adata = adata[np.asarray(subset_cells), :].copy()
+    idx_metadata = np.asarray(
+        [not barcode.endswith("11") for barcode in barcodes_metadata], dtype=np.bool
+    )
+    genes_to_keep = list(
+        de_metadata["GS"].values
+    )  # only keep the genes for which we have de data
+    difference = list(
+        set(genes_to_keep).difference(set(adata.var_names))
+    )  # Non empty only for unit tests
+    for gene in difference:
+        genes_to_keep.remove(gene)
 
-    def __init__(
-        self,
-        save_path: str = "data/",
-        save_path_10X: str = None,
-        remove_extracted_data: bool = False,
-        delayed_populating: bool = False,
-    ):
-        self.save_path_10X = save_path_10X if save_path_10X is not None else save_path
-        self.remove_extracted_data = remove_extracted_data
-        self.barcodes = None
-        super().__init__(
-            urls=[
-                "https://github.com/YosefLab/scVI-data/raw/master/gene_info.csv",
-                "https://github.com/YosefLab/scVI-data/raw/master/pbmc_metadata.pickle",
-            ],
-            filenames=["gene_info_pbmc.csv", "pbmc_metadata.pickle"],
-            save_path=save_path,
-            delayed_populating=delayed_populating,
-        )
-        # this downloads the necessary file for a future call to populate
-        if delayed_populating:
-            Dataset10X(
-                "pbmc8k",
-                save_path=self.save_path_10X,
-                delayed_populating=True,
-                measurement_names_column=0,
-            )
-            Dataset10X(
-                "pbmc4k",
-                save_path=self.save_path_10X,
-                delayed_populating=True,
-                measurement_names_column=0,
-            )
+    adata = adata[:, genes_to_keep].copy()
+    design = pbmc_metadata["design"][idx_metadata]
+    raw_qc = pbmc_metadata["raw_qc"][idx_metadata]
+    normalized_qc = pbmc_metadata["normalized_qc"][idx_metadata]
 
-    def populate(self):
-        self.de_metadata = pd.read_csv(
-            os.path.join(self.save_path, "gene_info_pbmc.csv"), sep=","
-        )
-        pbmc_metadata = pickle.load(
-            open(os.path.join(self.save_path, "pbmc_metadata.pickle"), "rb")
-        )
-        datasets = [
-            Dataset10X(
-                "pbmc8k",
-                save_path=self.save_path_10X,
-                remove_extracted_data=self.remove_extracted_data,
-                measurement_names_column=0,
-            ),
-            Dataset10X(
-                "pbmc4k",
-                save_path=self.save_path_10X,
-                remove_extracted_data=self.remove_extracted_data,
-                measurement_names_column=0,
-            ),
-        ]
-        self.populate_from_datasets(datasets)
-        # filter cells according to barcodes
-        dict_barcodes = dict(zip(self.barcodes, np.arange(len(self.barcodes))))
-        subset_cells = []
-        barcodes_metadata = (
-            pbmc_metadata["barcodes"].index.values.ravel().astype(np.str)
-        )
-        for barcode in barcodes_metadata:
-            if (
-                barcode in dict_barcodes
-            ):  # barcodes with end -11 filtered on 10X website (49 cells)
-                subset_cells += [dict_barcodes[barcode]]
-        self.update_cells(subset_cells=np.asarray(subset_cells))
-        idx_metadata = np.asarray(
-            [not barcode.endswith("11") for barcode in barcodes_metadata], dtype=np.bool
-        )
-        labels = pbmc_metadata["clusters"][idx_metadata].reshape(-1, 1)[: len(self)]
-        self.labels, self.n_labels = remap_categories(labels)
-        self.cell_types = pbmc_metadata["list_clusters"][: self.n_labels]
+    design.index = adata.obs_names
+    raw_qc.index = adata.obs_names
+    normalized_qc = adata.obs_names
 
-        genes_to_keep = list(
-            self.de_metadata["ENSG"].values
-        )  # only keep the genes for which we have de data
-        difference = list(
-            set(genes_to_keep).difference(set(self.gene_names))
-        )  # Non empty only for unit tests
-        for gene in difference:
-            genes_to_keep.remove(gene)
-        self.filter_genes_by_attribute(genes_to_keep)
-        self.de_metadata = self.de_metadata.head(
-            len(genes_to_keep)
-        )  # this would only affect the unit tests
-        self.design = pbmc_metadata["design"][idx_metadata]
-        self.raw_qc = pbmc_metadata["raw_qc"][idx_metadata]
-        self.qc_names = self.raw_qc.columns
-        self.qc = self.raw_qc.values
+    adata.obsm["design"] = design
+    adata.obsm["raw_qc"] = raw_qc
+    adata.obsm["normalized_qc"] = normalized_qc
 
-        self.qc_pc = pbmc_metadata["qc_pc"][idx_metadata]
-        self.normalized_qc = pbmc_metadata["normalized_qc"][idx_metadata]
+    adata.obsm["qc_pc"] = pbmc_metadata["qc_pc"][idx_metadata]
+    labels = pbmc_metadata["clusters"][idx_metadata]
+    cell_types = pbmc_metadata["list_clusters"]
+    adata.obs["labels"] = labels
+    adata.uns["cell_types"] = cell_types
+    adata.obs["str_labels"] = [cell_types[i] for i in labels]
+
+    adata.var["n_counts"] = np.squeeze(np.asarray(np.sum(adata.X, axis=0)))
+    del adata.var["n_counts-0"]
+    del adata.var["n_counts-1"]
+
+    if run_setup_anndata:
+        setup_anndata(adata, batch_key="batch", labels_key="labels")
+    return adata
