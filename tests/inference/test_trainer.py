@@ -1,5 +1,4 @@
 from unittest import TestCase
-import pdb
 import numpy as np
 from scvi.dataset import setup_anndata
 from scvi.dataset._datasets import synthetic_iid
@@ -37,11 +36,12 @@ class TestVAE(TestCase):
         rand_cell_types = adata.obs.batch.values
         cell_idx1 = rand_cell_types == 1
         cell_idx2 = rand_cell_types == 0
-        de_res = full.differential_expression_score(cell_idx1, cell_idx2)
+
+        full.differential_expression_score(cell_idx1, cell_idx2)
 
     def test_totalVI_posterior(self,):
         use_cuda = False
-        adata = synthetic_iid()
+        adata = synthetic_iid(n_batches=2)
         setup_anndata(
             adata,
             batch_key="batch",
@@ -77,17 +77,10 @@ class TestVAE(TestCase):
         # Number of Monte Carlo samples to average over
         n_samples = 25
         # Probability of background for each (cell, protein)
-        py_mixing = full_posterior.get_sample_mixing(
+        full_posterior.get_sample_mixing(
             n_samples=n_samples, give_mean=True, transform_batch=[0, 1]
         )
-        parsed_protein_names = [
-            p.split("_")[0] for p in adata.obsm["protein_expression"].columns
-        ]
-
-        (
-            denoised_genes,
-            denoised_proteins,
-        ) = full_posterior.get_normalized_denoised_expression(
+        full_posterior.get_normalized_denoised_expression(
             n_samples=n_samples, give_mean=True, transform_batch=[0, 1]
         )
 

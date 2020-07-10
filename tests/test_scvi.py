@@ -508,6 +508,7 @@ def test_totalvi(save_path):
         synthetic_dataset_one_batch,
         protein_expression_obsm_key="protein_expression",
         protein_names_uns_key="protein_names",
+        labels_key="labels",
     )
     totalvi_benchmark(synthetic_dataset_one_batch, n_epochs=1, use_cuda=use_cuda)
     synthetic_dataset_two_batches = scvi.dataset.synthetic_iid(n_batches=2)
@@ -516,6 +517,7 @@ def test_totalvi(save_path):
         batch_key="batch",
         protein_expression_obsm_key="protein_expression",
         protein_names_uns_key="protein_names",
+        labels_key="labels",
     )
     totalvi_benchmark(synthetic_dataset_two_batches, n_epochs=1, use_cuda=use_cuda)
 
