@@ -70,7 +70,6 @@ class TotalPosterior(Posterior):
         batch_size: int = 256,
         data_loader_kwargs=dict(),
     ):
-
         super().__init__(
             model,
             gene_dataset,
@@ -80,6 +79,17 @@ class TotalPosterior(Posterior):
             batch_size=batch_size,
             data_loader_kwargs=data_loader_kwargs,
         )
+
+    @property
+    def _data_and_attributes(self):
+        return {
+            _X_KEY: np.float32,
+            _BATCH_KEY: np.int64,
+            _LOCAL_L_MEAN_KEY: np.float32,
+            _LOCAL_L_VAR_KEY: np.float32,
+            _LABELS_KEY: np.int64,
+            _PROTEIN_EXP_KEY: np.float32,
+        }
 
     @torch.no_grad()
     def elbo(self):

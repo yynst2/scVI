@@ -118,7 +118,7 @@ class Posterior:
     def __init__(
         self,
         model,
-        gene_dataset: anndata.AnnData,
+        adata: anndata.AnnData,
         shuffle=False,
         indices=None,
         use_cuda=True,
@@ -126,14 +126,23 @@ class Posterior:
         data_loader_kwargs=dict(),
     ):
         self.model = model
-        self.gene_dataset = BioDataset(gene_dataset)
+        assert "scvi_data_registry" in adata.uns.keys(), ValueError(
+            "Please run setup_anndata() on your anndata object first."
+        )
+        for key in self._data_and_attributes.keys():
+            assert key in adata.uns["scvi_data_registry"].keys(), ValueError(
+                "{} required for model but not included when setup_anndata was run".format(
+                    key
+                )
+            )
+        self.gene_dataset = BioDataset(adata, getitem_tensors=self._data_and_attributes)
         self.to_monitor = []
         self.use_cuda = use_cuda
 
         if indices is not None and shuffle:
             raise ValueError("indices is mutually exclusive with shuffle")
         if indices is None:
-            inds = np.arange(len(gene_dataset))
+            inds = np.arange(len(self.gene_dataset))
             if shuffle:
                 sampler_kwargs = {
                     "indices": inds,
@@ -163,6 +172,16 @@ class Posterior:
         self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
         self.original_indices = self.indices
+
+    @property
+    def _data_and_attributes(self):
+        return {
+            _X_KEY: np.float32,
+            _BATCH_KEY: np.int64,
+            _LOCAL_L_MEAN_KEY: np.float32,
+            _LOCAL_L_VAR_KEY: np.float32,
+            _LABELS_KEY: np.int64,
+        }
 
     def accuracy(self):
         pass
