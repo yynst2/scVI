@@ -197,6 +197,7 @@ def highly_variable_genes_seurat_v3(
 
 def poisson_gene_selection(
     adata,
+    layer: Optional[str] = None,
     n_top_genes: int = 4000,
     use_cuda: bool = True,
     subset: bool = False,
@@ -222,6 +223,8 @@ def poisson_gene_selection(
     ----------
     adata
         AnnData object (with sparse X matrix).
+    layer
+        If provided, use `adata.layers[layer]` for expression values instead of `adata.X`.
     n_top_genes
         How many variable genes to select.
     use_cuda
@@ -266,6 +269,10 @@ def poisson_gene_selection(
     from tqdm import tqdm
     import sys
 
+    X = adata.layers[layer] if layer is not None else adata.X
+    if _check_nonnegative_integers(X) is False:
+        raise ValueError("`poisson_gene_selection` expects " "raw count data.")
+
     use_cuda = use_cuda and torch.cuda.is_available()
     dev = torch.device("cuda:0" if use_cuda else "cpu")
 
@@ -279,7 +286,8 @@ def poisson_gene_selection(
     exp_frac_zeross = []
     for b in np.unique(batch_info):
 
-        X = adata[batch_info == b].X
+        ad = adata[batch_info == b]
+        X = ad.layers[layer] if layer is not None else ad.X
 
         # Calculate empirical statistics.
         scaled_means = torch.from_numpy(X.sum(0) / X.sum())[0].to(dev)
