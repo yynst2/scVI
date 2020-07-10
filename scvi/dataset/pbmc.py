@@ -4,9 +4,56 @@ from typing import Union, List
 
 import numpy as np
 import pandas as pd
-
+import pdb
+import anndata
 from scvi.dataset.dataset import DownloadableDataset, remap_categories
-from scvi.dataset.dataset10X import Dataset10X
+
+# from scvi.dataset.dataset10X import Dataset10X
+
+from scvi.dataset._utils import _download
+from scvi.dataset import setup_anndata
+
+
+def purified_pbmc_dataset(
+    save_path: str = "data/",
+    subset_datasets: List[str] = None,
+    run_setup_anndata=False,
+):
+    url = "https://github.com/YosefLab/scVI-data/raw/master/PurifiedPBMCDataset.h5ad"
+    save_fn = "PurifiedPBMCDataset.h5ad"
+
+    # _download(url, save_path, save_fn)
+    # path_to_file = os.path.join(save_path, save_fn)
+
+    path_to_file = "/Users/galen/scVI/galen/PurifiedPBMCDataset.h5ad"
+    adata = anndata.read(path_to_file)
+
+    dataset_names = [
+        "cd4_t_helper",
+        "regulatory_t",
+        "naive_t",
+        "memory_t",
+        "cytotoxic_t",
+        "naive_cytotoxic",
+        "b_cells",
+        "cd4_t_helper",
+        "cd34",
+        "cd56_nk",
+        "cd14_monocytes",
+    ]
+    if subset_datasets is not None:
+        row_indices = []
+        for dataset in subset_datasets:
+            assert dataset in dataset_names
+            idx = np.where(adata.obs["cell_types"] == dataset)[0]
+            row_indices.append(idx)
+        row_indices = np.concatenate(row_indices)
+        adata = adata[row_indices].copy()
+
+    if run_setup_anndata:
+        setup_anndata(adata, batch_key="batch", labels_key="labels")
+
+    return adata
 
 
 class PbmcDataset(DownloadableDataset):
