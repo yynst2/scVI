@@ -294,7 +294,7 @@ class Posterior:
             "batch_size": batch_size,
             "shuffle": False,
         }
-        return self.update({"sampler": BatchSampler(**self.sampler_kwargs)})
+        return self.update({"batch_sampler": BatchSampler(**self.sampler_kwargs)})
 
     @torch.no_grad()
     def elbo(self) -> torch.Tensor:
