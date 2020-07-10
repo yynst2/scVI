@@ -1,5 +1,4 @@
 import copy
-import pdb
 import inspect
 import logging
 import os
@@ -11,7 +10,6 @@ import torch
 import anndata
 import torch.distributions as distributions
 from tqdm.auto import tqdm
-from matplotlib import pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score as ARI
 from sklearn.metrics import normalized_mutual_info_score as NMI
@@ -22,7 +20,6 @@ from torch.utils.data import DataLoader
 from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior_utils import (
     entropy_batch_mixing,
-    plot_imputation,
     nn_overlap,
     unsupervised_clustering_accuracy,
     knn_purity,
@@ -44,7 +41,6 @@ from scvi.dataset._constants import (
     _LOCAL_L_MEAN_KEY,
     _LOCAL_L_VAR_KEY,
     _LABELS_KEY,
-    _PROTEIN_EXP_KEY,
 )
 
 logger = logging.getLogger(__name__)
@@ -832,7 +828,7 @@ class Posterior:
 
             if change_fn == "log-fold" or change_fn is None:
                 change_fn = lfc
-            elif not lable(change_fn):
+            elif not callable(change_fn):
                 raise ValueError("'change_fn' attribute not understood")
 
             # step2: Construct the DE area function
@@ -1388,7 +1384,8 @@ class Posterior:
                     transform_batch=batch,
                 )
                 imputed_list_batch += [np.array(px_rate.cpu())]
-            imputed_arr.append(np.concatenate(imputed_list_batch))
+            # axis 1 is cells
+            imputed_arr.append(np.concatenate(imputed_list_batch, axis=1))
         imputed_arr = np.array(imputed_arr)
         # shape: (len(transformed_batch), n_samples, n_cells, n_genes) if n_samples > 1
         # else shape: (len(transformed_batch), n_cells, n_genes)

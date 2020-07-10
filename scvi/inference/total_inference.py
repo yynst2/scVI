@@ -366,7 +366,7 @@ class TotalPosterior(Posterior):
         """
         original_list = []
         posterior_list = []
-        for tensors in self.update({"batch_size": batch_size}):
+        for tensors in self.update_batch_size(batch_size):
             x, _, _, batch_index, labels, y = self._unpack_tensors(tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
