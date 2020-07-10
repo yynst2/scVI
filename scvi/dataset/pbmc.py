@@ -104,7 +104,7 @@ def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
 
     design.index = adata.obs_names
     raw_qc.index = adata.obs_names
-    normalized_qc = adata.obs_names
+    normalized_qc.index = adata.obs_names
 
     adata.obsm["design"] = design
     adata.obsm["raw_qc"] = raw_qc
