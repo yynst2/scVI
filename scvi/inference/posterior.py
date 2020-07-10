@@ -159,7 +159,8 @@ class Posterior:
         self.sampler_kwargs = sampler_kwargs
         sampler = BatchSampler(**self.sampler_kwargs)
         self.data_loader_kwargs = copy.copy(data_loader_kwargs)
-        self.data_loader_kwargs.update({"batch_sampler": sampler})
+        # do not touch batch size here, sampler gives batched indices
+        self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
         self.original_indices = self.indices
 
@@ -278,7 +279,7 @@ class Posterior:
     def update_batch_size(self, batch_size):
         self.sampler_kwargs.update({"batch_size": batch_size})
         sampler = BatchSampler(**self.sampler_kwargs)
-        return self.update({"batch_sampler": sampler})
+        return self.update({"sampler": sampler, "batch_size": None})
 
     def sequential(self, batch_size: Optional[int] = 128) -> "Posterior":
         """Returns a copy of the object that iterate over the data sequentially.
@@ -418,7 +419,7 @@ class Posterior:
         # sampler = SubsetRandomSampler(idx)
         self.sampler_kwargs.update({"indices": idx})
         sampler = BatchSampler(**self.sampler_kwargs)
-        self.data_loader_kwargs.update({"batch_sampler": sampler})
+        self.data_loader_kwargs.update({"sampler": sampler, "batch_size": None})
         self.data_loader = DataLoader(self.gene_dataset, **self.data_loader_kwargs)
 
     @torch.no_grad()
