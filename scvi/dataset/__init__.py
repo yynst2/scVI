@@ -13,7 +13,12 @@ from .seqfish import seqfish
 from .seqfishplus import seqfishplus
 from .smfish import smfish
 from .csv import breast_cancer_dataset, mouse_ob_dataset
-from .loom import retina, prefrontalcortex_starmap, frontalcortex_dropseq
+from .loom import (
+    retina,
+    prefrontalcortex_starmap,
+    frontalcortex_dropseq,
+    annotation_simulation,
+)
 
 
 from .dataset import GeneExpressionDataset

@@ -90,6 +90,34 @@ def frontalcortex_dropseq(save_path: str = "data/") -> AnnData:
     return adata
 
 
+def annotation_simulation(name: str, save_path: str = "data/") -> AnnData:
+    """\
+    Simulated datasets for scANVI tutorials
+
+    name
+        One of "1", "2", or "3"
+    """
+
+    save_path = os.path.abspath(save_path)
+    url = "https://github.com/YosefLab/scVI-data/raw/master/simulation/simulation_{}.loom".format(
+        name
+    )
+    save_fn = "simulation_{}.loom".format(name)
+    _download(url, save_path, save_fn)
+    adata = _load_loom(os.path.join(save_path, save_fn))
+
+    adata.obs["labels"] = adata.obs.ClusterID.values
+    del adata.obs["ClusterID"]
+
+    adata.obs["batch"] = adata.obs.BatchID.values
+    del adata.obs["BatchID"]
+
+    return adata
+
+
+""
+
+
 def _load_loom(path_to_file: str, gene_names_attribute_name: str = "Gene") -> AnnData:
     ds = loompy.connect(path_to_file)
     select = ds[:, :].sum(axis=0) > 0  # Take out cells that don't express any gene
