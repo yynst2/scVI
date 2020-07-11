@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 import pandas as pd
 import tempfile
 import os
@@ -149,14 +150,13 @@ def test_synthetic_1():
     # assert np.array_equal(
     # new_post.gene_dataset.labels, original_post.gene_dataset.labels
     # )
-
     trainer_synthetic_svaec.full_dataset.knn_purity()
     trainer_synthetic_svaec.labelled_set.clustering_scores()
     trainer_synthetic_svaec.labelled_set.clustering_scores(prediction_algorithm="gmm")
     trainer_synthetic_svaec.unlabelled_set.unsupervised_classification_accuracy()
     trainer_synthetic_svaec.unlabelled_set.differential_expression_score(
-        synthetic_dataset.labels.ravel() == 1,
-        synthetic_dataset.labels.ravel() == 2,
+        synthetic_dataset.obs["_scvi_labels"].ravel() == 1,
+        synthetic_dataset.obs["_scvi_labels"].ravel() == 2,
         n_samples=2,
         M_permutation=10,
     )
@@ -411,7 +411,7 @@ def test_differential_expression(save_path):
             dataset.uns["scvi_summary_stats"]["n_batch"],
         )
         new_post = load_posterior(posterior_save_path, model=new_vae, use_cuda=False)
-    assert new_post.data_loader.batch_size == 3
+    assert new_post.data_loader.sampler.batch_size == 3
     assert np.array_equal(new_post.indices, post.indices)
     assert np.array_equal(new_post.gene_dataset.X, post.gene_dataset.X)
 

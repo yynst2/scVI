@@ -80,6 +80,11 @@ def load_posterior(
 
     # Loading dataset and associated measurements
     ad = anndata.read_h5ad(filename=dataset_path)
+    # anndata writes None as ''. Thus need to convert back when reading
+    for key, data_loc in ad.uns["scvi_data_registry"].items():
+        df, df_key = data_loc[0], data_loc[1]
+        if df == "":
+            ad.uns["scvi_data_registry"][key] = (None, df_key)
 
     # Loading scVI model
     if use_cuda == "auto":
@@ -101,7 +106,7 @@ def load_posterior(
     sampler_kwargs = pd.read_hdf(sampler_kwargs_path, key="sampler").to_dict()
     my_post = post_class(
         model=model,
-        gene_dataset=ad,
+        adata=ad,
         shuffle=sampler_kwargs["shuffle"],
         indices=indices,
         batch_size=sampler_kwargs["batch_size"],

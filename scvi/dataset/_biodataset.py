@@ -1,4 +1,5 @@
 import torch
+import scipy
 import pandas as pd
 import anndata
 import copy
@@ -11,11 +12,12 @@ from typing import Union, List, Dict, Tuple
 from scvi.dataset._anndata import get_from_registry
 from scvi.dataset._utils import _check_nonnegative_integers
 
+from scvi.dataset._constants import _X_KEY, _LABELS_KEY
+
 logger = logging.getLogger(__name__)
 
 
 class BioDataset(Dataset):
-    # should we have new name for getitem tensors?
     def __init__(
         self,
         adata: anndata.AnnData,
@@ -30,7 +32,7 @@ class BioDataset(Dataset):
         assert adata.shape[0] == stats["n_cells"], error_msg.format("cells")
         assert adata.shape[1] == stats["n_genes"], error_msg.format("gene")
         assert (
-            len(np.unique(get_from_registry(adata, "labels"))) == stats["n_labels"]
+            len(np.unique(get_from_registry(adata, _LABELS_KEY))) == stats["n_labels"]
         ), error_msg.format("labels")
         if "protein_expression" in adata.uns["scvi_data_registry"].keys():
             assert (
@@ -38,7 +40,7 @@ class BioDataset(Dataset):
                 == get_from_registry(adata, "protein_expression").shape[1]
             ), error_msg.format("proteins")
 
-        is_nonneg_int = _check_nonnegative_integers(get_from_registry(adata, "X"))
+        is_nonneg_int = _check_nonnegative_integers(get_from_registry(adata, _X_KEY))
         if not is_nonneg_int:
             logger.warning(
                 "Make sure the registered X field in anndata contains unnormalized count data."
@@ -110,7 +112,7 @@ class BioDataset(Dataset):
 
     def normalize(self):
         # TODO change to add a layer in anndata and update registry, store as sparse?
-        X = get_from_registry(self.adata, "X")
+        X = get_from_registry(self.adata, _X_KEY)
         scaling_factor = X.mean(axis=1)
         self.norm_X = X / scaling_factor.reshape(len(scaling_factor), 1)
 
@@ -133,7 +135,7 @@ class BioDataset(Dataset):
 
         """
         # change this later
-        X = get_from_registry(self.adata, "X")
+        X = get_from_registry(self.adata, _X_KEY)
         mean1 = (X[idx1]).mean(axis=0)
         mean2 = (X[idx2]).mean(axis=0)
         nonz1 = (X[idx1] != 0).mean(axis=0)
@@ -194,6 +196,26 @@ class BioDataset(Dataset):
             return pe.to_numpy() if type(pe) is pd.DataFrame else pe
         else:
             return None
+
+    @property
+    def X(self) -> np.ndarray:
+        dtype = self.attributes_and_types[_X_KEY]
+        data = get_from_registry(self.adata, _X_KEY)
+        if isinstance(data, pd.DataFrame):
+            data = data.to_numpy()
+        elif scipy.sparse.issparse(data):
+            data = data.toarray().astype(dtype)
+        return data.astype(dtype)
+
+    @property
+    def labels(self) -> np.ndarray:
+        dtype = self.attributes_and_types[_LABELS_KEY]
+        data = get_from_registry(self.adata, _LABELS_KEY)
+        if isinstance(data, pd.DataFrame):
+            data = data.to_numpy()
+        elif scipy.sparse.issparse(data):
+            data = data.toarray().astype(dtype)
+        return data.astype(dtype)
 
     def to_anndata(self,) -> anndata.AnnData:
         return self.adata.copy()

@@ -1,4 +1,5 @@
 import copy
+import pdb
 import inspect
 import logging
 import os
@@ -1175,18 +1176,19 @@ class Posterior:
                     " the length of cell_labels have to be "
                     "the same as the number of cells"
                 )
-        if (cell_labels is None) and not hasattr(self.gene_dataset, "cell_types"):
-            raise ValueError(
-                "If gene_dataset is not annotated with labels and cell types,"
-                " then must provide cell_labels"
-            )
+        # if (cell_labels is None) and not hasattr(self.gene_dataset, "cell_types"):
+        #     raise ValueError(
+        #         "If gene_dataset is not annotated with labels and cell types,"
+        #         " then must provide cell_labels"
+        #     )
         # Input cell_labels take precedence over cell type label annotation in dataset
-        elif cell_labels is not None:
+        if cell_labels is not None:
             cluster_id = np.unique(cell_labels[cell_labels >= 0])
             # Can make cell_labels < 0 to filter out cells when computing DE
         else:
-            cluster_id = self.gene_dataset.cell_types
             cell_labels = self.gene_dataset.labels.ravel()
+            cluster_id = np.unique(cell_labels)
+
         de_res = []
         de_cluster = []
         for i, x in enumerate(tqdm(cluster_id)):
@@ -1322,8 +1324,8 @@ class Posterior:
             cluster_id = np.unique(cell_labels[cell_labels >= 0])
             # Can make cell_labels < 0 to filter out cells when computing DE
         else:
-            cluster_id = self.gene_dataset.cell_types
             cell_labels = self.gene_dataset.labels.ravel()
+            cluster_id = np.unique(cell_labels)
         de_res = []
         de_cluster = []
         oppo_states = ~states
@@ -1764,16 +1766,17 @@ class Posterior:
 
     @torch.no_grad()
     def clustering_scores(self, prediction_algorithm: str = "knn") -> Tuple:
-        if self.gene_dataset.n_labels > 1:
+        if self.gene_dataset.adata.uns["scvi_summary_stats"]["n_labels"] > 1:
             latent, _, labels = self.get_latent()
             if prediction_algorithm == "knn":
                 labels_pred = KMeans(
-                    self.gene_dataset.n_labels, n_init=200
+                    self.gene_dataset.adata.uns["scvi_summary_stats"]["n_labels"],
+                    n_init=200,
                 ).fit_predict(
                     latent
                 )  # n_jobs>1 ?
             elif prediction_algorithm == "gmm":
-                gmm = GMM(self.gene_dataset.n_labels)
+                gmm = GMM(self.gene_dataset.adata.uns["scvi_summary_stats"]["n_labels"])
                 gmm.fit(latent)
                 labels_pred = gmm.predict(latent)
 
