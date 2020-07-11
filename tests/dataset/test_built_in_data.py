@@ -4,6 +4,16 @@ import scvi
 from .utils import unsupervised_training_one_epoch
 
 
+class TestPbmcDataset(TestCase):
+    def test_populate(self):
+        dataset = scvi.datset.pbmc_dataset(
+            save_path="tests/data/10X",
+            remove_extracted_data=True,
+            run_setup_anndata=True,
+        )
+        unsupervised_training_one_epoch(dataset)
+
+
 class TestLoomDataset(TestCase):
     def test_retina_load_train_one(self):
         dataset = scvi.dataset.retina(save_path="tests/data")

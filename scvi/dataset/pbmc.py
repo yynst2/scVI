@@ -1,12 +1,10 @@
 import os
 import pickle
-from typing import Union, List
+from typing import List
 
 import numpy as np
 import pandas as pd
-import pdb
 import anndata
-from scvi.dataset.dataset import DownloadableDataset, remap_categories
 from scvi.dataset import dataset10X
 
 # from scvi.dataset.dataset10X import Dataset10X
@@ -18,8 +16,8 @@ from scvi.dataset import setup_anndata
 def purified_pbmc_dataset(
     save_path: str = "data/", subset_datasets: List[str] = None, run_setup_anndata=True
 ):
-    url = "https://github.com/YosefLab/scVI-data/raw/master/PurifiedPBMCDataset.h5ad"
-    save_fn = "PurifiedPBMCDataset.h5ad"
+    # url = "https://github.com/YosefLab/scVI-data/raw/master/PurifiedPBMCDataset.h5ad"
+    # save_fn = "PurifiedPBMCDataset.h5ad"
 
     # _download(url, save_path, save_fn)
     # path_to_file = os.path.join(save_path, save_fn)
@@ -55,7 +53,9 @@ def purified_pbmc_dataset(
     return adata
 
 
-def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
+def pbmc_dataset(
+    save_path: str = "data/", run_setup_anndata=True, remove_extracted_data=True
+):
     urls = [
         "https://github.com/YosefLab/scVI-data/raw/master/gene_info.csv",
         "https://github.com/YosefLab/scVI-data/raw/master/pbmc_metadata.pickle",
@@ -69,8 +69,18 @@ def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
     pbmc_metadata = pickle.load(
         open(os.path.join(save_path, "pbmc_metadata.pickle"), "rb")
     )
-    pbmc8k = dataset10X("pbmc8k", save_path=save_path, var_names="gene_ids")
-    pbmc4k = dataset10X("pbmc4k", save_path=save_path, var_names="gene_ids")
+    pbmc8k = dataset10X(
+        "pbmc8k",
+        save_path=save_path,
+        var_names="gene_ids",
+        remove_extracted_data=remove_extracted_data,
+    )
+    pbmc4k = dataset10X(
+        "pbmc4k",
+        save_path=save_path,
+        var_names="gene_ids",
+        remove_extracted_data=remove_extracted_data,
+    )
     barcodes = np.concatenate((pbmc8k.obs_names, pbmc4k.obs_names))
 
     adata = pbmc8k.concatenate(pbmc4k)
