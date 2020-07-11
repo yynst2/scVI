@@ -6,7 +6,7 @@ from .utils import unsupervised_training_one_epoch
 
 class TestPbmcDataset(TestCase):
     def test_populate(self):
-        dataset = scvi.datset.pbmc_dataset(
+        dataset = scvi.dataset.pbmc_dataset(
             save_path="tests/data/10X",
             remove_extracted_data=True,
             run_setup_anndata=True,
