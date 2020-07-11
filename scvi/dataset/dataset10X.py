@@ -85,7 +85,6 @@ def dataset10X(
     url: str = None,
     is_filtered: bool = True,
     remove_extracted_data: bool = False,
-    delayed_populating: bool = False,
     **scanpy_read_10x_kwargs,
 ):
     """Loads a file from `10x <http://cf.10xgenomics.com/>`_ website.

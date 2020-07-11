@@ -16,6 +16,7 @@ from scvi.inference import (
     TotalPosterior,
 )
 import scvi
+from scvi.dataset import setup_anndata
 from scvi.inference.posterior import unsupervised_clustering_accuracy
 from scvi.inference.posterior_utils import load_posterior
 from scvi.inference.annotation import compute_accuracy_rf, compute_accuracy_svc
@@ -464,6 +465,7 @@ def test_differential_expression(save_path):
         dataset_name="pbmc_10k_protein_v3", save_path=sp, gex_only=False
     )
     scvi.dataset.organize_cite_seq_10x(dataset)
+    setup_anndata(dataset, protein_expression_obsm_key="protein_expression")
 
     n_cells = len(dataset)
     all_indices = np.arange(n_cells)
