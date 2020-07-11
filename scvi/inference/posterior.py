@@ -140,8 +140,10 @@ class Posterior:
         self.to_monitor = []
         self.use_cuda = use_cuda
 
-        if indices is not None and shuffle:
-            raise ValueError("indices is mutually exclusive with shuffle")
+        # correct me if im wrong but im pretty sure this is no longer true
+        # causes error when loading posterior that has all its indices in its indices file
+        # if indices is not None and shuffle:
+        #     raise ValueError("indices is mutually exclusive with shuffle")
         if indices is None:
             inds = np.arange(len(self.gene_dataset))
             if shuffle:
@@ -237,8 +239,6 @@ class Posterior:
         sampler_kwargs.to_hdf(
             os.path.join(dir_path, "sampler_kwargs.h5"), key="sampler"
         )
-
-        pass
 
     @property
     def indices(self) -> np.ndarray:

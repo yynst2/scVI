@@ -147,10 +147,9 @@ def test_synthetic_1():
         new_post = load_posterior(posterior_save_path, model=new_svaec, use_cuda=False)
     assert np.array_equal(new_post.indices, original_post.indices)
     assert np.array_equal(new_post.gene_dataset.X, original_post.gene_dataset.X)
-    # TODO update
-    # assert np.array_equal(
-    # new_post.gene_dataset.labels, original_post.gene_dataset.labels
-    # )
+    assert np.array_equal(
+        new_post.gene_dataset.labels, original_post.gene_dataset.labels
+    )
     trainer_synthetic_svaec.full_dataset.knn_purity()
     trainer_synthetic_svaec.labelled_set.clustering_scores()
     trainer_synthetic_svaec.labelled_set.clustering_scores(prediction_algorithm="gmm")
@@ -559,10 +558,9 @@ def test_totalvi(save_path):
         )
         assert hasattr(new_post.gene_dataset, "protein_names")
         assert new_post.posterior_type == "TotalPosterior"
-        # TODO fix
-        # assert np.array_equal(
-        #     new_post.gene_dataset.protein_expression, dataset.protein_expression
-        # )
+        assert np.array_equal(
+            new_post.gene_dataset.protein_expression, dataset.obsm["protein_expression"]
+        )
 
 
 def test_autozi(save_path):

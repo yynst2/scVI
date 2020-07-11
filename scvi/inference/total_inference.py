@@ -54,7 +54,7 @@ class TotalPosterior(Posterior):
     Let us instantiate a `trainer`, with a gene_dataset and a model
 
     >>> gene_dataset = CbmcDataset()
-    >>> totalvi = TOTALVI(gene_dataset.nb_genes, len(gene_dataset.protein_names),
+    >>> totalvi = TOTALVI(gene_dataset.n_genes, len(gene_dataset.protein_names),
     ... n_batch=gene_dataset.n_batches, use_cuda=True)
     >>> trainer = TotalTrainer(vae, gene_dataset)
     >>> trainer.train(n_epochs=500)
@@ -63,7 +63,7 @@ class TotalPosterior(Posterior):
     def __init__(
         self,
         model: TOTALVI,
-        gene_dataset: anndata.AnnData,
+        adata: anndata.AnnData,
         shuffle: bool = False,
         indices: Optional[np.ndarray] = None,
         use_cuda: bool = True,
@@ -72,7 +72,7 @@ class TotalPosterior(Posterior):
     ):
         super().__init__(
             model,
-            gene_dataset,
+            adata,
             shuffle=shuffle,
             indices=indices,
             use_cuda=use_cuda,
@@ -749,7 +749,7 @@ class TotalPosterior(Posterior):
 
         """
         posterior_list = []
-        for tensors in self.update({"batch_size": batch_size}):
+        for tensors in self.update_batch_size(batch_size):
             x, _, _, batch_index, label, y = self._unpack_tensors(tensors)
             with torch.no_grad():
                 outputs = self.model.inference(
@@ -784,8 +784,8 @@ class TotalPosterior(Posterior):
             l_train = Gamma(r, (1 - p) / p).sample()
             data = l_train.cpu().numpy()
             # make background 0
-            data[:, :, self.gene_dataset.nb_genes :] = (
-                data[:, :, self.gene_dataset.nb_genes :]
+            data[:, :, self.gene_dataset.n_genes :] = (
+                data[:, :, self.gene_dataset.n_genes :]
                 * (1 - mixing_sample).cpu().numpy()
             )
             posterior_list += [data]
@@ -846,11 +846,11 @@ class TotalPosterior(Posterior):
                     denoised_data.shape[0] * (i) : denoised_data.shape[0] * (i + 1)
                 ] = denoised_data[:, :, i]
             if log_transform is True:
-                flattened[:, : self.gene_dataset.nb_genes] = np.log(
-                    flattened[:, : self.gene_dataset.nb_genes] + 1e-8
+                flattened[:, : self.gene_dataset.n_genes] = np.log(
+                    flattened[:, : self.gene_dataset.n_genes] + 1e-8
                 )
-                flattened[:, self.gene_dataset.nb_genes :] = np.log1p(
-                    flattened[:, self.gene_dataset.nb_genes :]
+                flattened[:, self.gene_dataset.n_genes :] = np.log1p(
+                    flattened[:, self.gene_dataset.n_genes :]
                 )
             if correlation_mode == "pearson":
                 corr_matrix = np.corrcoef(flattened, rowvar=False)

@@ -232,7 +232,7 @@ def setup_anndata(
             )
         )
 
-        data_registry[_PROTEIN_EXP_KEY] = ("obsm", protein_expression_obsm_key)
+        data_registry[_PROTEIN_EXP_KEY] = ["obsm", protein_expression_obsm_key]
         summary_stats["n_proteins"] = adata.obsm[protein_expression_obsm_key].shape[1]
         if protein_names_uns_key is None and isinstance(
             adata.obsm[protein_expression_obsm_key], pd.DataFrame

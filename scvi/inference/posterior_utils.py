@@ -1,4 +1,5 @@
 import os
+import pdb
 from typing import List, Optional, Union
 
 import anndata
@@ -84,7 +85,7 @@ def load_posterior(
     for key, data_loc in ad.uns["scvi_data_registry"].items():
         df, df_key = data_loc[0], data_loc[1]
         if df == "":
-            ad.uns["scvi_data_registry"][key] = (None, df_key)
+            ad.uns["scvi_data_registry"][key] = [None, df_key]
 
     # Loading scVI model
     if use_cuda == "auto":
