@@ -155,6 +155,7 @@ def setup_anndata(
     elif np.issubdtype(user_batch_dtype, np.integer) is False:
         adata.obs["_scvi_batch"] = adata.obs[batch_key].astype("category").cat.codes
         batch_key = "_scvi_batch"
+
     if labels_key is None:
         logger.info("No label_key inputted, assuming all cells have same label")
         labels_key = "_scvi_labels"

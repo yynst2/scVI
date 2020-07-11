@@ -1,6 +1,5 @@
 import torch
 import pandas as pd
-import pdb
 import anndata
 import copy
 import numpy as np
@@ -30,6 +29,9 @@ class BioDataset(Dataset):
         error_msg = "Number of {} in anndata different from when setup_anndata was run. Please rerun setup_anndata."
         assert adata.shape[0] == stats["n_cells"], error_msg.format("cells")
         assert adata.shape[1] == stats["n_genes"], error_msg.format("gene")
+        assert (
+            len(np.unique(get_from_registry(adata, "labels"))) == stats["n_labels"]
+        ), error_msg.format("labels")
         if "protein_expression" in adata.uns["scvi_data_registry"].keys():
             assert (
                 stats["n_proteins"]

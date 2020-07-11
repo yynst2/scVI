@@ -1708,9 +1708,8 @@ class Posterior:
         if gene_list is None:
             gene_mask = slice(None)
         else:
-            gene_mask = self.gene_dataset._get_genes_filter_mask_by_attribute(
-                gene_list, return_data=False
-            )
+            all_genes = self.gene_dataset.adata.var_names
+            gene_mask = [True if gene in gene_list else False for gene in all_genes]
             if return_df is None and sum(gene_mask) > 1:
                 return_df = True
 
@@ -1819,7 +1818,5 @@ class Posterior:
 
     def raw_data(self) -> Tuple:
         """Returns raw data for classification"""
-        return (
-            self.gene_dataset.X[self.indices],
-            self.gene_dataset.labels[self.indices].ravel(),
-        )
+        data = self.gene_dataset[self.indices]
+        return (data[_X_KEY], data[_LABELS_KEY].ravel())

@@ -29,7 +29,7 @@ use_cuda = True
 
 def test_cortex(save_path):
     cortex_dataset = scvi.dataset.cortex(save_path=save_path)
-    scvi.dataset.setup_anndata(cortex_dataset)
+    scvi.dataset.setup_anndata(cortex_dataset, labels_key="labels")
     stats = cortex_dataset.uns["scvi_summary_stats"]
     vae = VAE(stats["n_genes"], stats["n_batch"])
     trainer_cortex_vae = UnsupervisedTrainer(
@@ -77,12 +77,12 @@ def test_cortex(save_path):
     )
     x_new, x_old = full.generate(n_samples=10)
     assert x_new.shape == (
-        cortex_dataset.nb_cells,
+        cortex_dataset.uns["scvi_summary_stats"]["n_cells"],
         cortex_dataset.uns["scvi_summary_stats"]["n_genes"],
         10,
     )
     assert x_old.shape == (
-        cortex_dataset.nb_cells,
+        cortex_dataset.uns["scvi_summary_stats"]["n_cells"],
         cortex_dataset.uns["scvi_summary_stats"]["n_genes"],
     )
 
@@ -296,7 +296,7 @@ def test_poisson_not_zinb():
 
 def test_classifier_accuracy(save_path):
     cortex_dataset = scvi.dataset.cortex(save_path=save_path)
-    scvi.dataset.setup_anndata(cortex_dataset, labels_key="cell_type")
+    scvi.dataset.setup_anndata(cortex_dataset, labels_key="labels")
     cls = Classifier(
         cortex_dataset.uns["scvi_summary_stats"]["n_genes"],
         n_labels=cortex_dataset.uns["scvi_summary_stats"]["n_labels"],
