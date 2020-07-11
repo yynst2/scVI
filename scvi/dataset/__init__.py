@@ -8,6 +8,7 @@ from ._preprocessing import (
 from .cite_seq import pbmcs_10x_cite_seq
 from .dataset10X import dataset10X
 from ._datasets import synthetic_iid
+from .pbmc import pbmc_dataset
 from .cortex import cortex
 from .seqfish import seqfish
 from .seqfishplus import seqfishplus

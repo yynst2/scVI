@@ -16,7 +16,7 @@ from scvi.dataset import setup_anndata
 
 
 def purified_pbmc_dataset(
-    save_path: str = "data/", subset_datasets: List[str] = None, run_setup_anndata=True,
+    save_path: str = "data/", subset_datasets: List[str] = None, run_setup_anndata=True
 ):
     url = "https://github.com/YosefLab/scVI-data/raw/master/PurifiedPBMCDataset.h5ad"
     save_fn = "PurifiedPBMCDataset.h5ad"
@@ -69,8 +69,8 @@ def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
     pbmc_metadata = pickle.load(
         open(os.path.join(save_path, "pbmc_metadata.pickle"), "rb")
     )
-    pbmc8k = dataset10X("pbmc8k", save_path=save_path)
-    pbmc4k = dataset10X("pbmc4k", save_path=save_path)
+    pbmc8k = dataset10X("pbmc8k", save_path=save_path, var_names="gene_ids")
+    pbmc4k = dataset10X("pbmc4k", save_path=save_path, var_names="gene_ids")
     barcodes = np.concatenate((pbmc8k.obs_names, pbmc4k.obs_names))
 
     adata = pbmc8k.concatenate(pbmc4k)
@@ -89,7 +89,7 @@ def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
         [not barcode.endswith("11") for barcode in barcodes_metadata], dtype=np.bool
     )
     genes_to_keep = list(
-        de_metadata["GS"].values
+        de_metadata["ENSG"].values
     )  # only keep the genes for which we have de data
     difference = list(
         set(genes_to_keep).difference(set(adata.var_names))
@@ -118,8 +118,6 @@ def pbmc_dataset(save_path: str = "data/", run_setup_anndata=True):
     adata.obs["str_labels"] = [cell_types[i] for i in labels]
 
     adata.var["n_counts"] = np.squeeze(np.asarray(np.sum(adata.X, axis=0)))
-    del adata.var["n_counts-0"]
-    del adata.var["n_counts-1"]
 
     if run_setup_anndata:
         setup_anndata(adata, batch_key="batch", labels_key="labels")
