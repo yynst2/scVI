@@ -97,9 +97,15 @@ class NotebookLoader(object):
                             "save_path = '" + os.getcwd() + "'",
                             code,
                         )
-                        code = re.sub("dendrogram=True", "dendrogram=False", code,)
+                        code = re.sub("dendrogram=True", "dendrogram=False", code)
                         code = re.sub("show_plot = True", "show_plot = False", code)
                         code = re.sub("test_mode = False", "test_mode = True", code)
+                        code = re.sub(
+                            "scvi.dataset.highly_variable_genes",
+                            "#scvi.dataset.highly_variable_genes",
+                            code,
+                        )
+                        code = re.sub("sc.pl.dotplot", "#sc.pl.dotplot", code)
                         # run the code in themodule
                         exec(code, mod.__dict__)
                         plt.close("all")
