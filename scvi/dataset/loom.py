@@ -69,7 +69,8 @@ def prefrontalcortex_starmap(save_path: str = "data/") -> AnnData:
 
     adata.obs["batch"] = adata.obs.BatchID.values
     del adata.obs["BatchID"]
-
+    adata.obs["x_coord"] = adata.obsm["Spatial_coordinates"][:, 0]
+    adata.obs["y_coord"] = adata.obsm["Spatial_coordinates"][:, 1]
     return adata
 
 

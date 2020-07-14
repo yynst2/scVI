@@ -1,5 +1,4 @@
 import logging
-import pdb
 import anndata
 import torch
 import numpy as np
@@ -9,8 +8,6 @@ from functools import partial
 from itertools import cycle
 from typing import Optional, List, Tuple, Union, Iterable
 
-from scvi.dataset._anndata import get_from_registry
-from scvi.dataset import GeneExpressionDataset
 from scvi.inference import Posterior
 from scvi.inference import Trainer
 from scvi.models.log_likelihood import compute_elbo
@@ -20,7 +17,6 @@ from scvi.dataset._constants import (
     _LOCAL_L_MEAN_KEY,
     _LOCAL_L_VAR_KEY,
     _LABELS_KEY,
-    _PROTEIN_EXP_KEY,
 )
 
 
@@ -327,9 +323,9 @@ class JVAETrainer(Trainer):
             discriminator_losses = self.loss_discriminator(
                 [
                     self.model.sample_from_posterior_z(
-                        data, mode=i, deterministic=False
+                        data[_X_KEY], mode=i, deterministic=False
                     )
-                    for (i, (data, *_)) in enumerate(tensors_dict)
+                    for (i, data) in enumerate(tensors_dict)
                 ],
                 return_details=True,
             )
@@ -363,7 +359,7 @@ class JVAETrainer(Trainer):
                     batch_index,
                     label,
                     *_,
-                ) = tensors
+                ) = self._unpack_tensors(tensors)
                 latent.append(
                     self.model.sample_from_posterior_z(
                         sample_batch, mode, deterministic=deterministic
