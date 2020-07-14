@@ -143,7 +143,7 @@ class VAE(nn.Module):
                 two_param=False,
                 n_cat_list=[n_batch],
             )
-            self.intercept = torch.nn.Parameter(torch.zeros(1, n_input))
+            self.intercept = torch.nn.Parameter(-10 * torch.ones(1, n_input))
         else:
             self.decoder = DecoderSCVI(
                 n_latent,
