@@ -1,5 +1,4 @@
 import logging
-import pdb
 import sys
 import time
 from abc import abstractmethod
@@ -13,8 +12,8 @@ import anndata
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior import Posterior
+from scvi.dataset._constants import _X_KEY
 
 IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB is True:
@@ -68,7 +67,7 @@ class Trainer:
     def __init__(
         self,
         model,
-        gene_dataset: anndata.AnnData,
+        adata: anndata.AnnData,
         use_cuda: bool = True,
         metrics_to_monitor: List = None,
         benchmark: bool = False,
@@ -84,7 +83,7 @@ class Trainer:
 
         # Model, dataset management
         self.model = model
-        self.gene_dataset = gene_dataset
+        self.gene_dataset = adata
         self._posteriors = OrderedDict()
         self.seed = seed  # For train/test splitting
         self.use_cuda = use_cuda and torch.cuda.is_available()
@@ -189,8 +188,8 @@ class Trainer:
         ):
             self.on_epoch_begin()
             for tensors_dict in self.data_loaders_loop():
-                # if tensors_list[0][0].shape[0] < 3:
-                #     continue
+                if tensors_dict[0][_X_KEY].shape[0] < 3:
+                    continue
                 self.on_iteration_begin()
                 # Update the model's parameters after seeing the data
                 self.on_training_loop(tensors_dict)
