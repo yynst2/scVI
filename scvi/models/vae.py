@@ -12,7 +12,7 @@ from scvi.models.distributions import (
     NegativeBinomial,
     Poisson,
 )
-from scvi.models.modules import Encoder, DecoderSCVI, LinearDecoderSCVI
+from scvi.models.modules import Encoder, DecoderSCVI, Decoder, LinearDecoderSCVI
 from scvi.models.utils import one_hot
 
 from typing import Tuple, Dict
@@ -79,8 +79,10 @@ class VAE(nn.Module):
         log_variational: bool = True,
         reconstruction_loss: str = "zinb",
         latent_distribution: str = "normal",
+        neural_decomposition_decoder: bool = False,
     ):
         super().__init__()
+        self.n_input = n_input
         self.dispersion = dispersion
         self.n_latent = n_latent
         self.log_variational = log_variational
@@ -89,6 +91,7 @@ class VAE(nn.Module):
         self.n_batch = n_batch
         self.n_labels = n_labels
         self.latent_distribution = latent_distribution
+        self.neural_decomposition_decoder = neural_decomposition_decoder
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input))
@@ -120,13 +123,35 @@ class VAE(nn.Module):
             n_input, 1, n_layers=1, n_hidden=n_hidden, dropout_rate=dropout_rate
         )
         # decoder goes from n_latent-dimensional space to n_input-d data
-        self.decoder = DecoderSCVI(
-            n_latent,
-            n_input,
-            n_cat_list=[n_batch],
-            n_layers=n_layers,
-            n_hidden=n_hidden,
-        )
+        if neural_decomposition_decoder is True:
+            self.decoder_z = Decoder(
+                n_latent, n_input, n_layers=n_layers, n_hidden=n_hidden, two_param=False
+            )
+            self.decoder_zs = Decoder(
+                n_latent,
+                n_input,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                two_param=False,
+                n_cat_list=[n_batch],
+            )
+            self.decoder_s = Decoder(
+                1,
+                n_input,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                two_param=False,
+                n_cat_list=[n_batch],
+            )
+            self.intercept = torch.nn.Parameter(torch.zeros(1, n_input))
+        else:
+            self.decoder = DecoderSCVI(
+                n_latent,
+                n_input,
+                n_cat_list=[n_batch],
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+            )
 
     def get_latents(self, x, y=None) -> torch.Tensor:
         """Returns the result of ``sample_from_posterior_z`` inside a list
@@ -145,6 +170,37 @@ class VAE(nn.Module):
 
         """
         return [self.sample_from_posterior_z(x, y)]
+
+    def _calculate_integrals(self, z, batch_indices):
+
+        if not self.neural_decomposition_decoder:
+            raise NotImplementedError("this function requires neural decomposition")
+
+        # has shape [1, n_input]
+        int_z = self.f_z.mean(dim=0).reshape(1, self.n_input)
+
+        # has shape [1, n_input]
+        int_s = self.f_s.mean(dim=0).reshape(1, self.n_input)
+
+        int_zs = self.f_zs
+
+        b_inds = batch_indices.squeeze(1)
+        int_zs_dz = []
+        int_zs_ds = torch.zeros(z.shape[0], self.n_input, device=z.device)
+        uniq_b_inds = torch.arange(self.n_batch)
+        for s in uniq_b_inds:
+            mask = b_inds == s
+            int_zs_dz.append(int_zs[mask].mean(0).unsqueeze(0))
+
+            dec_batch_index = torch.ones(z.shape[0], 1, device=z.device)
+            int_zs_ds += (1 / len(uniq_b_inds)) * self.decoder_zs(
+                z, dec_batch_index * s
+            )
+
+        # shape is num cat of s by n_input
+        int_zs_dz = torch.cat(int_zs_dz)
+
+        return int_z, int_s, int_zs_ds, int_zs_dz
 
     def sample_from_posterior_z(
         self, x, y=None, give_mean=False, n_samples=5000
@@ -314,9 +370,20 @@ class VAE(nn.Module):
         else:
             dec_batch_index = batch_index
 
-        px_scale, px_r, px_rate, px_dropout = self.decoder(
-            self.dispersion, z, library, dec_batch_index, y
-        )
+        if self.neural_decomposition_decoder is True:
+            self.f_z = self.decoder_z(z)
+            self.f_s = self.decoder_s(
+                torch.zeros_like(dec_batch_index, dtype=torch.float32), dec_batch_index
+            )
+            self.f_zs = self.decoder_zs(z, dec_batch_index)
+            px_scale = torch.exp(self.f_z + self.f_s + self.f_zs + self.intercept)
+            px_rate = px_scale * x.sum(1).unsqueeze(1)
+            px_dropout = None
+
+        else:
+            px_scale, px_r, px_rate, px_dropout = self.decoder(
+                self.dispersion, z, library, dec_batch_index, y
+            )
         if self.dispersion == "gene-label":
             px_r = F.linear(
                 one_hot(y, self.n_labels), self.px_r

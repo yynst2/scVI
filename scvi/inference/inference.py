@@ -86,6 +86,8 @@ class UnsupervisedTrainer(Trainer):
         n_iter_kl_warmup: Union[int, None] = None,
         n_epochs_kl_warmup: Union[int, None] = 400,
         normalize_loss: bool = None,
+        augmented_lagrangian_lr: float = 1e-1,
+        lambda0: float = 1.0,
         **kwargs
     ):
         train_size = float(train_size)
@@ -94,6 +96,9 @@ class UnsupervisedTrainer(Trainer):
                 "train_size needs to be greater than 0 and less than or equal to 1"
             )
         super().__init__(model, gene_dataset, **kwargs)
+
+        self.augmented_lagrangian_lr = augmented_lagrangian_lr
+        self.lambda0 = lambda0
 
         # Set up number of warmup iterations
         self.n_iter_kl_warmup = n_iter_kl_warmup
@@ -123,6 +128,22 @@ class UnsupervisedTrainer(Trainer):
             self.validation_set.to_monitor = ["elbo"]
             self.n_samples = len(self.train_set.indices)
 
+        if hasattr(self.model, "neural_decomposition_decoder"):
+            if self.model.neural_decomposition_decoder is True:
+                dim = self.model.n_input
+                dev = torch.device("cuda") if self.use_cuda is True else None
+                self.Lambda_z = self.lambda0 * torch.ones(1, dim, device=dev)
+                self.Lambda_c = self.lambda0 * torch.ones(1, dim, device=dev)
+                self.Lambda_cz_1 = self.lambda0 * torch.ones(
+                    self.batch_size, dim, device=dev
+                )
+                self.Lambda_cz_2 = self.lambda0 * torch.ones(
+                    self.model.n_batch, dim, device=dev
+                )
+                self.grid_z = torch.randn(
+                    (self.batch_size, self.model.n_latent), device=dev
+                )
+
     @property
     def posteriors_loop(self):
         return ["train_set"]
@@ -148,7 +169,36 @@ class UnsupervisedTrainer(Trainer):
         )
         if self.normalize_loss:
             loss = loss / self.n_samples
-        return loss
+
+        if hasattr(self.model, "neural_decomposition_decoder"):
+            if self.model.neural_decomposition_decoder is True:
+                (
+                    self.int_z,
+                    self.int_s,
+                    self.int_zs_ds,
+                    self.int_zs_dz,
+                ) = self.model._calculate_integrals(self.grid_z, batch_index)
+
+            # penalty with fixed lambda0
+            penalty0 = self.lambda0 * (
+                self.int_z.abs().mean()
+                + self.int_s.abs().mean()
+                + self.int_zs_ds.abs().mean()
+                + self.int_zs_dz.abs().mean()
+            )
+
+            penalty_BDMM = (
+                (self.Lambda_z * self.int_z).mean()
+                + (self.Lambda_c * self.int_s).mean()
+                + (self.Lambda_cz_1 * self.int_zs_ds).mean()
+                + (self.Lambda_cz_2 * self.int_zs_dz).mean()
+            )
+
+            penalty = penalty_BDMM + penalty0
+        else:
+            penalty = 0
+
+        return loss + penalty
 
     @property
     def kl_weight(self):
@@ -196,6 +246,17 @@ class UnsupervisedTrainer(Trainer):
                 "If your applications rely on the posterior quality, "
                 "consider training for more epochs or reducing the kl warmup."
             )
+
+    def on_iteration_end(self):
+        super().on_iteration_end()
+
+        if hasattr(self.model, "neural_decomposition_decoder"):
+            if self.model.neural_decomposition_decoder is True:
+                with torch.no_grad():
+                    self.Lambda_z += self.augmented_lagrangian_lr * self.int_z
+                    self.Lambda_c += self.augmented_lagrangian_lr * self.int_s
+                    self.Lambda_cz_1 += self.augmented_lagrangian_lr * self.int_zs_ds
+                    self.Lambda_cz_2 += self.augmented_lagrangian_lr * self.int_zs_dz
 
 
 class AdapterTrainer(UnsupervisedTrainer):

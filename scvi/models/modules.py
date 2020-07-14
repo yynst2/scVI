@@ -1,5 +1,4 @@
 import collections
-import pdb
 from typing import Iterable, List
 
 import torch
@@ -400,6 +399,8 @@ class Decoder(nn.Module):
         The number of nodes per hidden layer
     dropout_rate
         Dropout rate to apply to each of the hidden layers
+    two_param
+        Return mean and var or just mean
 
     Returns
     -------
@@ -412,8 +413,10 @@ class Decoder(nn.Module):
         n_cat_list: Iterable[int] = None,
         n_layers: int = 1,
         n_hidden: int = 128,
+        two_param: bool = True,
     ):
         super().__init__()
+        self.two_param = two_param
         self.decoder = FCLayers(
             n_in=n_input,
             n_out=n_hidden,
@@ -424,7 +427,8 @@ class Decoder(nn.Module):
         )
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)
-        self.var_decoder = nn.Linear(n_hidden, n_output)
+        if two_param is True:
+            self.var_decoder = nn.Linear(n_hidden, n_output)
 
     def forward(self, x: torch.Tensor, *cat_list: int):
         """The forward computation for a single sample.
@@ -448,8 +452,11 @@ class Decoder(nn.Module):
         # Parameters for latent distribution
         p = self.decoder(x, *cat_list)
         p_m = self.mean_decoder(p)
-        p_v = torch.exp(self.var_decoder(p))
-        return p_m, p_v
+        if self.two_param is True:
+            p_v = torch.exp(self.var_decoder(p))
+            return p_m, p_v
+        else:
+            return p_m
 
 
 class MultiEncoder(nn.Module):
