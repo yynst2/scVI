@@ -1,26 +1,15 @@
 import logging
 import os
-
 import loompy
 import numpy as np
 import pandas as pd
-from anndata import AnnData
-import scanpy as sc
 
+from anndata import AnnData
 from scvi.dataset import setup_anndata
 from scvi.dataset._utils import _download
 
 
 logger = logging.getLogger(__name__)
-
-
-def read_loom_via_url(
-    url: str, save_fn: str, save_path: str = "data/", **kwargs
-) -> AnnData:
-    save_path = os.path.abspath(save_path)
-    _download(url, save_path, save_fn)
-    adata = sc.read_loom(os.path.join(save_path, save_fn), **kwargs)
-    return adata
 
 
 def retina(save_path: str = "data/") -> AnnData:
@@ -101,7 +90,9 @@ def frontalcortex_dropseq(save_path: str = "data/") -> AnnData:
     return adata
 
 
-def annotation_simulation(name: str, save_path: str = "data/") -> AnnData:
+def annotation_simulation(
+    name: str, save_path: str = "data/", run_setup_anndata=True
+) -> AnnData:
     """\
     Simulated datasets for scANVI tutorials
 
@@ -122,6 +113,9 @@ def annotation_simulation(name: str, save_path: str = "data/") -> AnnData:
 
     adata.obs["batch"] = adata.obs.BatchID.values
     del adata.obs["BatchID"]
+
+    if run_setup_anndata:
+        setup_anndata(adata, batch_key="batch", labels_key="labels")
 
     return adata
 

@@ -205,7 +205,7 @@ def _asynchronous_logging_method_decorator(func: Callable):
 @_cleanup_decorator
 def auto_tune_scvi_model(
     exp_key: str,
-    gene_dataset: anndata.AnnData = None,
+    gene_dataset: Union[anndata.AnnData, str] = None,
     delayed_populating: bool = False,
     custom_objective_hyperopt: Callable = None,
     objective_kwargs: Dict[str, Any] = None,
@@ -1376,8 +1376,8 @@ def _objective_function(
     # define model
     logger_all.debug("Instantiating model")
     model = model_class(
-        n_input=gene_dataset.n_genes,
-        n_batch=gene_dataset.n_batches * use_batches,
+        n_input=gene_dataset["scvi_summary_stats"]["n_genes"],
+        n_batch=gene_dataset["scvi_summary_stats"]["n_batch"] * use_batches,
         **model_tunable_kwargs,
     )
 
