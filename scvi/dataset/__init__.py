@@ -7,6 +7,7 @@ from ._preprocessing import (
 
 from .cite_seq import pbmcs_10x_cite_seq
 from .dataset10X import dataset10X
+from .brain_large import brainlarge_dataset
 from ._datasets import synthetic_iid
 from .pbmc import pbmc_dataset
 from .cortex import cortex
