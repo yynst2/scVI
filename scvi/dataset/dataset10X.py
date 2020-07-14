@@ -116,7 +116,6 @@ def dataset10X(
     --------
     >>> neuron = dataset10X("neuron_9k")
     """
-
     # form data url and filename unless manual override
     if dataset_name is not None:
         if url is not None:
@@ -128,6 +127,7 @@ def dataset10X(
 
         filter_type = "filtered" if is_filtered else "raw"
         url = url_skeleton.format(group, dataset_name, dataset_name, filter_type)
+        print(url)
         filename_skeleton = group_to_filename_skeleton[group]
         filename = filename_skeleton.format(filter_type)
         save_path = os.path.join(save_path, dataset_name)
@@ -151,14 +151,15 @@ def dataset10X(
                 tar.extractall(path=save_path)
                 was_extracted = True
                 tar.close()
-        path_to_data, suffix = _find_path_to_mtx(save_path)
-        adata = scanpy.read_10x_mtx(path_to_data, **scanpy_read_10x_kwargs)
+        path_to_data_folder, suffix = _find_path_to_mtx(save_path)
+        adata = scanpy.read_10x_mtx(path_to_data_folder, **scanpy_read_10x_kwargs)
+        if was_extracted and remove_extracted_data:
+            folders_in_save_path = path_to_data_folder[len(save_path) + 1 :].split("/")
+            extracted_folder_path = save_path + "/" + folders_in_save_path[0]
+            logger.info("Removing extracted data at {}".format(extracted_folder_path))
+            shutil.rmtree(extracted_folder_path)
     else:
         adata = scanpy.read_10x_h5(file_path, **scanpy_read_10x_kwargs)
-
-    if was_extracted and remove_extracted_data and download_is_targz:
-        logger.info("Removing extracted data at {}".format(file_path[:-7]))
-        shutil.rmtree(file_path[:-7])
 
     adata.var_names_make_unique()
     scanpy.pp.filter_cells(adata, min_counts=1)
