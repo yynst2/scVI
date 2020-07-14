@@ -27,8 +27,6 @@ def _download(url: str, save_path: str, filename: str):
     if os.path.exists(os.path.join(save_path, filename)):
         logger.info("File %s already downloaded" % (os.path.join(save_path, filename)))
         return
-    print("actual")
-    print(url)
     req = urllib.request.Request(url, headers={"User-Agent": "Magic Browser"})
     r = urllib.request.urlopen(req)
     logger.info("Downloading file at %s" % os.path.join(save_path, filename))

@@ -11,7 +11,7 @@ from scvi.dataset import setup_anndata
 logger = logging.getLogger(__name__)
 
 
-def cortex(save_path: str = "data/"):
+def cortex(save_path: str = "data/", run_setup_anndata=True):
     """
     Loads cortex dataset
     """
@@ -20,6 +20,8 @@ def cortex(save_path: str = "data/"):
     save_fn = "expression.bin"
     _download(url, save_path, save_fn)
     adata = _load_cortex_txt(os.path.join(save_path, save_fn))
+    if run_setup_anndata:
+        setup_anndata(adata, labels_key="labels")
     return adata
 
 

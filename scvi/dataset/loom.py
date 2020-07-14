@@ -5,12 +5,22 @@ import loompy
 import numpy as np
 import pandas as pd
 from anndata import AnnData
+import scanpy as sc
 
 from scvi.dataset import setup_anndata
 from scvi.dataset._utils import _download
 
 
 logger = logging.getLogger(__name__)
+
+
+def read_loom_via_url(
+    url: str, save_fn: str, save_path: str = "data/", **kwargs
+) -> AnnData:
+    save_path = os.path.abspath(save_path)
+    _download(url, save_path, save_fn)
+    adata = sc.read_loom(os.path.join(save_path, save_fn), **kwargs)
+    return adata
 
 
 def retina(save_path: str = "data/") -> AnnData:

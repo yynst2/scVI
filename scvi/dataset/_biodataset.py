@@ -2,9 +2,7 @@ import torch
 import scipy
 import pandas as pd
 import anndata
-import copy
 import numpy as np
-import scipy as sp
 import logging
 
 from torch.utils.data import Dataset
@@ -134,7 +132,6 @@ class BioDataset(Dataset):
             mean expression per gene, proportion of non-zero expression per gene, mean of normalized expression.
 
         """
-        # change this later
         X = get_from_registry(self.adata, _X_KEY)
         mean1 = (X[idx1]).mean(axis=0)
         mean2 = (X[idx2]).mean(axis=0)
@@ -172,13 +169,21 @@ class BioDataset(Dataset):
     def n_cells(self) -> int:
         """Returns the number of cells in the dataset
         """
-        return self.adata.shape[0]
+        n_cells = self.adata.uns["scvi_summary_stats"]["n_cells"]
+        assert n_cells == self.adata.shape[0]
+        return n_cells
 
     @property
     def n_genes(self) -> int:
         """Returns the number of genes in the dataset
         """
-        return self.adata.shape[1]
+        n_genes = self.adata.uns["scvi_summary_stats"]["n_genes"]
+        assert n_genes == self.adata.shape[1]
+        return n_genes
+
+    @property
+    def n_batch(self) -> int:
+        return self.adata.uns["scvi_summary_stats"]["n_batch"]
 
     @property
     def protein_names(self) -> List[str]:
