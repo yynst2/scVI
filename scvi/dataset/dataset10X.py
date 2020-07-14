@@ -127,7 +127,6 @@ def dataset10X(
 
         filter_type = "filtered" if is_filtered else "raw"
         url = url_skeleton.format(group, dataset_name, dataset_name, filter_type)
-        print(url)
         filename_skeleton = group_to_filename_skeleton[group]
         filename = filename_skeleton.format(filter_type)
         save_path = os.path.join(save_path, dataset_name)
@@ -152,6 +151,8 @@ def dataset10X(
                 was_extracted = True
                 tar.close()
         path_to_data_folder, suffix = _find_path_to_mtx(save_path)
+        print(path_to_data_folder)
+        print(os.getcwd())
         adata = scanpy.read_10x_mtx(path_to_data_folder, **scanpy_read_10x_kwargs)
         if was_extracted and remove_extracted_data:
             folders_in_save_path = path_to_data_folder[len(save_path) + 1 :].split("/")
