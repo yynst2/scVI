@@ -1,11 +1,9 @@
 import copy
-import pdb
 import numpy as np
-import scipy.sparse as sp_sparse
 import logging
 import pandas as pd
 
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 from scvi.dataset._utils import (
     _compute_library_size_batch,
     _check_nonnegative_integers,
@@ -69,6 +67,8 @@ def get_from_registry(adata, key: str):
     # assert "scvi_data_registry" in adata.uns.keys(), "AnnData was never registered"
     data_loc = adata.uns["scvi_data_registry"][key]
     df, df_key = data_loc[0], data_loc[1]
+    if df == "":
+        df = None
     data = getattr(adata, df)[df_key] if df is not None else getattr(adata, df_key)
     if isinstance(data, pd.Series):
         data = np.array(data.values).reshape(adata.shape[0], -1)
