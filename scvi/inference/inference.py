@@ -188,6 +188,10 @@ class UnsupervisedTrainer(Trainer):
                 + (self.Lambda_cz_2 * int_zs_dz).mean()
             )
 
+            self.int_z = int_z
+            self.int_s = int_s
+            self.int_zs_ds = int_zs_ds
+            self.int_zs_dz = int_zs_dz
             penalty = penalty_BDMM + penalty0
         else:
             penalty = 0
