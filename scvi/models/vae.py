@@ -125,7 +125,12 @@ class VAE(nn.Module):
         # decoder goes from n_latent-dimensional space to n_input-d data
         if neural_decomposition_decoder is True:
             self.decoder_z = Decoder(
-                n_latent, n_input, n_layers=n_layers, n_hidden=n_hidden, two_param=False
+                n_latent,
+                n_input,
+                n_layers=n_layers,
+                n_hidden=n_hidden,
+                two_param=False,
+                use_batch_norm=False,
             )
             self.decoder_zs = Decoder(
                 n_latent,
@@ -134,6 +139,7 @@ class VAE(nn.Module):
                 n_hidden=n_hidden,
                 two_param=False,
                 n_cat_list=[n_batch],
+                use_batch_norm=False,
             )
             self.decoder_s = Decoder(
                 1,
@@ -142,6 +148,7 @@ class VAE(nn.Module):
                 n_hidden=n_hidden,
                 two_param=False,
                 n_cat_list=[n_batch],
+                use_batch_norm=False,
             )
             self.intercept = torch.nn.Parameter(-10 * torch.ones(1, n_input))
         else:

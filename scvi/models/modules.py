@@ -414,6 +414,7 @@ class Decoder(nn.Module):
         n_layers: int = 1,
         n_hidden: int = 128,
         two_param: bool = True,
+        use_batch_norm: bool = True,
     ):
         super().__init__()
         self.two_param = two_param
@@ -424,6 +425,7 @@ class Decoder(nn.Module):
             n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=0,
+            use_batch_norm=use_batch_norm,
         )
 
         self.mean_decoder = nn.Linear(n_hidden, n_output)
