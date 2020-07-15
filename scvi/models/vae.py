@@ -82,6 +82,7 @@ class VAE(nn.Module):
         reconstruction_loss: str = "zinb",
         latent_distribution: str = "normal",
         neural_decomposition_decoder: bool = False,
+        use_sparsity_mask: bool = False,
         mask_prior: float = 0.1,
         mask_post_param_init: float = 0.0,
     ):
@@ -96,6 +97,7 @@ class VAE(nn.Module):
         self.n_labels = n_labels
         self.latent_distribution = latent_distribution
         self.neural_decomposition_decoder = neural_decomposition_decoder
+        self.use_sparsity_mask = use_sparsity_mask
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input))
@@ -156,27 +158,29 @@ class VAE(nn.Module):
             )
             self.intercept = torch.nn.Parameter(-10 * torch.ones(1, n_input))
 
-            # for the prior RelaxedBernoulli(logits)
-            self.logits_z = probs_to_logits(
-                mask_prior * torch.ones(1, n_input), is_binary=True
-            )
-            self.logits_s = probs_to_logits(
-                mask_prior * torch.ones(1, n_input), is_binary=True
-            )
-            self.logits_zs = probs_to_logits(
-                mask_prior * torch.ones(1, n_input), is_binary=True
-            )
+            if self.use_sparsity_mask:
 
-            # for the approx posterior
-            self.qlogits_z = torch.nn.Parameter(
-                mask_post_param_init * torch.ones(1, n_input)
-            )
-            self.qlogits_s = torch.nn.Parameter(
-                mask_post_param_init * torch.ones(1, n_input)
-            )
-            self.qlogits_zs = torch.nn.Parameter(
-                mask_post_param_init * torch.ones(1, n_input)
-            )
+                # for the prior RelaxedBernoulli(logits)
+                self.logits_z = probs_to_logits(
+                    mask_prior * torch.ones(1, n_input), is_binary=True
+                )
+                self.logits_s = probs_to_logits(
+                    mask_prior * torch.ones(1, n_input), is_binary=True
+                )
+                self.logits_zs = probs_to_logits(
+                    mask_prior * torch.ones(1, n_input), is_binary=True
+                )
+
+                # for the approx posterior
+                self.qlogits_z = torch.nn.Parameter(
+                    mask_post_param_init * torch.ones(1, n_input)
+                )
+                self.qlogits_s = torch.nn.Parameter(
+                    mask_post_param_init * torch.ones(1, n_input)
+                )
+                self.qlogits_zs = torch.nn.Parameter(
+                    mask_post_param_init * torch.ones(1, n_input)
+                )
         else:
             self.decoder = DecoderSCVI(
                 n_latent,
@@ -248,7 +252,10 @@ class VAE(nn.Module):
         if not self.neural_decomposition_decoder:
             raise NotImplementedError("this function requires neural decomposition")
 
-        mask_z, mask_zs, mask_s = self._get_sparsity_masks()
+        if self.use_sparsity_mask is True:
+            mask_z, mask_zs, mask_s = self._get_sparsity_masks()
+        else:
+            mask_z, mask_zs, mask_s = 1.0, 1.0, 1.0
 
         # has shape [1, n_input]
         int_z = (mask_z * self.decoder_z(z)).mean(dim=0).reshape(1, self.n_input)
@@ -461,7 +468,12 @@ class VAE(nn.Module):
             )
             self.f_zs = self.decoder_zs(z, dec_batch_index)
 
-            self.mask_z, self.mask_zs, self.mask_s = self._get_sparsity_masks()
+            if self.use_sparsity_mask is True:
+                self.mask_z, self.mask_zs, self.mask_s = self._get_sparsity_masks()
+            else:
+                self.mask_z = 1.0
+                self.mask_zs = 1.0
+                self.mask_s = 1.0
             px_scale = torch.exp(
                 self.mask_z * self.f_z
                 + self.mask_s * self.f_s
@@ -550,7 +562,8 @@ class VAE(nn.Module):
         reconst_loss = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
         if self.neural_decomposition_decoder is True:
-            global_kl = self._compute_global_kl_divergence()
+            if self.use_sparsity_mask is True:
+                global_kl = self._compute_global_kl_divergence()
         else:
             global_kl = 0.0
 
