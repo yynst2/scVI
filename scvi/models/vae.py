@@ -214,16 +214,16 @@ class VAE(nn.Module):
             raise NotImplementedError("this function requires neural decomposition")
 
         kl1 = kl(
-            Bernoulli(self.qlogits_z),
-            Bernoulli(self.logits_z.to(self.qlogits_z.device)),
+            Bernoulli(torch.sigmoid(self.qlogits_z)),
+            Bernoulli(torch.sigmoid(self.logits_z.to(self.qlogits_z.device))),
         ).sum()
         kl2 = kl(
-            Bernoulli(self.qlogits_s),
-            Bernoulli(self.logits_s.to(self.qlogits_z.device)),
+            Bernoulli(torch.sigmoid(self.qlogits_s)),
+            Bernoulli(torch.sigmoid(self.logits_s.to(self.qlogits_z.device))),
         ).sum()
         kl3 = kl(
-            Bernoulli(self.qlogits_zs),
-            Bernoulli(self.logits_zs.to(self.qlogits_z.device)),
+            Bernoulli(torch.sigmoid(self.qlogits_zs)),
+            Bernoulli(torch.sigmoid(self.logits_zs.to(self.qlogits_z.device))),
         ).sum()
 
         return kl1 + kl2 + kl3
