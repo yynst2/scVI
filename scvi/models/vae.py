@@ -178,7 +178,7 @@ class VAE(nn.Module):
         """
         return [self.sample_from_posterior_z(x, y)]
 
-    def _calculate_integrals(self, z):
+    def _calculate_integrals(self, z, numpy=False):
 
         if not self.neural_decomposition_decoder:
             raise NotImplementedError("this function requires neural decomposition")
@@ -205,7 +205,15 @@ class VAE(nn.Module):
         # shape is num cat of s by n_input
         int_zs_dz = torch.cat(int_zs_dz)
 
-        return int_z, int_s, int_zs_ds, int_zs_dz
+        if numpy is True:
+            return (
+                int_z.cpu().numpy(),
+                int_s.cpu().numpy,
+                int_zs_ds.cpu().numpy(),
+                int_zs_dz.cpu().numpy(),
+            )
+        else:
+            return int_z, int_s, int_zs_ds, int_zs_dz
 
     def sample_from_posterior_z(
         self, x, y=None, give_mean=False, n_samples=5000

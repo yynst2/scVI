@@ -340,7 +340,9 @@ class Posterior:
         dev = torch.device("cuda") if self.use_cuda is True else None
         grid_z = torch.randn((50, self.model.n_latent), device=dev)
 
-        int_z, int_s, int_zs_ds, int_zs_dz, = self.model._calculate_integrals(grid_z)
+        int_z, int_s, int_zs_ds, int_zs_dz, = self.model._calculate_integrals(
+            grid_z, numpy=True
+        )
         return dict(int_z=int_z, int_s=int_s, int_zs_ds=int_zs_ds, int_zs_dz=int_zs_dz)
 
     @torch.no_grad()
