@@ -451,13 +451,13 @@ class Posterior:
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
 
-            f_z_var = self.f_z.var(dim=0, keepdim=True)
+            f_z_var = self.model.f_z.var(dim=0, keepdim=True)
 
             # f_s
-            f_s_var = self.f_s.var(dim=0, keepdim=True)
+            f_s_var = self.model.f_s.var(dim=0, keepdim=True)
 
             # f_int
-            f_int_var = self.f_zs.var(dim=0, keepdim=True)
+            f_int_var = self.model.f_zs.var(dim=0, keepdim=True)
 
             # collect Var([f_z, f_c, f_int]) together
             # and divide by total variance
