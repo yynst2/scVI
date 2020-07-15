@@ -5,7 +5,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Normal, kl_divergence as kl
+from torch.distributions import Normal, Bernoulli, kl_divergence as kl
+from torch.distributions.relaxed_bernoulli import LogitRelaxedBernoulli
+from torch.distributions.utils import probs_to_logits
 
 from scvi.models.distributions import (
     ZeroInflatedNegativeBinomial,
@@ -80,6 +82,7 @@ class VAE(nn.Module):
         reconstruction_loss: str = "zinb",
         latent_distribution: str = "normal",
         neural_decomposition_decoder: bool = False,
+        mask_prior: float = 0.1,
     ):
         super().__init__()
         self.n_input = n_input
@@ -151,6 +154,22 @@ class VAE(nn.Module):
                 use_batch_norm=False,
             )
             self.intercept = torch.nn.Parameter(-10 * torch.ones(1, n_input))
+
+            # for the prior RelaxedBernoulli(logits)
+            self.logits_z = probs_to_logits(
+                mask_prior * torch.ones(1, n_input), is_binary=True
+            )
+            self.logits_s = probs_to_logits(
+                mask_prior * torch.ones(1, n_input), is_binary=True
+            )
+            self.logits_zs = probs_to_logits(
+                mask_prior * torch.ones(1, n_input), is_binary=True
+            )
+
+            # for the approx posterior
+            self.qlogits_z = torch.nn.Parameter(-3.0 * torch.ones(1, n_input))
+            self.qlogits_s = torch.nn.Parameter(-3.0 * torch.ones(1, n_input))
+            self.qlogits_zs = torch.nn.Parameter(-2.0 * torch.ones(1, n_input))
         else:
             self.decoder = DecoderSCVI(
                 n_latent,
@@ -177,6 +196,45 @@ class VAE(nn.Module):
 
         """
         return [self.sample_from_posterior_z(x, y)]
+
+    def _set_temperature_for_mask(self, t):
+        if not self.neural_decomposition_decoder:
+            raise NotImplementedError("this function requires neural decomposition")
+        self.temperature = t
+
+    def _compute_global_kl_divergence(self):
+        if not self.neural_decomposition_decoder:
+            raise NotImplementedError("this function requires neural decomposition")
+
+        kl1 = kl(
+            Bernoulli(self.qlogits_z),
+            Bernoulli(self.logits_z.to(self.qlogits_z.device)),
+        ).sum()
+        kl2 = kl(
+            Bernoulli(self.qlogits_s),
+            Bernoulli(self.logits_s.to(self.qlogits_z.device)),
+        ).sum()
+        kl3 = kl(
+            Bernoulli(self.qlogits_zs),
+            Bernoulli(self.logits_zs.to(self.qlogits_z.device)),
+        ).sum()
+
+        return kl1 + kl2 + kl3
+
+    def _get_sparsity_masks(self):
+        temp = torch.tensor(self.temperature).to(self.qlogits_z.device)
+        mask_z = torch.sigmoid(
+            LogitRelaxedBernoulli(temp, logits=self.qlogits_z).rsample()
+        )
+        mask_zs = torch.sigmoid(
+            LogitRelaxedBernoulli(temp, logits=self.qlogits_zs).rsample()
+        )
+
+        mask_s = torch.sigmoid(
+            LogitRelaxedBernoulli(temp, logits=self.qlogits_s).rsample()
+        )
+
+        return mask_z, mask_zs, mask_s
 
     def _calculate_integrals(self, z, numpy=False):
 
@@ -389,7 +447,14 @@ class VAE(nn.Module):
                 torch.zeros_like(dec_batch_index, dtype=torch.float32), dec_batch_index
             )
             self.f_zs = self.decoder_zs(z, dec_batch_index)
-            px_scale = torch.exp(self.f_z + self.f_s + self.f_zs + self.intercept)
+
+            self.mask_z, self.mask_zs, self.mask_s = self._get_sparsity_masks()
+            px_scale = torch.exp(
+                self.mask_z * self.f_z
+                + self.mask_s * self.f_s
+                + self.mask_zs * self.f_zs
+                + self.intercept
+            )
             px_rate = px_scale * x.sum(1).unsqueeze(1)
             px_dropout = None
 
@@ -471,7 +536,12 @@ class VAE(nn.Module):
 
         reconst_loss = self.get_reconstruction_loss(x, px_rate, px_r, px_dropout)
 
-        return reconst_loss + kl_divergence_l, kl_divergence, 0.0
+        if self.neural_decomposition_decoder is True:
+            global_kl = self._compute_global_kl_divergence()
+        else:
+            global_kl = 0.0
+
+        return reconst_loss + kl_divergence_l, kl_divergence, global_kl
 
 
 class LDVAE(VAE):

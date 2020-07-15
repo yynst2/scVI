@@ -89,6 +89,7 @@ class UnsupervisedTrainer(Trainer):
         augmented_lagrangian_lr: float = 1e-1,
         lambda0: float = 1.0,
         n_grid_z: int = 50,
+        temperature_start_end: list = [1.0, 0.2],
         **kwargs
     ):
         train_size = float(train_size)
@@ -100,6 +101,7 @@ class UnsupervisedTrainer(Trainer):
 
         self.augmented_lagrangian_lr = augmented_lagrangian_lr
         self.lambda0 = lambda0
+        self.temperature_start_end = temperature_start_end
 
         # Set up number of warmup iterations
         self.n_iter_kl_warmup = n_iter_kl_warmup
@@ -237,6 +239,15 @@ class UnsupervisedTrainer(Trainer):
             log_message = "Training without KL warmup"
         logger.info(log_message)
 
+        if hasattr(self.model, "neural_decomposition_decoder"):
+            if self.model.neural_decomposition_decoder is True:
+                self.temperature_schedule = torch.linspace(
+                    self.temperature_start_end[0],
+                    self.temperature_start_end[1],
+                    self.n_epochs,
+                )
+                self.model._set_temperature_for_mask(self.temperature_start_end[0])
+
     def on_training_end(self):
         if self.kl_weight < 0.99:
             logger.info(
@@ -258,6 +269,10 @@ class UnsupervisedTrainer(Trainer):
 
                     self.lambda0 += 0.05
                     self.lambda0 = min(self.lambda0, 1000)
+
+                    self.model._set_temperature_for_mask(
+                        self.temperature_schedule[self.epoch]
+                    )
 
 
 class AdapterTrainer(UnsupervisedTrainer):

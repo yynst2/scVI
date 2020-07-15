@@ -465,13 +465,13 @@ class Posterior:
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
 
-            f_z.append(self.model.f_z)
+            f_z.append(self.model.f_z * self.model.mask_z)
 
             # f_s
-            f_s.append(self.model.f_s)
+            f_s.append(self.model.f_s * self.model.mask_s)
 
             # f_int
-            f_int.append(self.model.f_zs)
+            f_int.append(self.model.f_zs * self.model.mask_zs)
 
         f_z_var = torch.cat(f_z).var(dim=0, keepdim=True)
         f_s_var = torch.cat(f_s).var(dim=0, keepdim=True)
