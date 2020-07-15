@@ -564,6 +564,8 @@ class VAE(nn.Module):
         if self.neural_decomposition_decoder is True:
             if self.use_sparsity_mask is True:
                 global_kl = self._compute_global_kl_divergence()
+            else:
+                global_kl = 0.0
         else:
             global_kl = 0.0
 
