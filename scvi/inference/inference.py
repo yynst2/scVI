@@ -257,7 +257,7 @@ class UnsupervisedTrainer(Trainer):
                     self.Lambda_cz_2 += self.augmented_lagrangian_lr * self.int_zs_dz
 
                     self.lambda0 += 0.05
-                    self.lambda0 = min(self.lambda0, 100)
+                    self.lambda0 = min(self.lambda0, 1000)
 
 
 class AdapterTrainer(UnsupervisedTrainer):
