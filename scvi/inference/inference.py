@@ -169,26 +169,23 @@ class UnsupervisedTrainer(Trainer):
 
         if hasattr(self.model, "neural_decomposition_decoder"):
             if self.model.neural_decomposition_decoder is True:
-                (
-                    self.int_z,
-                    self.int_s,
-                    self.int_zs_ds,
-                    self.int_zs_dz,
-                ) = self.model._calculate_integrals(self.grid_z, batch_index)
+                (int_z, int_s, int_zs_ds, int_zs_dz) = self.model._calculate_integrals(
+                    self.grid_z
+                )
 
             # penalty with fixed lambda0
             penalty0 = self.lambda0 * (
-                self.int_z.abs().mean()
-                + self.int_s.abs().mean()
-                + self.int_zs_ds.abs().mean()
-                + self.int_zs_dz.abs().mean()
+                int_z.abs().mean()
+                + int_s.abs().mean()
+                + int_zs_ds.abs().mean()
+                + int_zs_dz.abs().mean()
             )
 
             penalty_BDMM = (
-                (self.Lambda_z * self.int_z).mean()
-                + (self.Lambda_c * self.int_s).mean()
-                + (self.Lambda_cz_1 * self.int_zs_ds).mean()
-                + (self.Lambda_cz_2 * self.int_zs_dz).mean()
+                (self.Lambda_z * int_z).mean()
+                + (self.Lambda_c * int_s).mean()
+                + (self.Lambda_cz_1 * int_zs_ds).mean()
+                + (self.Lambda_cz_2 * int_zs_dz).mean()
             )
 
             penalty = penalty_BDMM + penalty0

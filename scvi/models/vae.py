@@ -178,7 +178,7 @@ class VAE(nn.Module):
         """
         return [self.sample_from_posterior_z(x, y)]
 
-    def _calculate_integrals(self, z, batch_indices):
+    def _calculate_integrals(self, z):
 
         if not self.neural_decomposition_decoder:
             raise NotImplementedError("this function requires neural decomposition")
