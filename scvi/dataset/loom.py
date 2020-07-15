@@ -120,9 +120,6 @@ def annotation_simulation(
     return adata
 
 
-""
-
-
 def _load_loom(path_to_file: str, gene_names_attribute_name: str = "Gene") -> AnnData:
     ds = loompy.connect(path_to_file)
     select = ds[:, :].sum(axis=0) > 0  # Take out cells that don't express any gene
