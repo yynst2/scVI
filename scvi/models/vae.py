@@ -208,7 +208,7 @@ class VAE(nn.Module):
         if numpy is True:
             return (
                 int_z.cpu().numpy(),
-                int_s.cpu().numpy,
+                int_s.cpu().numpy(),
                 int_zs_ds.cpu().numpy(),
                 int_zs_dz.cpu().numpy(),
             )
