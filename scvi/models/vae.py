@@ -184,22 +184,20 @@ class VAE(nn.Module):
             raise NotImplementedError("this function requires neural decomposition")
 
         # has shape [1, n_input]
-        int_z = self.f_z.mean(dim=0).reshape(1, self.n_input)
+        int_z = self.decoder_z(z).mean(dim=0).reshape(1, self.n_input)
 
         # has shape [1, n_input]
         int_s = self.f_s.mean(dim=0).reshape(1, self.n_input)
 
-        int_zs = self.f_zs
-
-        b_inds = batch_indices.squeeze(1)
         int_zs_dz = []
         int_zs_ds = torch.zeros(z.shape[0], self.n_input, device=z.device)
         uniq_b_inds = torch.arange(self.n_batch)
         for s in uniq_b_inds:
-            mask = b_inds == s
-            int_zs_dz.append(int_zs[mask].mean(0).unsqueeze(0))
-
             dec_batch_index = torch.ones(z.shape[0], 1, device=z.device)
+            int_zs_dz.append(
+                self.decoder_zs(z, dec_batch_index * s).mean(0).reshape(1, self.n_input)
+            )
+
             int_zs_ds += (1 / len(uniq_b_inds)) * self.decoder_zs(
                 z, dec_batch_index * s
             )
