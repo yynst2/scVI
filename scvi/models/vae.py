@@ -251,10 +251,10 @@ class VAE(nn.Module):
         mask_z, mask_zs, mask_s = self._get_sparsity_masks()
 
         # has shape [1, n_input]
-        int_z = (mask_z * self.decoder_z(z).mean(dim=0)).reshape(1, self.n_input)
+        int_z = (mask_z * self.decoder_z(z)).mean(dim=0).reshape(1, self.n_input)
 
         # has shape [1, n_input]
-        int_s = (mask_s * self.f_s.mean(dim=0)).reshape(1, self.n_input)
+        int_s = (mask_s * self.f_s).mean(dim=0).reshape(1, self.n_input)
 
         int_zs_dz = []
         int_zs_ds = torch.zeros(z.shape[0], self.n_input, device=z.device)
@@ -267,8 +267,10 @@ class VAE(nn.Module):
                 .reshape(1, self.n_input)
             )
 
-            int_zs_ds += (1 / len(uniq_b_inds)) * self.decoder_zs(
-                z, dec_batch_index * s
+            int_zs_ds += (
+                (1 / len(uniq_b_inds))
+                * mask_zs
+                * self.decoder_zs(z, dec_batch_index * s)
             )
 
         # shape is num cat of s by n_input
