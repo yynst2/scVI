@@ -258,6 +258,9 @@ class UnsupervisedTrainer(Trainer):
                     self.Lambda_cz_1 += self.augmented_lagrangian_lr * self.int_zs_ds
                     self.Lambda_cz_2 += self.augmented_lagrangian_lr * self.int_zs_dz
 
+                    self.lambda0 += 0.05
+                    self.lambda0 = min(self.lambda0, 100)
+
 
 class AdapterTrainer(UnsupervisedTrainer):
     def __init__(self, model, gene_dataset, posterior_test, frequency=5):
