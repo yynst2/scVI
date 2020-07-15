@@ -88,6 +88,7 @@ class UnsupervisedTrainer(Trainer):
         normalize_loss: bool = None,
         augmented_lagrangian_lr: float = 1e-1,
         lambda0: float = 1.0,
+        n_grid_z: int = 50,
         **kwargs
     ):
         train_size = float(train_size)
@@ -134,11 +135,11 @@ class UnsupervisedTrainer(Trainer):
                 dev = torch.device("cuda") if self.use_cuda is True else None
                 self.Lambda_z = self.lambda0 * torch.ones(1, dim, device=dev)
                 self.Lambda_c = self.lambda0 * torch.ones(1, dim, device=dev)
-                self.Lambda_cz_1 = self.lambda0 * torch.ones(25, dim, device=dev)
+                self.Lambda_cz_1 = self.lambda0 * torch.ones(n_grid_z, dim, device=dev)
                 self.Lambda_cz_2 = self.lambda0 * torch.ones(
                     self.model.n_batch, dim, device=dev
                 )
-                self.grid_z = torch.randn((25, self.model.n_latent), device=dev)
+                self.grid_z = torch.randn((n_grid_z, self.model.n_latent), device=dev)
 
     @property
     def posteriors_loop(self):
