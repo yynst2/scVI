@@ -21,6 +21,3 @@ from .loom import (
     frontalcortex_dropseq,
     annotation_simulation,
 )
-
-
-from .dataset import GeneExpressionDataset

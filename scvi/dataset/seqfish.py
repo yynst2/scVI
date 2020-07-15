@@ -6,7 +6,6 @@ import pandas as pd
 
 from scvi.dataset._utils import _download
 from scvi.dataset import setup_anndata
-from scvi.dataset.dataset import DownloadableDataset
 
 logger = logging.getLogger(__name__)
 
