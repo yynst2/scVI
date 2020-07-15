@@ -83,6 +83,7 @@ class VAE(nn.Module):
         latent_distribution: str = "normal",
         neural_decomposition_decoder: bool = False,
         mask_prior: float = 0.1,
+        mask_post_param_init: float = 0.0,
     ):
         super().__init__()
         self.n_input = n_input
@@ -167,9 +168,15 @@ class VAE(nn.Module):
             )
 
             # for the approx posterior
-            self.qlogits_z = torch.nn.Parameter(-1.0 * torch.ones(1, n_input))
-            self.qlogits_s = torch.nn.Parameter(-1.0 * torch.ones(1, n_input))
-            self.qlogits_zs = torch.nn.Parameter(-1.0 * torch.ones(1, n_input))
+            self.qlogits_z = torch.nn.Parameter(
+                mask_post_param_init * torch.ones(1, n_input)
+            )
+            self.qlogits_s = torch.nn.Parameter(
+                mask_post_param_init * torch.ones(1, n_input)
+            )
+            self.qlogits_zs = torch.nn.Parameter(
+                mask_post_param_init * torch.ones(1, n_input)
+            )
         else:
             self.decoder = DecoderSCVI(
                 n_latent,
