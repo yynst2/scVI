@@ -443,6 +443,9 @@ class Posterior:
 
     @torch.no_grad()
     def variance_explained(self, divide_by_total_var: bool = True, n_samples=1):
+
+        f_z, f_s, f_int = [], [], []
+
         for tensors in self:
 
             sample_batch, _, _, batch_index, labels = self._unpack_tensors(tensors)
@@ -451,25 +454,29 @@ class Posterior:
                 sample_batch, batch_index=batch_index, y=labels, n_samples=n_samples
             )
 
-            f_z_var = self.model.f_z.var(dim=0, keepdim=True)
+            f_z.append(self.model.f_z)
 
             # f_s
-            f_s_var = self.model.f_s.var(dim=0, keepdim=True)
+            f_s.append(self.model.f_s)
 
             # f_int
-            f_int_var = self.model.f_zs.var(dim=0, keepdim=True)
+            f_int.append(self.model.f_zs)
 
-            # collect Var([f_z, f_c, f_int]) together
-            # and divide by total variance
-            f_all_var = torch.cat([f_z_var, f_s_var, f_int_var], dim=0)
+        f_z_var = torch.cat(f_z).var(dim=0, keepdim=True)
+        f_s_var = torch.cat(f_s).var(dim=0, keepdim=True)
+        f_int_var = torch.cat(f_int).var(dim=0, keepdim=True)
 
-            if divide_by_total_var:
+        # collect Var([f_z, f_c, f_int]) together
+        # and divide by total variance
+        f_all_var = torch.cat([f_z_var, f_s_var, f_int_var], dim=0)
 
-                total_var = f_all_var.sum(dim=0, keepdim=True)
+        if divide_by_total_var:
 
-                f_all_var /= total_var
+            total_var = f_all_var.sum(dim=0, keepdim=True)
 
-            return f_all_var.t().cpu().numpy()
+            f_all_var /= total_var
+
+        return f_all_var.t().cpu().numpy()
 
     @torch.no_grad()
     def differential_expression_stats(self, M_sampling: int = 100) -> Tuple:
