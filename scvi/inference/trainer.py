@@ -1,5 +1,4 @@
 import logging
-import pdb
 import sys
 import time
 from abc import abstractmethod
@@ -13,7 +12,6 @@ import anndata
 from sklearn.model_selection._split import _validate_shuffle_split
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from scvi.dataset._biodataset import BioDataset
 from scvi.inference.posterior import Posterior
 
 IN_COLAB = "google.colab" in sys.modules
@@ -177,9 +175,8 @@ class Trainer:
 
         self.compute_metrics_time = 0
         self.n_epochs = n_epochs
-        self.compute_metrics()
-
         self.on_training_begin()
+        self.compute_metrics()
 
         for self.epoch in tqdm(
             range(n_epochs),
